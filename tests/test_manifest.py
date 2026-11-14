@@ -66,7 +66,8 @@ class DetectionTests(unittest.TestCase):
     def test_linux_detects_family_and_memory_without_exposing_devices(self, *_):
         # Real Linux paths use slashes. The fake also runs under Windows CI.
         contents = {
-            "/proc/cpuinfo": "model name : AMD Ryzen AI Max+ 395\nserial : hidden",
+            "/proc/cpuinfo": "model name : Example Linux CPU w/ Integrated Graphics\n"
+                             "serial : hidden",
             "/proc/meminfo": "MemTotal: 126000000 kB",
             "/proc/sys/kernel/osrelease": "7.0.0-43-generic",
             "/etc/os-release": 'ID=ubuntu\nVERSION_ID="26.04"',
@@ -97,6 +98,7 @@ class DetectionTests(unittest.TestCase):
         self.assertEqual(manifest["provenance"]["mode"], "local-read-only")
         self.assertEqual(manifest["os"]["version"], "26.04")
         hardware = manifest["hardware"]
+        self.assertEqual(hardware["cpu"], "Example Linux CPU with Integrated Graphics")
         self.assertEqual(hardware["system_ram_basis"], "os_usable")
         self.assertEqual(hardware["system_ram_bytes"], 126000000 * 1024)
         self.assertEqual(hardware["gpu_runtime"]["name"], "ROCm")
@@ -115,7 +117,8 @@ class DetectionTests(unittest.TestCase):
     @patch("aotg.adapters.sys.platform", "win32")
     def test_windows_uses_projected_inventory(self, *_):
         inventory = {
-            "cpu": [{"Name": "AMD Ryzen test CPU", "NameNotRequested": "private"}],
+            "cpu": [{"Name": "Example Windows CPU w/ Integrated Graphics",
+                     "NameNotRequested": "private"}],
             "ram": [{"Capacity": 32 * 1024**3}, {"Capacity": str(32 * 1024**3)}],
             "gpu": [{"Name": "AMD Radeon AI PRO R9700", "DriverVersion": "1.2.3",
                      "AdapterRAM": 5000}],
@@ -126,6 +129,7 @@ class DetectionTests(unittest.TestCase):
 
         self.assertEqual(manifest["os"]["kernel"], "10.0.26100")
         hardware = manifest["hardware"]
+        self.assertEqual(hardware["cpu"], "Example Windows CPU with Integrated Graphics")
         self.assertEqual(hardware["system_ram_bytes"], 64 * 1024**3)
         self.assertEqual(hardware["system_ram_basis"], "installed")
         self.assertEqual(hardware["gpus"][0]["architecture"], "gfx1201")
@@ -133,6 +137,12 @@ class DetectionTests(unittest.TestCase):
         self.assertIsNone(hardware["storage"])
         self.assertIsNone(manifest["client"]["version"])
         self.assertNotIn("private", json.dumps(manifest))
+
+    @patch("aotg.adapters.sys.platform", "win32")
+    def test_cpu_label_does_not_accept_paths(self):
+        inventory = {"cpu": [{"Name": "AMD Ryzen w/ /private/cpu"}]}
+        with patch("aotg.adapters._windows_inventory", return_value=inventory):
+            self.assertIsNone(adapter_for("windows").detect()["hardware"]["cpu"])
 
     @patch("aotg.adapters.sys.platform", "win32")
     def test_wrong_os_is_rejected(self):

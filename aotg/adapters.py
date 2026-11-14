@@ -71,6 +71,12 @@ def _label(value: object) -> str | None:
     return None
 
 
+def _cpu_label(value: object) -> str | None:
+    if isinstance(value, str):
+        return _label(value.replace(" w/ ", " with "))
+    return None
+
+
 def _read_text(path: Path, limit: int = 8192) -> str:
     try:
         with path.open("rb") as metadata:
@@ -117,7 +123,7 @@ class LinuxAdapter:
         cpu = re.search(r"^model name\s*:\s*([^\n]+)", _read_text(Path("/proc/cpuinfo")),
                         re.MULTILINE)
         if cpu:
-            hardware["cpu"] = _label(cpu[1])
+            hardware["cpu"] = _cpu_label(cpu[1])
         memory = re.search(r"^MemTotal:\s*([0-9]{1,20})\s+kB",
                            _read_text(Path("/proc/meminfo")), re.MULTILINE)
         if memory and int(memory[1]) > 0:
@@ -265,7 +271,7 @@ class WindowsAdapter:
         hardware = manifest["hardware"]
         processors = _rows(inventory, "cpu")
         if processors:
-            hardware["cpu"] = _label(processors[0].get("Name"))
+            hardware["cpu"] = _cpu_label(processors[0].get("Name"))
         ram = _rows(inventory, "ram")
         if ram:
             capacities = [_positive(row.get("Capacity")) for row in ram]
