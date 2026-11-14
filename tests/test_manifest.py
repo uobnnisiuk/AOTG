@@ -12,21 +12,21 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 class ManifestTests(unittest.TestCase):
     def test_environment_fixtures_distinguish_uma_and_dedicated_vram(self):
-        evo = load_manifest(FIXTURES / "evo-linux.json")
-        k8 = load_manifest(FIXTURES / "k8-mock.json")
-        shared, dedicated = evo["hardware"]["gpus"]
-        self.assertEqual(evo["provenance"], {"mode": "fixture", "profile": "evo"})
-        self.assertEqual(evo["hardware"]["system_ram_bytes"], 128 * 1024**3)
-        self.assertEqual(shared["uma_aperture_bytes"], 64 * 1024**3)
+        linux = load_manifest(FIXTURES / "linux-mock.json")
+        windows = load_manifest(FIXTURES / "windows-mock.json")
+        shared, dedicated = linux["hardware"]["gpus"]
+        self.assertEqual(linux["provenance"], {"mode": "fixture", "profile": "linux-example"})
+        self.assertEqual(linux["hardware"]["system_ram_bytes"], 48 * 1024**3)
+        self.assertEqual(shared["uma_aperture_bytes"], 8 * 1024**3)
         self.assertIsNone(shared["dedicated_vram_bytes"])
-        self.assertEqual(dedicated["dedicated_vram_bytes"], 32 * 1024**3)
+        self.assertEqual(dedicated["dedicated_vram_bytes"], 12 * 1024**3)
         self.assertIsNone(dedicated["uma_aperture_bytes"])
-        self.assertIsNone(k8["hardware"]["gpus"])
-        self.assertEqual(k8["client"]["name"], "OpenCode")
+        self.assertIsNone(windows["hardware"]["gpus"])
+        self.assertEqual(windows["client"]["name"], "Example client")
 
     def test_rejects_unsafe_or_invalid_manifest(self):
         def wrong_uma(data):
-            data["hardware"]["gpus"][0]["dedicated_vram_bytes"] = 64 * 1024**3
+            data["hardware"]["gpus"][0]["dedicated_vram_bytes"] = 8 * 1024**3
 
         def wrong_ram(data):
             data["hardware"]["system_ram_basis"] = None
@@ -46,7 +46,7 @@ class ManifestTests(unittest.TestCase):
         for mutate in (wrong_uma, wrong_ram, protected_changes, internal_endpoint, private_path,
                        wrong_version):
             with self.subTest(mutate=mutate.__name__):
-                data = load_manifest(FIXTURES / "evo-linux.json")
+                data = load_manifest(FIXTURES / "linux-mock.json")
                 mutate(data)
                 with self.assertRaises(ManifestError):
                     validate_manifest(data)
@@ -60,7 +60,7 @@ class ManifestTests(unittest.TestCase):
 
 
 class DetectionTests(unittest.TestCase):
-    @patch("aotg.adapters.LinuxAdapter._rocm_version", return_value="10.1.0-3")
+    @patch("aotg.adapters.LinuxAdapter._rocm_version", return_value="1.2.3")
     @patch("aotg.adapters.os.readlink", return_value="../../drivers/amdgpu")
     @patch("aotg.adapters.sys.platform", "linux")
     def test_linux_detects_family_and_memory_without_exposing_devices(self, *_):
@@ -68,16 +68,16 @@ class DetectionTests(unittest.TestCase):
         contents = {
             "/proc/cpuinfo": "model name : Example Linux CPU w/ Integrated Graphics\n"
                              "serial : hidden",
-            "/proc/meminfo": "MemTotal: 126000000 kB",
-            "/proc/sys/kernel/osrelease": "7.0.0-43-generic",
-            "/etc/os-release": 'ID=ubuntu\nVERSION_ID="26.04"',
+            "/proc/meminfo": "MemTotal: 47000000 kB",
+            "/proc/sys/kernel/osrelease": "6.8.0-1-generic",
+            "/etc/os-release": 'ID=ubuntu\nVERSION_ID="24.04"',
             "/sys/class/drm/card12/device/vendor": "0x1002",
             "/sys/class/drm/card12/device/device": "0x1586",
-            "/sys/class/drm/card12/device/mem_info_vram_total": str(64 * 1024**3),
+            "/sys/class/drm/card12/device/mem_info_vram_total": str(8 * 1024**3),
             "/sys/class/drm/card34/device/vendor": "0x1002",
             "/sys/class/drm/card34/device/device": "0x7551",
-            "/sys/class/drm/card34/device/mem_info_vram_total": str(32 * 1024**3),
-            "/sys/block/nvme0n1/size": "3906250000",
+            "/sys/class/drm/card34/device/mem_info_vram_total": str(12 * 1024**3),
+            "/sys/block/nvme0n1/size": "500000000",
         }
         lists = {
             "/sys/class/drm": [Path("/sys/class/drm/card12"), Path("/sys/class/drm/card34"),
@@ -96,18 +96,18 @@ class DetectionTests(unittest.TestCase):
                 manifest = adapter_for("linux").detect()
 
         self.assertEqual(manifest["provenance"]["mode"], "local-read-only")
-        self.assertEqual(manifest["os"]["version"], "26.04")
+        self.assertEqual(manifest["os"]["version"], "24.04")
         hardware = manifest["hardware"]
         self.assertEqual(hardware["cpu"], "Example Linux CPU with Integrated Graphics")
         self.assertEqual(hardware["system_ram_basis"], "os_usable")
-        self.assertEqual(hardware["system_ram_bytes"], 126000000 * 1024)
+        self.assertEqual(hardware["system_ram_bytes"], 47000000 * 1024)
         self.assertEqual(hardware["gpu_runtime"]["name"], "ROCm")
-        self.assertEqual(hardware["storage"], [{"kind": "nvme", "capacity_bytes": 2_000_000_000_000}])
+        self.assertEqual(hardware["storage"], [{"kind": "nvme", "capacity_bytes": 256_000_000_000}])
         shared, dedicated = hardware["gpus"]
         self.assertEqual(shared["architecture"], "gfx1151")
-        self.assertEqual(shared["uma_aperture_bytes"], 64 * 1024**3)
+        self.assertEqual(shared["uma_aperture_bytes"], 8 * 1024**3)
         self.assertEqual(dedicated["architecture"], "gfx1201")
-        self.assertEqual(dedicated["dedicated_vram_bytes"], 32 * 1024**3)
+        self.assertEqual(dedicated["dedicated_vram_bytes"], 12 * 1024**3)
         self.assertIsNone(manifest["model"]["artifact_sha256"])
         text = json.dumps(manifest)
         for private_value in ("hidden", "card12", "nvme0n1"):
@@ -119,7 +119,7 @@ class DetectionTests(unittest.TestCase):
         inventory = {
             "cpu": [{"Name": "Example Windows CPU w/ Integrated Graphics",
                      "NameNotRequested": "private"}],
-            "ram": [{"Capacity": 32 * 1024**3}, {"Capacity": str(32 * 1024**3)}],
+            "ram": [{"Capacity": 12 * 1024**3}, {"Capacity": str(12 * 1024**3)}],
             "gpu": [{"Name": "AMD Radeon AI PRO R9700", "DriverVersion": "1.2.3",
                      "AdapterRAM": 5000}],
             "disk": None,
@@ -130,7 +130,7 @@ class DetectionTests(unittest.TestCase):
         self.assertEqual(manifest["os"]["kernel"], "10.0.26100")
         hardware = manifest["hardware"]
         self.assertEqual(hardware["cpu"], "Example Windows CPU with Integrated Graphics")
-        self.assertEqual(hardware["system_ram_bytes"], 64 * 1024**3)
+        self.assertEqual(hardware["system_ram_bytes"], 24 * 1024**3)
         self.assertEqual(hardware["system_ram_basis"], "installed")
         self.assertEqual(hardware["gpus"][0]["architecture"], "gfx1201")
         self.assertIsNone(hardware["gpus"][0]["dedicated_vram_bytes"])

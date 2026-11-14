@@ -11,12 +11,12 @@ from aotg.judge import _gates, compare_run
 from aotg.kit import build_kit, verify_kit
 from aotg.manifest import load_manifest
 
-EVO = Path(__file__).parent / "fixtures" / "evo-linux.json"
+LINUX_FIXTURE = Path(__file__).parent / "fixtures" / "linux-mock.json"
 
 
 class CoreTests(unittest.TestCase):
     def setUp(self):
-        self.manifest = load_manifest(EVO)
+        self.manifest = load_manifest(LINUX_FIXTURE)
         self.plan = plan_experiment(self.manifest)
 
     def test_plan_is_deterministic_and_bounded(self):

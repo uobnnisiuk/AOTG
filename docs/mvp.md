@@ -1,6 +1,6 @@
 # AOTG MVP 設計
 
-[UOB-48](https://linear.app/uobnnisiuk/issue/UOB-48) の初回実装は、機材とモデルの条件を記述し、構成候補を有限の試行計画に変換し、独立した評価から再現用 kit を組み立てる。参照構成は EVO-X3／Radeon 8060S／FlashNext IQ3_S／Strata Halo＋DFlash2／K8 OpenCode。最初の一連の実行には合成データを使う。
+[UOB-48](https://linear.app/uobnnisiuk/issue/UOB-48) の初回実装は、機材とモデルの条件を記述し、構成候補を有限の試行計画に変換し、独立した評価から再現用 kit を組み立てる。公開 fixture はLinux／Windowsの合成構成を使う。
 
 ## 設計上の判断
 
@@ -29,21 +29,9 @@ manifest は schema version、採取方法、機材、OS、engine／model／API�
 - 実機実行を将来追加する場合は同時実行 1 件とし、試行数、各試行と全体の時間、出力トークン数、メモリ予算、SSD 使用量・空き容量、温度と冷却、swap、欠測時の扱いを対象機ごとに計画へ固定する。数値未確定の計画、資源競合、機器の誤選択、保護条件違反、タイムアウト、GPU／PCIe／I/O／OOM 異常では停止する。既存の保護値より厳しい方を適用する。中断時と再試行時にも上限、掃除、試行記録の整合を検証する。
 - 実行時には AOTG 専用ディレクトリを指定して kit と試行記録を保存する。実機の既存サービス、API、認証・SSH・鍵・HOME、OS・ドライバ・BIOS・ネットワーク、業務用ゲートウェイ、OpenCode 本番設定、K8 の定期処理、Footprint、不可分研究、モデル重みは保護対象。公開リポジトリには秘密値・内部アドレス・非公開パス・業務コードを含めない。
 
-## 既存工程との境界
-
-| 関連課題 | AOTG での利用 |
-| --- | --- |
-| [UOB-9](https://linear.app/uobnnisiuk/issue/UOB-9)・[UOB-26](https://linear.app/uobnnisiuk/issue/UOB-26) | 現行導入時の証拠、監視、既存 27B Q4_K_M 復帰経路を参照する。直近の切替、OS 再起動後の自動復帰、長時間運転の検証は既存工程で扱う。 |
-| [UOB-15](https://linear.app/uobnnisiuk/issue/UOB-15)・[UOB-36](https://linear.app/uobnnisiuk/issue/UOB-36) | HIP 主系統と Vulkan 代替の既存比較を再利用する。llama.cpp v1.0.0・FP8 KV・MoE キャッシュ・API 回帰の隔離検証は別課題。 |
-| [UOB-18](https://linear.app/uobnnisiuk/issue/UOB-18)・[UOB-21](https://linear.app/uobnnisiuk/issue/UOB-21) | 実務品質と安定性、2 モデル共存と補助の評価は既存課題。初回は新たな共存・分割試験を行わない。 |
-| [UOB-22](https://linear.app/uobnnisiuk/issue/UOB-22)・[UOB-27](https://linear.app/uobnnisiuk/issue/UOB-27) | 27B のバッチ／投機デコードと R9700 単独 MTP の構成比較を根拠として利用する。実用時間、長文、保護停止を含めて比較する。 |
-| [UOB-30](https://linear.app/uobnnisiuk/issue/UOB-30) | DeepSeek の既存の精度・待ち時間・SSD 読取結果を取り込む。補助限定の判断と本番 FlashNext を維持する。 |
-
-2026-11-14 時点の実務自律コーディングの休止判断を引き継ぐ。保存済み結果と実機の現在状態は区別する。新しい実測再開には、代表課題の正常完遂と独立品質の改善を示せる具体的な検証理由を要する。[現状スナップショット](https://linear.app/uobnnisiuk/document/2026-11-14ローカルllm実務検証の現状休止判断再開用-249d3e8d8525)
-
 ## 初回受け入れと次工程
 
 1. manifest v1 を 2 種の fixture で検証し、欠測、メモリ区分と provenance を確認する。実機を読取できない場合は fixture と未確認項目を記録する。
 2. `inspect → plan → bench → compare → build-kit → verify-kit` を合成データで完走させる。同じ入力からの計画、改善ゼロの根拠、部分レポートからの再開と改変レポートの拒否、kit の整合検査を確認する。
-3. ユニットテストと CI で Linux／Windows の主要経路を確認する。既存測定の出典、ベンチ fixture と再測定時の条件を保存する。
+3. ユニットテストと CI で Linux／Windows の主要経路を確認する。ベンチ fixture と計測条件を定義する。
 4. 次の実装は [UOB-50](https://linear.app/uobnnisiuk/issue/UOB-50) のオフライン評価ハーネスで、固定の C++／C# 入力に対する独立判定と機械可読結果を接続する。実負荷計測は別ゲートとし、UOB-52〜56 は依存工程の完了後に進める。

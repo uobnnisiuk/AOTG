@@ -3,59 +3,59 @@
   "adapter": "linux",
   "provenance": {
     "mode": "fixture",
-    "profile": "evo"
+    "profile": "linux-example"
   },
   "hardware": {
-    "cpu": "AMD Ryzen AI Max+ 395",
-    "system_ram_bytes": 137438953472,
+    "cpu": "Example CPU",
+    "system_ram_bytes": 51539607552,
     "system_ram_basis": "installed",
     "gpus": [
       {
-        "name": "AMD Radeon 8060S",
-        "architecture": "gfx1151",
-        "driver": "amdgpu",
+        "name": "Example Integrated GPU",
+        "architecture": "example-integrated",
+        "driver": "example-driver",
         "driver_version": null,
         "memory_kind": "shared",
         "dedicated_vram_bytes": null,
-        "uma_aperture_bytes": 68719476736
+        "uma_aperture_bytes": 8589934592
       },
       {
-        "name": "AMD Radeon AI PRO R9700",
-        "architecture": "gfx1201",
-        "driver": "amdgpu",
+        "name": "Example Dedicated GPU",
+        "architecture": "example-dedicated",
+        "driver": "example-driver",
         "driver_version": null,
         "memory_kind": "dedicated",
-        "dedicated_vram_bytes": 34359738368,
+        "dedicated_vram_bytes": 12884901888,
         "uma_aperture_bytes": null
       }
     ],
     "gpu_runtime": {
-      "name": "ROCm",
-      "version": "10.1.0-3"
+      "name": "Example GPU runtime",
+      "version": "1.2.3"
     },
     "storage": [
       {
         "kind": "ssd",
-        "capacity_bytes": 2000000000000
+        "capacity_bytes": 256000000000
       }
     ]
   },
   "os": {
     "family": "linux",
     "distribution": "ubuntu",
-    "version": "26.04.1",
-    "kernel": "7.0.0-43-generic"
+    "version": "24.04",
+    "kernel": "6.8.0-1-generic"
   },
   "engine": {
-    "name": "Strata Halo",
-    "version": "0.1.59",
+    "name": "Example engine",
+    "version": "1.3.0",
     "sha256": null,
-    "backend": "HIP",
-    "speculation": "DFlash2"
+    "backend": "Example backend",
+    "speculation": "Example draft decoder"
   },
   "model": {
-    "name": "Qwen3.8-Flash-Next",
-    "quantization": "IQ3_S",
+    "name": "Example model",
+    "quantization": "Example quantization",
     "format": "GGUF",
     "artifact_sha256": null
   },
@@ -71,9 +71,9 @@
     "version": null
   },
   "measurement": {
-    "scenario": "mock-flashnext",
-    "context_tokens": 131072,
-    "input_tokens": 122,
+    "scenario": "mock-generation",
+    "context_tokens": 8192,
+    "input_tokens": 80,
     "output_limit_tokens": 128,
     "batch_tokens": null,
     "micro_batch_tokens": null,

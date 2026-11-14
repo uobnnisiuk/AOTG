@@ -23,7 +23,7 @@ class DryRunCliTest(unittest.TestCase):
         return result.stdout
 
     def test_mock_fixtures_to_verified_kit(self):
-        for name in ("evo-linux.json", "k8-mock.json"):
+        for name in ("linux-mock.json", "windows-mock.json"):
             with self.subTest(fixture=name), tempfile.TemporaryDirectory() as folder:
                 fixture = ROOT / "tests/fixtures" / name
                 output = Path(folder) / "results"
@@ -44,7 +44,7 @@ class DryRunCliTest(unittest.TestCase):
     def test_resume_reproduces_uninterrupted_report(self):
         with tempfile.TemporaryDirectory() as folder:
             output = Path(folder)
-            fixture = ROOT / "tests/fixtures/evo-linux.json"
+            fixture = ROOT / "tests/fixtures/linux-mock.json"
             plan = output / "plan.json"
             partial = output / "partial.json"
             resumed = output / "resumed.json"

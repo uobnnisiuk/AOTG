@@ -3,7 +3,7 @@
   "adapter": "windows",
   "provenance": {
     "mode": "fixture",
-    "profile": "k8"
+    "profile": "windows-example"
   },
   "hardware": {
     "cpu": null,
@@ -43,14 +43,14 @@
     "tool_calls": true
   },
   "client": {
-    "name": "OpenCode",
-    "version": "1.1.53"
+    "name": "Example client",
+    "version": "2.3.4"
   },
   "measurement": {
-    "scenario": "mock-opencode",
-    "context_tokens": 131072,
+    "scenario": "mock-tool-call",
+    "context_tokens": 4096,
     "input_tokens": null,
-    "output_limit_tokens": 16384,
+    "output_limit_tokens": 256,
     "batch_tokens": null,
     "micro_batch_tokens": null,
     "seed": null,

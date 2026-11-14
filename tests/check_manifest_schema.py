@@ -11,7 +11,7 @@ def main():
     schema = json.loads((root / "schema/manifest.schema.json").read_text(encoding="utf-8"))
     Draft202012Validator.check_schema(schema)
     validator = Draft202012Validator(schema)
-    for name in ("evo-linux.json", "k8-mock.json"):
+    for name in ("linux-mock.json", "windows-mock.json"):
         data = json.loads((root / "tests/fixtures" / name).read_text(encoding="utf-8"))
         validator.validate(data)
         print(f"{name} is valid")
