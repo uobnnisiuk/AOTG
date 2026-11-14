@@ -1,0 +1,1 @@
+Fix overlaps in intervals.cpp. Two valid half-open intervals overlap only if their intersection has positive length. Return false if either interval is empty or reversed. Preserve the signature and support all int values.

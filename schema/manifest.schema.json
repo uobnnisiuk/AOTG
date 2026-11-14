@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AOTG environment manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "adapter", "provenance", "hardware", "os", "engine", "model", "api", "client", "measurement", "protection"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "adapter": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"},
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "profile"],
+      "properties": {
+        "mode": {"enum": ["fixture", "local-read-only"]},
+        "profile": {"$ref": "#/$defs/label"}
+      }
+    },
+    "hardware": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cpu", "system_ram_bytes", "system_ram_basis", "gpus", "gpu_runtime", "storage"],
+      "properties": {
+        "cpu": {"$ref": "#/$defs/label"},
+        "system_ram_bytes": {
+          "description": "One system memory pool. UMA consumes this same pool.",
+          "$ref": "#/$defs/positive_integer"
+        },
+        "system_ram_basis": {"enum": ["installed", "os_usable", null]},
+        "gpus": {
+          "description": "Null means unknown inventory. An empty array means enumeration succeeded and found no devices.",
+          "type": ["array", "null"],
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "architecture", "driver", "driver_version", "memory_kind", "dedicated_vram_bytes", "uma_aperture_bytes"],
+            "properties": {
+              "name": {"$ref": "#/$defs/label"},
+              "architecture": {"$ref": "#/$defs/label"},
+              "driver": {"$ref": "#/$defs/label"},
+              "driver_version": {"$ref": "#/$defs/label"},
+              "memory_kind": {"enum": ["shared", "dedicated", null]},
+              "dedicated_vram_bytes": {"$ref": "#/$defs/positive_integer"},
+              "uma_aperture_bytes": {
+                "description": "Configured aperture if known. Shares system RAM and may differ from available allocation.",
+                "$ref": "#/$defs/positive_integer"
+              }
+            }
+          }
+        },
+        "gpu_runtime": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": {
+            "name": {"$ref": "#/$defs/label"},
+            "version": {"$ref": "#/$defs/label"}
+          }
+        },
+        "storage": {
+          "description": "Local physical device capacity; excludes serials, mount points and free-space claims.",
+          "type": ["array", "null"],
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "capacity_bytes"],
+            "properties": {
+              "kind": {"enum": ["nvme", "ssd", "hdd", null]},
+              "capacity_bytes": {"$ref": "#/$defs/positive_integer"}
+            }
+          }
+        }
+      }
+    },
+    "os": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "distribution", "version", "kernel"],
+      "properties": {
+        "family": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"},
+        "distribution": {"$ref": "#/$defs/label"},
+        "version": {"$ref": "#/$defs/label"},
+        "kernel": {"$ref": "#/$defs/label"}
+      }
+    },
+    "engine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "sha256", "backend", "speculation"],
+      "properties": {
+        "name": {"$ref": "#/$defs/label"},
+        "version": {"$ref": "#/$defs/label"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "backend": {"$ref": "#/$defs/label"},
+        "speculation": {"$ref": "#/$defs/label"}
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "quantization", "format", "artifact_sha256"],
+      "properties": {
+        "name": {"$ref": "#/$defs/label"},
+        "quantization": {"$ref": "#/$defs/label"},
+        "format": {"$ref": "#/$defs/label"},
+        "artifact_sha256": {
+          "description": "Digests from prior evidence, in shard order. Detection does not rescan weights.",
+          "type": ["array", "null"],
+          "items": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      }
+    },
+    "api": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "transport", "authentication", "streaming", "tool_calls"],
+      "properties": {
+        "format": {"$ref": "#/$defs/label"},
+        "transport": {"enum": ["loopback", "remote", null]},
+        "authentication": {"$ref": "#/$defs/unknown_boolean"},
+        "streaming": {"$ref": "#/$defs/unknown_boolean"},
+        "tool_calls": {"$ref": "#/$defs/unknown_boolean"}
+      }
+    },
+    "client": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"$ref": "#/$defs/label"},
+        "version": {"$ref": "#/$defs/label"}
+      }
+    },
+    "measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenario", "context_tokens", "input_tokens", "output_limit_tokens", "batch_tokens", "micro_batch_tokens", "seed", "cache_state", "cooling_profile"],
+      "properties": {
+        "scenario": {"$ref": "#/$defs/label"},
+        "context_tokens": {"$ref": "#/$defs/positive_integer"},
+        "input_tokens": {"$ref": "#/$defs/positive_integer"},
+        "output_limit_tokens": {"$ref": "#/$defs/positive_integer"},
+        "batch_tokens": {"$ref": "#/$defs/positive_integer"},
+        "micro_batch_tokens": {"$ref": "#/$defs/positive_integer"},
+        "seed": {"type": ["integer", "null"], "minimum": 0},
+        "cache_state": {"enum": ["cold", "warm", null]},
+        "cooling_profile": {"$ref": "#/$defs/label"}
+      }
+    },
+    "protection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["read_only", "production_changes_allowed", "secrets_collection_allowed", "network_probes_allowed"],
+      "properties": {
+        "read_only": {"const": true},
+        "production_changes_allowed": {"const": false},
+        "secrets_collection_allowed": {"const": false},
+        "network_probes_allowed": {"const": false}
+      }
+    }
+  },
+  "$defs": {
+    "label": {"type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._()+@-]{0,119}$"},
+    "positive_integer": {"type": ["integer", "null"], "minimum": 1},
+    "sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "unknown_boolean": {"type": ["boolean", "null"]}
+  }
+}

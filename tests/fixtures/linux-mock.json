@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "adapter": "linux",
+  "provenance": {
+    "mode": "fixture",
+    "profile": "linux-example"
+  },
+  "hardware": {
+    "cpu": "Example CPU",
+    "system_ram_bytes": 51539607552,
+    "system_ram_basis": "installed",
+    "gpus": [
+      {
+        "name": "Example Integrated GPU",
+        "architecture": "example-integrated",
+        "driver": "example-driver",
+        "driver_version": null,
+        "memory_kind": "shared",
+        "dedicated_vram_bytes": null,
+        "uma_aperture_bytes": 8589934592
+      },
+      {
+        "name": "Example Dedicated GPU",
+        "architecture": "example-dedicated",
+        "driver": "example-driver",
+        "driver_version": null,
+        "memory_kind": "dedicated",
+        "dedicated_vram_bytes": 12884901888,
+        "uma_aperture_bytes": null
+      }
+    ],
+    "gpu_runtime": {
+      "name": "Example GPU runtime",
+      "version": "1.2.3"
+    },
+    "storage": [
+      {
+        "kind": "ssd",
+        "capacity_bytes": 256000000000
+      }
+    ]
+  },
+  "os": {
+    "family": "linux",
+    "distribution": "ubuntu",
+    "version": "24.04",
+    "kernel": "6.8.0-1-generic"
+  },
+  "engine": {
+    "name": "Example engine",
+    "version": "1.3.0",
+    "sha256": null,
+    "backend": "Example backend",
+    "speculation": "Example draft decoder"
+  },
+  "model": {
+    "name": "Example model",
+    "quantization": "Example quantization",
+    "format": "GGUF",
+    "artifact_sha256": null
+  },
+  "api": {
+    "format": "OpenAI-compatible",
+    "transport": "loopback",
+    "authentication": true,
+    "streaming": true,
+    "tool_calls": true
+  },
+  "client": {
+    "name": null,
+    "version": null
+  },
+  "measurement": {
+    "scenario": "mock-generation",
+    "context_tokens": 8192,
+    "input_tokens": 80,
+    "output_limit_tokens": 128,
+    "batch_tokens": null,
+    "micro_batch_tokens": null,
+    "seed": 4242,
+    "cache_state": "cold",
+    "cooling_profile": null
+  },
+  "protection": {
+    "read_only": true,
+    "production_changes_allowed": false,
+    "secrets_collection_allowed": false,
+    "network_probes_allowed": false
+  }
+}
