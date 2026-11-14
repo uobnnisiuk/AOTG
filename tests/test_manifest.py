@@ -139,7 +139,8 @@ class DetectionTests(unittest.TestCase):
         self.assertNotIn("private", json.dumps(manifest))
 
     @patch("aotg.adapters.sys.platform", "win32")
-    def test_cpu_label_does_not_accept_paths(self):
+    @patch("aotg.adapters.sys.getwindowsversion", return_value=(10, 0, 26100), create=True)
+    def test_cpu_label_does_not_accept_paths(self, *_):
         inventory = {"cpu": [{"Name": "AMD Ryzen w/ /private/cpu"}]}
         with patch("aotg.adapters._windows_inventory", return_value=inventory):
             self.assertIsNone(adapter_for("windows").detect()["hardware"]["cpu"])
