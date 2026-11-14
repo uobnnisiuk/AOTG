@@ -1,0 +1,1 @@
+Fix BatchRegistry.TryRegister. Reject a batch if any identifier is already registered or appears twice in the batch. On rejection leave the existing state unchanged. On success register all the identifiers in the batch. Preserve the public API, ordinal comparisons, and empty-batch behavior. Inputs contain only non-null identifiers.

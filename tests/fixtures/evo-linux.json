@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "adapter": "linux",
+  "provenance": {
+    "mode": "fixture",
+    "profile": "evo"
+  },
+  "hardware": {
+    "cpu": "AMD Ryzen AI Max+ 395",
+    "system_ram_bytes": 137438953472,
+    "system_ram_basis": "installed",
+    "gpus": [
+      {
+        "name": "AMD Radeon 8060S",
+        "architecture": "gfx1151",
+        "driver": "amdgpu",
+        "driver_version": null,
+        "memory_kind": "shared",
+        "dedicated_vram_bytes": null,
+        "uma_aperture_bytes": 68719476736
+      },
+      {
+        "name": "AMD Radeon AI PRO R9700",
+        "architecture": "gfx1201",
+        "driver": "amdgpu",
+        "driver_version": null,
+        "memory_kind": "dedicated",
+        "dedicated_vram_bytes": 34359738368,
+        "uma_aperture_bytes": null
+      }
+    ],
+    "gpu_runtime": {
+      "name": "ROCm",
+      "version": "10.1.0-3"
+    },
+    "storage": [
+      {
+        "kind": "ssd",
+        "capacity_bytes": 2000000000000
+      }
+    ]
+  },
+  "os": {
+    "family": "linux",
+    "distribution": "ubuntu",
+    "version": "26.04.1",
+    "kernel": "7.0.0-43-generic"
+  },
+  "engine": {
+    "name": "Strata Halo",
+    "version": "0.1.59",
+    "sha256": null,
+    "backend": "HIP",
+    "speculation": "DFlash2"
+  },
+  "model": {
+    "name": "Qwen3.8-Flash-Next",
+    "quantization": "IQ3_S",
+    "format": "GGUF",
+    "artifact_sha256": null
+  },
+  "api": {
+    "format": "OpenAI-compatible",
+    "transport": "loopback",
+    "authentication": true,
+    "streaming": true,
+    "tool_calls": true
+  },
+  "client": {
+    "name": null,
+    "version": null
+  },
+  "measurement": {
+    "scenario": "mock-flashnext",
+    "context_tokens": 131072,
+    "input_tokens": 122,
+    "output_limit_tokens": 128,
+    "batch_tokens": null,
+    "micro_batch_tokens": null,
+    "seed": 4242,
+    "cache_state": "cold",
+    "cooling_profile": null
+  },
+  "protection": {
+    "read_only": true,
+    "production_changes_allowed": false,
+    "secrets_collection_allowed": false,
+    "network_probes_allowed": false
+  }
+}

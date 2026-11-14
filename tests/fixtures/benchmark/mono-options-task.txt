@@ -1,0 +1,1 @@
+When adding an option with multiple aliases fails because one alias already exists, preserve the option set as it was before the call. A subsequent valid option must still be able to use the unregistered alias. Preserve the public API and successful multi-alias registration.

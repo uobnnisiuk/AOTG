@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "adapter": "windows",
+  "provenance": {
+    "mode": "fixture",
+    "profile": "k8"
+  },
+  "hardware": {
+    "cpu": null,
+    "system_ram_bytes": null,
+    "system_ram_basis": null,
+    "gpus": null,
+    "gpu_runtime": {
+      "name": null,
+      "version": null
+    },
+    "storage": null
+  },
+  "os": {
+    "family": "windows",
+    "distribution": "Windows",
+    "version": null,
+    "kernel": null
+  },
+  "engine": {
+    "name": null,
+    "version": null,
+    "sha256": null,
+    "backend": null,
+    "speculation": null
+  },
+  "model": {
+    "name": null,
+    "quantization": null,
+    "format": null,
+    "artifact_sha256": null
+  },
+  "api": {
+    "format": "OpenAI-compatible",
+    "transport": "loopback",
+    "authentication": true,
+    "streaming": true,
+    "tool_calls": true
+  },
+  "client": {
+    "name": "OpenCode",
+    "version": "1.1.53"
+  },
+  "measurement": {
+    "scenario": "mock-opencode",
+    "context_tokens": 131072,
+    "input_tokens": null,
+    "output_limit_tokens": 16384,
+    "batch_tokens": null,
+    "micro_batch_tokens": null,
+    "seed": null,
+    "cache_state": null,
+    "cooling_profile": null
+  },
+  "protection": {
+    "read_only": true,
+    "production_changes_allowed": false,
+    "secrets_collection_allowed": false,
+    "network_probes_allowed": false
+  }
+}
