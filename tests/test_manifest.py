@@ -66,7 +66,7 @@ class DetectionTests(unittest.TestCase):
     def test_linux_detects_family_and_memory_without_exposing_devices(self, *_):
         # Real Linux paths use slashes. The fake also runs under Windows CI.
         contents = {
-            "/proc/cpuinfo": "model name : Example Linux CPU w/ Integrated Graphics\n"
+            "/proc/cpuinfo": "model name : Example Linux CPU @ 2.50GHz w/ Integrated Graphics\n"
                              "serial : hidden",
             "/proc/meminfo": "MemTotal: 47000000 kB",
             "/proc/sys/kernel/osrelease": "6.8.0-1-generic",
@@ -98,7 +98,7 @@ class DetectionTests(unittest.TestCase):
         self.assertEqual(manifest["provenance"]["mode"], "local-read-only")
         self.assertEqual(manifest["os"]["version"], "24.04")
         hardware = manifest["hardware"]
-        self.assertEqual(hardware["cpu"], "Example Linux CPU with Integrated Graphics")
+        self.assertEqual(hardware["cpu"], "Example Linux CPU @ 2.50GHz with Integrated Graphics")
         self.assertEqual(hardware["system_ram_basis"], "os_usable")
         self.assertEqual(hardware["system_ram_bytes"], 47000000 * 1024)
         self.assertEqual(hardware["gpu_runtime"]["name"], "ROCm")

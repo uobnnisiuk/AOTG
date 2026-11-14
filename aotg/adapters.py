@@ -21,7 +21,7 @@ _AMD_DEVICES = {
     ("0x1002", "0x1586"): ("AMD Strix Halo", "gfx1151", "shared"),
     ("0x1002", "0x7551"): ("AMD Navi 48 Radeon PRO", "gfx1201", "dedicated"),
 }
-_LABEL_PATTERN = r"[A-Za-z0-9][A-Za-z0-9 ._()+-]{0,119}"
+_LABEL_PATTERN = r"[A-Za-z0-9][A-Za-z0-9 ._()+@-]{0,119}"
 _BLOCK_DEVICE = re.compile(r"(?:nvme[0-9]+n[0-9]+|sd[a-z]+|hd[a-z]+|vd[a-z]+|mmcblk[0-9]+)")
 
 
