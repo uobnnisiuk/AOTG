@@ -5,16 +5,20 @@ import re
 import signal
 import stat
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from difflib import unified_diff
 from pathlib import Path, PureWindowsPath
 from tempfile import TemporaryDirectory
+from threading import Thread
+from time import monotonic
 
 MAX_RUNTIME_SECONDS = 40 * 60
 _MAX_FILES = 4096
 _MAX_FILE_BYTES = 1024 * 1024
 _MAX_TREE_BYTES = 32 * 1024 * 1024
 _MAX_PATCH_BYTES = 1024 * 1024
+_CANCELLATION_POLL_SECONDS = 0.05
 _SAFE_PART = re.compile(r"[a-zA-Z0-9_.-]{1,120}")
 _BLOCKED_NAMES = {".agents", ".codex", ".git", ".github", ".gitmodules", "agents.md"}
 
@@ -245,20 +249,34 @@ def codex_argv(executable: Path, checkout: Path) -> tuple[str, ...]:
     )
 
 
+def _require_running(cancelled):
+    try:
+        stopped = cancelled()
+    except Exception:
+        stopped = True
+    if stopped is not False:
+        raise WorkerError("The worker's egress boundary stopped or could not be verified")
+
+
 def _run_in_wsl(
     argv: tuple[str, ...], checkout: Path, *, input_text: str,
     env: dict[str, str], timeout_seconds: float = MAX_RUNTIME_SECONDS,
+    cancelled: Callable[[], bool] | None = None,
 ) -> RunResult:
     """Bound a trusted command's own process group and discard private output.
 
     A process group cannot guarantee containment of descendants that leave it.
     A live caller must provide a separate verified containment boundary.
+    The optional cancellation observation must return promptly.
     """
     if os.name != "posix" or not 0 < timeout_seconds <= MAX_RUNTIME_SECONDS:
         raise WorkerError("The process requires the bounded Linux execution boundary")
     payload = input_text.encode("utf-8")
     if not argv or not Path(argv[0]).is_absolute() or len(payload) > 64 * 1024:
         raise WorkerError("Invalid bounded worker input")
+    if cancelled is not None:
+        _require_running(cancelled)
+    deadline = monotonic() + timeout_seconds
     try:
         process = subprocess.Popen(
             argv, cwd=checkout, env=env, shell=False, stdin=subprocess.PIPE,
@@ -267,8 +285,37 @@ def _run_in_wsl(
     except OSError as exc:
         raise WorkerError("The worker process could not start") from exc
     timed_out = False
+    communication = None
     try:
-        process.communicate(input=payload, timeout=timeout_seconds)
+        if cancelled is None:
+            process.communicate(input=payload, timeout=timeout_seconds)
+        else:
+            _require_running(cancelled)
+            errors = []
+
+            def send_input():
+                try:
+                    seconds = deadline - monotonic()
+                    if seconds <= 0:
+                        raise subprocess.TimeoutExpired(argv, timeout_seconds)
+                    process.communicate(input=payload, timeout=seconds)
+                except BaseException as exc:
+                    errors.append(exc)
+
+            # A single communicate call preserves partially written stdin while
+            # the supervising thread polls cancellation independently.
+            sender = Thread(target=send_input, daemon=True)
+            sender.start()
+            communication = sender
+            while sender.is_alive():
+                _require_running(cancelled)
+                seconds = deadline - monotonic()
+                if seconds <= 0:
+                    raise subprocess.TimeoutExpired(argv, timeout_seconds)
+                sender.join(min(seconds, _CANCELLATION_POLL_SECONDS))
+            _require_running(cancelled)
+            if errors:
+                raise errors[0]
     except subprocess.TimeoutExpired:
         timed_out = True
     finally:
@@ -280,4 +327,8 @@ def _run_in_wsl(
             process.wait(timeout=1)
         except subprocess.TimeoutExpired as exc:
             raise WorkerError("The worker process exceeded its cleanup bound") from exc
+        if communication is not None:
+            communication.join(timeout=1)
+            if communication.is_alive():
+                raise WorkerError("The worker input did not stop within its cleanup bound")
     return RunResult(process.returncode, timed_out)

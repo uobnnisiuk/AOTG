@@ -20,6 +20,7 @@ from tempfile import TemporaryDirectory
 from time import monotonic
 
 from .ledger import LedgerError, _validate_path
+from .model_egress import run_model_client
 from .worker import (
     MAX_RUNTIME_SECONDS,
     CandidateRejected,
@@ -148,6 +149,8 @@ class CodexDeployment:
     uid: int
     model_authorization: ModelAuthorization | None = None
     codex_home: Path | None = None
+    bwrap: Path | None = None
+    bwrap_sha256: str | None = None
 
 
 def _current_uid():
@@ -183,6 +186,76 @@ def _trusted_codex(deployment):
     except OSError:
         raise WorkerError("The Codex executable could not be verified") from None
     return str(path)
+
+
+def _trusted_bwrap(deployment, *, checkout):
+    path = deployment.bwrap
+    digest = deployment.bwrap_sha256
+    auth_home = deployment.codex_home
+    if (
+        not isinstance(path, Path) or not path.is_absolute() or path.name != "bwrap"
+        or not isinstance(digest, str) or not _SHA256.fullmatch(digest)
+        or not isinstance(checkout, Path) or not checkout.is_absolute()
+        or not isinstance(auth_home, Path) or not auth_home.is_absolute()
+        or auth_home.name != "codex" or auth_home.parent.name != "config"
+        or type(deployment.uid) is not int or deployment.uid <= 0 or _current_uid() != deployment.uid
+    ):
+        raise WorkerError("An independently pinned bwrap executable is required")
+    root = auth_home.parent.parent
+    directory = path.parent
+    if directory == root or not directory.is_relative_to(root):
+        raise WorkerError("The pinned bwrap must be inside the dedicated deployment")
+    if any(
+        directory.is_relative_to(other) or other.is_relative_to(directory)
+        for other in (checkout, auth_home)
+    ):
+        raise WorkerError("The pinned bwrap must be outside the checkout and Codex home")
+    try:
+        if path.resolve(strict=True) != path:
+            raise WorkerError("The pinned bwrap path must be canonical")
+        _validate_path(root, directory=True)
+        _validate_path(directory, directory=True)
+        directory_identity = directory.lstat()
+        ancestors = tuple((ancestor, ancestor.lstat()) for ancestor in directory.parents)
+        if any(
+            not stat.S_ISDIR(info.st_mode) or info.st_uid not in (0, deployment.uid)
+            or info.st_mode & 0o022
+            for _, info in ancestors
+        ):
+            raise WorkerError("The pinned bwrap has untrusted directory ancestors")
+        with os.scandir(directory) as entries:
+            entry = next(entries, None)
+            if entry is None or entry.name != "bwrap" or next(entries, None) is not None:
+                raise WorkerError("The pinned bwrap directory must contain only that executable")
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, "rb") as source:
+            initial = os.fstat(source.fileno())
+            if (
+                not stat.S_ISREG(initial.st_mode) or stat.S_IMODE(initial.st_mode) not in (0o500, 0o700)
+                or initial.st_uid != deployment.uid or initial.st_nlink != 1
+                or not 4 <= initial.st_size <= 512 * 1024**2 or source.read(4) != b"\x7fELF"
+            ):
+                raise WorkerError("The pinned bwrap is not a private native executable")
+            source.seek(0)
+            if hashlib.file_digest(source, "sha256").hexdigest() != digest:
+                raise WorkerError("The pinned bwrap executable digest changed")
+            final = os.fstat(source.fileno())
+            current_directory = directory.lstat()
+            if (
+                final.st_ctime_ns != initial.st_ctime_ns or final.st_size != initial.st_size
+                or not os.path.samestat(final, path.lstat())
+                or directory_identity.st_ctime_ns != current_directory.st_ctime_ns
+                or not os.path.samestat(directory_identity, current_directory)
+            ):
+                raise WorkerError("The pinned bwrap changed during verification")
+        for ancestor, initial in ancestors:
+            current = ancestor.lstat()
+            if (not os.path.samestat(initial, current)
+                    or current.st_mode != initial.st_mode or current.st_uid != initial.st_uid):
+                raise WorkerError("The pinned bwrap ancestor changed during verification")
+    except (LedgerError, OSError):
+        raise WorkerError("The pinned bwrap executable could not be verified") from None
+    return path
 
 
 def _trusted_codex_home(deployment, *, checkout=None):
@@ -236,10 +309,9 @@ def _profile(native, checkout, *, writable, scratch, denied_homes=()):
     )
 
 
-def _namespace(*, offline):
-    args = (_UNSHARE, "--user", "--map-current-user", "--mount", "--pid", "--fork",
-            "--kill-child", "--mount-proc")
-    return (*args, "--net", "--") if offline else (*args, "--")
+def _offline_namespace():
+    return (_UNSHARE, "--user", "--map-current-user", "--mount", "--pid", "--fork",
+            "--kill-child", "--mount-proc", "--net", "--")
 
 
 def _finite_timeout(seconds):
@@ -309,14 +381,20 @@ class IsolatedProcess:
         self._verified_workspace = None
         self._generated = False
 
-    def _run(self, argv, checkout, text, timeout, *, codex_home, scratch=None):
+    def _run(self, argv, checkout, text, timeout, *, codex_home, scratch=None, sandbox_bin=None):
         environment = {
             "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "CODEX_HOME": str(codex_home),
         }
         if scratch is not None:
             environment["TMPDIR"] = str(scratch)
-        result = self.runner(argv, checkout, input_text=text, env=environment,
-                             timeout_seconds=_finite_timeout(timeout))
+        timeout = _finite_timeout(timeout)
+        if sandbox_bin is not None:
+            result = run_model_client(
+                argv, checkout, input_text=text, env=environment, timeout_seconds=timeout,
+                runner=self.runner, sandbox_bin=sandbox_bin,
+            )
+        else:
+            result = self.runner(argv, checkout, input_text=text, env=environment, timeout_seconds=timeout)
         if type(result) is not RunResult or type(result.exit_code) is not int or type(result.timed_out) is not bool:
             raise WorkerError("The isolated process result could not be verified")
         if result.timed_out:
@@ -332,7 +410,7 @@ class IsolatedProcess:
                 native, checkout, writable=writable, scratch=scratch is not None, denied_homes=denied,
             )
             argv = (
-                *_namespace(offline=True), native, "sandbox", "-P", _PROFILE, "-C", str(checkout),
+                *_offline_namespace(), native, "sandbox", "-P", _PROFILE, "-C", str(checkout),
                 "--include-managed-config", "-c", profile, "-c", 'cli_auth_credentials_store="file"',
                 "--", "/usr/bin/env", "-u", "CODEX_HOME", "--", *command,
             )
@@ -388,9 +466,10 @@ class IsolatedProcess:
             raise WorkerError("Explicit authorization for this bounded model attempt is required")
         native = self._verified(checkout)
         codex_home = _trusted_codex_home(self.deployment, checkout=checkout)
+        sandbox_bin = _trusted_bwrap(self.deployment, checkout=checkout).parent
         profile = _profile(native, checkout, writable=True, scratch=False, denied_homes=(codex_home,))
         argv = (
-            *_namespace(offline=False), native, "--ask-for-approval", "never", "exec",
+            native, "--ask-for-approval", "never", "exec",
             "--ignore-user-config", "--ephemeral", "--cd", str(checkout), "--model", approval.model,
             "-c", f'default_permissions="{_PROFILE}"', "-c", profile,
             "-c", 'forced_login_method="chatgpt"', "-c", 'model_provider="openai"',
@@ -400,7 +479,9 @@ class IsolatedProcess:
             "-c", 'shell_environment_policy.inherit="none"', "-",
         )
         self._generated = True
-        if self._run(argv, checkout, prompt, _remaining(deadline), codex_home=codex_home) != 0:
+        if self._run(
+            argv, checkout, prompt, _remaining(deadline), codex_home=codex_home, sandbox_bin=sandbox_bin,
+        ) != 0:
             raise WorkerError("The isolated process did not complete successfully")
 
     def verify(self, checkout: Path, *, timeout_seconds: float, contract: str | None = None) -> None:

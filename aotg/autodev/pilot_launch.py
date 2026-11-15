@@ -19,6 +19,7 @@ from .coordinator import Readiness
 from .isolated_process import (
     CodexDeployment,
     ModelAuthorization,
+    _trusted_bwrap,
     _trusted_codex,
     _trusted_codex_home,
 )
@@ -155,13 +156,14 @@ def _load_deployment(root, expected_commit):
                       object_pairs_hook=_unique_object)
     fields = {
         "version", "policy", "base", "scope_digest", "uid", "codex", "codex_sha256",
-        "gh", "model", "verified_at", "expires_at", "attestations",
+        "bwrap", "bwrap_sha256", "gh", "model", "verified_at", "expires_at", "attestations",
     }
     if (
         type(data) is not dict or data.keys() != fields or type(data["version"]) is not int
         or data["version"] != 1 or data["policy"] != POLICY or data["base"] != expected_commit
         or data["scope_digest"] != release.scope_digest or type(data["uid"]) is not int
         or data["uid"] <= 0 or data["uid"] != os.geteuid()
+        or type(data["bwrap"]) is not str or type(data["bwrap_sha256"]) is not str
         or type(data["attestations"]) is not list
         or len(data["attestations"]) != len(_ATTESTATIONS)
         or frozenset(data["attestations"]) != _ATTESTATIONS
@@ -184,10 +186,11 @@ def _load_deployment(root, expected_commit):
     )
     codex = CodexDeployment(
         Path(data["codex"]), data["codex_sha256"], data["uid"], authorization,
-        codex_home=config / "codex",
+        codex_home=config / "codex", bwrap=Path(data["bwrap"]), bwrap_sha256=data["bwrap_sha256"],
     )
     _trusted_codex(codex)
     _trusted_codex_home(codex)
+    _trusted_bwrap(codex, checkout=root / "checkout")
     return PilotInstallation(root, git, gh, codex, gh_config_dir=credentials)
 
 

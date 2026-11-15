@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest import TestCase, skipUnless
 from unittest.mock import Mock, patch
 
@@ -20,6 +21,7 @@ from aotg.autodev.isolated_process import (
     ModelAuthorization,
     _approved,
     _profile,
+    _trusted_bwrap,
     _trusted_codex_home,
 )
 from aotg.autodev.worker import CandidateRejected, RunResult, WorkerError
@@ -50,18 +52,30 @@ class BoundaryTests(TestCase):
         self.checkout.mkdir()
         self.native = self.checkout.parent / "pinned-codex"
         self.home = self.checkout.parent / "config" / "codex"
-        self.deployment = CodexDeployment(self.native, "a" * 64, 2000, authorization(), self.home)
+        self.bwrap = self.checkout.parent / "private-tools" / "bwrap"
+        self.deployment = CodexDeployment(
+            self.native, "a" * 64, 2000, authorization(), self.home, self.bwrap, "b" * 64,
+        )
         self.offline_homes = []
         self.runner = Mock(side_effect=self._simulate_process)
         self.boundary = IsolatedProcess(self.deployment, runner=self.runner)
+        self.model_client = self._patch("run_model_client", side_effect=self._simulate_model_client)
         self._patch("_trusted_codex", return_value=str(self.native))
         self.auth_home = self._patch("_trusted_codex_home", return_value=self.home)
+        self.bwrap_pin = self._patch("_trusted_bwrap", return_value=self.bwrap)
         self.identity = self._patch("_workspace", side_effect=lambda checkout, _: (checkout, 5, 6))
 
     def _patch(self, name, **changes):
         target = patch("aotg.autodev.isolated_process." + name, **changes)
         self.addCleanup(target.stop)
         return target.start()
+
+    @staticmethod
+    def _simulate_model_client(argv, checkout, *, input_text, env, timeout_seconds, runner, sandbox_bin):
+        return runner(
+            argv, checkout, input_text=input_text, env=env, timeout_seconds=timeout_seconds,
+            cancelled=lambda: False,
+        )
 
     def _simulate_process(self, argv, _checkout, *, env, input_text, **_options):
         if "sandbox" in argv:
@@ -104,6 +118,8 @@ class BoundaryTests(TestCase):
         with patch.dict(os.environ, {"CODEX_HOME": str(self.home), "OPENAI_API_KEY": "synthetic"}):
             self.boundary.preflight(self.checkout, timeout_seconds=10)
         writable, read_only = self.runner.call_args_list
+        self.model_client.assert_not_called()
+        self.bwrap_pin.assert_not_called()
         for call in (writable, read_only):
             self._assert_offline_call(call)
             args = call.args[0]
@@ -157,10 +173,15 @@ class BoundaryTests(TestCase):
         with self.assertRaisesRegex(WorkerError, "Explicit authorization"):
             self.boundary.generate(self.checkout, "different", timeout_seconds=10)
         self.boundary.generate(self.checkout, PROMPT, timeout_seconds=10)
-        args = self.runner.call_args.args[0]
-        kwargs = self.runner.call_args.kwargs
+        self.model_client.assert_called_once()
+        args, checkout = self.model_client.call_args.args
+        kwargs = self.model_client.call_args.kwargs
+        self.assertEqual(checkout, self.checkout)
+        self.assertIs(kwargs["runner"], self.runner)
+        self.assertEqual(kwargs["sandbox_bin"], self.bwrap.parent)
+        self.assertEqual(args[0], str(self.native))
         self.assertIn("exec", args)
-        self.assertNotIn("--net", args)  # Service traffic enforced by the trusted deployment.
+        self.assertNotIn("/usr/bin/unshare", args)
         self.assertNotIn("--sandbox", args)
         self.assertIn('default_permissions="aotg-pilot"', args)
         self.assertIn('forced_login_method="chatgpt"', args)
@@ -177,9 +198,35 @@ class BoundaryTests(TestCase):
         self.assertEqual(kwargs["env"]["CODEX_HOME"], str(self.home))
         self.assertIn(json.dumps(str(self.home)) + '="deny"', "".join(args))
         self.auth_home.assert_called_once_with(self.deployment, checkout=self.checkout)
+        self.bwrap_pin.assert_called_once_with(self.deployment, checkout=self.checkout)
         with self.assertRaisesRegex(WorkerError, "Explicit authorization"):
             self.boundary.generate(self.checkout, PROMPT, timeout_seconds=10)
         self.assertEqual(self.runner.call_count, 3)
+
+    def test_egress_failure_has_no_model_fallback_and_consumes_the_attempt(self):
+        self.boundary.preflight(self.checkout, timeout_seconds=10)
+        self.model_client.side_effect = WorkerError("Egress unavailable")
+        with self.assertRaisesRegex(WorkerError, "Egress unavailable") as failure:
+            self.boundary.generate(self.checkout, PROMPT, timeout_seconds=10)
+        self.assertNotIsInstance(failure.exception, CandidateRejected)
+        with self.assertRaisesRegex(WorkerError, "Explicit authorization"):
+            self.boundary.generate(self.checkout, PROMPT, timeout_seconds=10)
+        self.model_client.assert_called_once()
+        self.assertEqual(self.runner.call_count, 2)
+
+    def test_missing_or_untrusted_bwrap_stops_before_model_launch(self):
+        self.boundary.preflight(self.checkout, timeout_seconds=10)
+        self.boundary.deployment = replace(self.deployment, bwrap=None)
+        self.bwrap_pin.side_effect = _trusted_bwrap
+        with self.assertRaisesRegex(WorkerError, "pinned bwrap"):
+            self.boundary.generate(self.checkout, PROMPT, timeout_seconds=10)
+
+        self.boundary.deployment = self.deployment
+        self.bwrap_pin.side_effect = WorkerError("The pinned bwrap executable digest changed")
+        with self.assertRaisesRegex(WorkerError, "digest changed"):
+            self.boundary.generate(self.checkout, PROMPT, timeout_seconds=10)
+        self.model_client.assert_not_called()
+        self.assertEqual(self.runner.call_count, 2)
 
     def test_unverified_codex_home_stops_before_generation(self):
         self.boundary.preflight(self.checkout, timeout_seconds=10)
@@ -279,6 +326,8 @@ class BoundaryTests(TestCase):
         self.boundary.preflight(self.checkout, timeout_seconds=10)
         self.boundary.verify(self.checkout, timeout_seconds=10, contract=CONTRACT)
         independent, suite = self.runner.call_args_list[2:]
+        self.model_client.assert_not_called()
+        self.bwrap_pin.assert_not_called()
         for call in (suite, independent):
             self._assert_offline_call(call)
             args = call.args[0]
@@ -306,6 +355,82 @@ class BoundaryTests(TestCase):
                      '":slash_tmp"="deny"', '":workspace_roots"={"."="write"}',
                      "network={enabled=false}"):
             self.assertIn(rule, profile)
+
+
+@skipUnless(sys.platform == "linux" and hasattr(os, "geteuid") and os.geteuid() != 0, "requires non-root Linux")
+class BwrapPinTests(TestCase):
+    def setUp(self):
+        temporary = TemporaryDirectory(prefix="aotg-test-private-bin-")
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name).resolve()
+        self.checkout = root / "candidate"
+        self.home = root / "config" / "codex"
+        self.bin = root / "tools" / "private-bin"
+        self.bin.parent.mkdir(mode=0o700)
+        self.bin.mkdir(mode=0o700)
+
+        # Keep real metadata inside the fixture while accounting for the
+        # system's temporary directories, which can be shared.
+        original_lstat = Path.lstat
+        outside = frozenset(root.parents)
+
+        def fixture_lstat(path):
+            info = original_lstat(path)
+            if path not in outside:
+                return info
+            return SimpleNamespace(
+                st_mode=info.st_mode & ~0o022, st_uid=0, st_ino=info.st_ino,
+                st_dev=info.st_dev, st_ctime_ns=info.st_ctime_ns,
+            )
+
+        self.enterContext(patch.object(Path, "lstat", fixture_lstat))
+        self.bwrap = self.bin / "bwrap"
+        native = Path(sys.executable).resolve().read_bytes()
+        self.bwrap.write_bytes(native)
+        self.bwrap.chmod(0o500)
+        self.deployment = CodexDeployment(
+            root / "unused-codex", "a" * 64, os.geteuid(),
+            codex_home=self.home, bwrap=self.bwrap, bwrap_sha256=sha256(native).hexdigest(),
+        )
+
+    def test_only_the_pinned_binary_is_accepted(self):
+        for mode in (0o500, 0o700):
+            with self.subTest(mode=mode):
+                self.bwrap.chmod(mode)
+                self.assertEqual(_trusted_bwrap(self.deployment, checkout=self.checkout), self.bwrap)
+        mismatched = replace(self.deployment, bwrap_sha256="f" * 64)
+        with self.assertRaisesRegex(WorkerError, "digest changed"):
+            _trusted_bwrap(mismatched, checkout=self.checkout)
+        self.bwrap.chmod(0o755)
+        with self.assertRaisesRegex(WorkerError, "private native"):
+            _trusted_bwrap(self.deployment, checkout=self.checkout)
+
+    def test_rejects_other_files_or_nonprivate_directory(self):
+        extra = self.bin / "unexpected"
+        extra.touch()
+        with self.assertRaisesRegex(WorkerError, "must contain only"):
+            _trusted_bwrap(self.deployment, checkout=self.checkout)
+        extra.unlink()
+        self.bin.chmod(0o755)
+        with self.assertRaisesRegex(WorkerError, "could not be verified"):
+            _trusted_bwrap(self.deployment, checkout=self.checkout)
+
+    def test_rejects_pin_outside_deployment_or_below_writable_ancestor(self):
+        outside = self.home.parent.parent.parent / "untrusted-bin" / "bwrap"
+        with self.assertRaisesRegex(WorkerError, "inside the dedicated deployment"):
+            _trusted_bwrap(replace(self.deployment, bwrap=outside), checkout=self.checkout)
+        self.bin.parent.chmod(0o770)
+        with self.assertRaisesRegex(WorkerError, "untrusted directory ancestors"):
+            _trusted_bwrap(self.deployment, checkout=self.checkout)
+
+    def test_rejects_binary_link_and_checkout_or_auth_overlap(self):
+        for location in (self.checkout, self.home):
+            with self.subTest(location=location), self.assertRaisesRegex(WorkerError, "outside"):
+                _trusted_bwrap(replace(self.deployment, bwrap=location / "bwrap"), checkout=self.checkout)
+        self.bwrap.unlink()
+        self.bwrap.symlink_to(Path(sys.executable).resolve())
+        with self.assertRaisesRegex(WorkerError, "canonical"):
+            _trusted_bwrap(self.deployment, checkout=self.checkout)
 
 
 @skipUnless(sys.platform == "linux" and hasattr(os, "geteuid") and os.geteuid() != 0, "requires non-root Linux")
