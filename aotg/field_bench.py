@@ -76,6 +76,9 @@ def measure_chat(
     started = time.monotonic()
     deadline = started + timeout_seconds
     connection = http.client.HTTPConnection(url.hostname, url.port, timeout=timeout_seconds)
+    # The deadline watchdog may close a connected socket before request().
+    # Never let HTTPConnection silently open a new one after that cancellation.
+    connection.auto_open = 0
     expired = threading.Event()
     active_socket: list[socket.socket | None] = [None]
 

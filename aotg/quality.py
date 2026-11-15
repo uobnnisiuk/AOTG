@@ -99,7 +99,10 @@ def _harness(case):
                     or type(result) is not bool):
                 raise ArtifactError("Invalid C++ assertion")
             args = ", ".join(str(a) for a in arguments)
-            lines.append(f'  std::cout << "AOTG:{index}:" << (overlaps({args}) ? "true" : "false") << "\\n";')
+            # Evaluate before writing the observation prefix. Early process exit
+            # must not create platform-dependent partially flushed records.
+            lines.append(f'  const bool actual_{index} = overlaps({args});')
+            lines.append(f'  std::cout << "AOTG:{index}:" << (actual_{index} ? "true" : "false") << "\\n";')
             expected.append(result)
         lines.extend(["  return 0;", "}"])
         return "\n".join(lines) + "\n", expected, ".cpp"
@@ -188,6 +191,7 @@ def _environment(directory, tool_directories=()):
     result = {"PATH": search_path, "LANG": "C", "LC_ALL": "C",
               "TMP": str(directory), "TEMP": str(directory), "TMPDIR": str(directory),
               "DOTNET_CLI_TELEMETRY_OPTOUT": "1", "DOTNET_SKIP_FIRST_TIME_EXPERIENCE": "1",
+              "DOTNET_GCHeapHardLimit": "0x20000000",
               "DOTNET_MULTILEVEL_LOOKUP": "0", "DOTNET_CLI_HOME": str(directory)}
     if os.name == "nt":
         for key in ("SystemRoot", "WINDIR"):
@@ -218,7 +222,7 @@ def _stop(process):
         process.wait(timeout=5)
 
 
-def _run(argv, directory, timeout_seconds, phase, tool_directories=()):
+def _run(argv, directory, timeout_seconds, phase, tool_directories=(), *, dotnet=False):
     started = time.monotonic()
     stdout_path, stderr_path = directory / (phase + ".stdout"), directory / (phase + ".stderr")
     result = {"status": "ok", "exit_code": None, "seconds": 0.0,
@@ -228,6 +232,11 @@ def _run(argv, directory, timeout_seconds, phase, tool_directories=()):
             process = subprocess.Popen(argv, cwd=directory,
                                        env=_environment(directory, tool_directories),
                                        stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr,
+                                       # CoreCLR tries a sparse 2 TiB memfd before
+                                       # falling back. Keep Python's ignored
+                                       # SIGXFSZ so RLIMIT_FSIZE returns EFBIG
+                                       # instead of killing it before fallback.
+                                       restore_signals=not dotnet,
                                        start_new_session=os.name == "posix")
         except OSError:
             result["status"] = "launch-error"
@@ -364,7 +373,8 @@ def grade_source(case_id, source_path, *, compiler, compiler_kind, runtime_argv=
         version_flag = "--version" if compiler_kind in ("g++", "mcs") else "/help"
         dotnet_prefix = [str(executable), "exec", "--fx-version", dotnet_runtime_version] if dotnet_inputs else []
         version_argv = [*dotnet_prefix, str(csc_dll), "/version"] if dotnet_inputs else [str(executable), version_flag]
-        version = _run(version_argv, directory, 5, "version", tool_directories)
+        version = _run(version_argv, directory, 5, "version", tool_directories,
+                       dotnet=compiler_kind == "dotnet-csc")
         report["toolchain"]["version_probe"] = version
         if compiler_kind == "g++":
             argv = [str(executable), "-std=c++17", "-O2", str(candidate), str(harness), "-o", str(output)]
@@ -376,7 +386,8 @@ def grade_source(case_id, source_path, *, compiler, compiler_kind, runtime_argv=
         else:
             argv = [str(executable), "-target:exe", "-main:AotgTrustedHarness",
                     "-out:" + str(output), str(candidate), str(harness)]
-        compilation = _run(argv, directory, compile_timeout_seconds, "compile", tool_directories)
+        compilation = _run(argv, directory, compile_timeout_seconds, "compile", tool_directories,
+                           dotnet=compiler_kind == "dotnet-csc")
         report["compile"] = compilation
 
         def intact():
@@ -398,7 +409,8 @@ def grade_source(case_id, source_path, *, compiler, compiler_kind, runtime_argv=
         else:
             report["executable_sha256"] = _file_sha(output)
             run_argv = [*dotnet_prefix, str(output)] if dotnet_inputs else [*runtime, str(output)]
-            execution = _run(run_argv, directory, timeout_seconds, "run", tool_directories)
+            execution = _run(run_argv, directory, timeout_seconds, "run", tool_directories,
+                             dotnet=compiler_kind == "dotnet-csc")
             report["execution"] = execution
             if not intact():
                 report["status"] = "harness-tampering"

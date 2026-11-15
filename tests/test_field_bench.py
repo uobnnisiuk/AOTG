@@ -1,3 +1,4 @@
+import http.client
 import json
 import threading
 import time
@@ -9,12 +10,14 @@ from aotg.field_bench import measure_chat
 
 
 class FieldBenchTest(unittest.TestCase):
-    def request(self, events, *, status=200, delay=0, timeout=2, raw=None, limit=4096):
+    def request(self, events, *, status=200, delay=0, timeout=2, raw=None, limit=4096, received=None):
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *args):
                 pass
 
             def do_POST(self):
+                if received is not None:
+                    received.append(True)
                 self.rfile.read(int(self.headers["Content-Length"]))
                 self.send_response(status)
                 self.send_header("Content-Type", "text/event-stream")
@@ -31,7 +34,7 @@ class FieldBenchTest(unittest.TestCase):
                             data = event if isinstance(event, str) else json.dumps(event)
                             self.wfile.write(("data: " + data + "\n\n").encode())
                             self.wfile.flush()
-                except (BrokenPipeError, ConnectionResetError):
+                except OSError:
                     pass
 
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -114,3 +117,16 @@ class FieldBenchTest(unittest.TestCase):
         self.assertEqual(result["status"], "timeout")
         connection.return_value.connect.assert_not_called()
         connection.return_value.request.assert_not_called()
+
+    def test_cancellation_cannot_auto_reconnect_before_send(self):
+        original = http.client.HTTPConnection.request
+        received = []
+
+        def delayed(connection, *args, **kwargs):
+            time.sleep(.04)
+            return original(connection, *args, **kwargs)
+
+        with patch.object(http.client.HTTPConnection, "request", delayed):
+            result = self.request([], timeout=.02, received=received)
+        self.assertEqual(result["status"], "timeout")
+        self.assertEqual(received, [])

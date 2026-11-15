@@ -140,7 +140,8 @@ class ObservationTests(unittest.TestCase):
             source.write_text("public sealed class BatchRegistry {}", encoding="utf-8")
             _, expected, _ = _harness(_catalog_case(CASES[1], CATALOG))
 
-            def run(argv, work, timeout, phase, tool_directories=()):
+            def run(argv, work, timeout, phase, tool_directories=(), *, dotnet=False):
+                self.assertFalse(dotnet)
                 if phase == "compile":
                     self.assertIn("/main:AotgTrustedHarness", argv)
                     self.assertIn("/target:exe", argv)
