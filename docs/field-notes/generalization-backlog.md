@@ -6,6 +6,7 @@
 | --- | --- | --- |
 | runtime/model/API/client検出 | OS adapterでは欠測の実行引数・依存ライブラリを明示的に読み取る方法 | UOB-49、現状は専用private調査。重複課題は作らない |
 | 欠測と不合格を分ける実測契約 | 通信不完全、品質失敗、保護停止、条件不一致、順序効果 | UOB-50／53に実装中 |
+| 時間計測の分解能と不確実性 | Windows/Python 3.11の15 ms境界テスト失敗。時計の実装・申告分解能と実測精度を区別する | UOB-50。PR #16でテストのみ修正、汎用計測器の変更は未実施 |
 | cold/warmの実効検証 | エンジン再利用tokenとOS cacheを区別 | UOB-50／52。現時点は実機検証待ち |
 | 攻撃を含む採点器検証 | stdout偽装、harness改変、早期終了、独立source review | UOB-53。初号機の小課題に限定して修正 |
 | 完全固定したローカル構築キット | compiler/ref/runtime/engine/model/profileのhash、版の漂流検出 | UOB-55。ファイル整合性と再構築成功を区別 |
