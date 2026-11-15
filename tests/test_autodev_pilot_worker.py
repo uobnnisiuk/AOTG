@@ -5,11 +5,13 @@ import subprocess
 from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from time import monotonic_ns
 from unittest import TestCase, skipUnless
 from unittest.mock import Mock, patch
 
 from aotg.autodev.candidate_git import build_candidate
 from aotg.autodev.coordinator import Candidate
+from aotg.autodev.pilot_runtime import PilotAttemptBoundary, PilotError
 from aotg.autodev.pilot_worker import (
     PILOT_CONTRACT,
     PILOT_PATHS,
@@ -140,6 +142,23 @@ class PilotWorkerTests(TestCase):
         self.assertEqual(self.runner.generate.call_args.kwargs["timeout_seconds"], 8)
         self.assertEqual(self.runner.preflight.call_args_list[1].kwargs["timeout_seconds"], 6)
         self.assertEqual(self.runner.verify.call_args.kwargs["timeout_seconds"], 5)
+        self.build.assert_not_called()
+
+    def test_host_is_rechecked_after_preflight_before_model(self):
+        quiet = Mock(return_value=True)
+        boundary = PilotAttemptBoundary.from_deadline(monotonic_ns() + 300_000_000_000, quiet)
+
+        def preflight(checkout, *, timeout_seconds):
+            self.preflight(checkout, timeout_seconds=timeout_seconds)
+            quiet.return_value = False
+
+        self.runner.preflight.side_effect = preflight
+        worker = PilotWorker(self.source, self.run_root, self.runner, build=self.build, boundary=boundary)
+        with self.assertRaises(PilotError):
+            worker.implement(SCOPE, self.base, timeout_seconds=60)
+        self.runner.preflight.assert_called_once()
+        self.runner.generate.assert_not_called()
+        self.runner.verify.assert_not_called()
         self.build.assert_not_called()
 
     def test_roots_cannot_overlap_candidate_source(self):

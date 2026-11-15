@@ -11,7 +11,7 @@ from typing import Protocol
 from .candidate_git import CandidateArtifact, build_candidate
 from .coordinator import Candidate
 from .ledger import LedgerError, _validate_path
-from .pilot_runtime import BOOTSTRAP_PATHS, _is_first_scope
+from .pilot_runtime import BOOTSTRAP_PATHS, PilotAttemptBoundary, _is_first_scope
 from .queue import ApprovedScope
 from .worker import (
     MAX_RUNTIME_SECONDS,
@@ -135,15 +135,19 @@ class PilotRunner(Protocol):
 class PilotWorker:
     """Use distinct generated, verification, and publication workspaces."""
 
-    def __init__(self, source: Path, run_root: Path, runner: PilotRunner, *, build=build_candidate):
+    def __init__(
+        self, source: Path, run_root: Path, runner: PilotRunner, *, build=build_candidate,
+        boundary: PilotAttemptBoundary | None = None,
+    ):
         self.source = Path(source)
         self.run_root = Path(run_root)
         self.runner = runner
         self.build = build
+        self.boundary = boundary
         self._started = False
         self._artifact = None
 
-    def implement(self, scope: ApprovedScope, base: str, *, timeout_seconds: int) -> Candidate:
+    def implement(self, scope: ApprovedScope, base: str, *, timeout_seconds: int | float) -> Candidate:
         if not _is_first_scope(scope):
             raise WorkerError("Worker requires the exact approved offline pilot")
         if (not isinstance(base, str) or not re.fullmatch(r"(?!0{40})[0-9a-f]{40}", base)
@@ -157,8 +161,8 @@ class PilotWorker:
         source, run_root = _separate_roots(self.source, self.run_root)
         run = Path(mkdtemp(prefix="aotg-pilot-", dir=run_root))
         generated = prepare_checkout(source, run / "generation", base)
-        self.runner.preflight(generated.path, timeout_seconds=_remaining(deadline))
-        self.runner.generate(generated.path, PILOT_PROMPT, timeout_seconds=_remaining(deadline))
+        self.runner.preflight(generated.path, timeout_seconds=self._remaining_work(deadline))
+        self.runner.generate(generated.path, PILOT_PROMPT, timeout_seconds=self._remaining_work(deadline))
         _remaining(deadline)
         changes = capture_changes(generated, PILOT_PATHS)
         if changes.paths != PILOT_PATHS or any(name in PILOT_PATHS for name, _, _ in generated.baseline):
@@ -171,8 +175,10 @@ class PilotWorker:
         )
         if capture_changes(verifier, PILOT_PATHS) != changes:
             raise WorkerError("Verification workspace does not match the generated patch")
-        self.runner.preflight(verifier.path, timeout_seconds=_remaining(deadline))
-        self.runner.verify(verifier.path, timeout_seconds=_remaining(deadline), contract=PILOT_CONTRACT)
+        self.runner.preflight(verifier.path, timeout_seconds=self._remaining_work(deadline))
+        self.runner.verify(
+            verifier.path, timeout_seconds=self._remaining_work(deadline), contract=PILOT_CONTRACT,
+        )
         _remaining(deadline)
         if capture_changes(verifier, PILOT_PATHS) != changes:
             raise WorkerError("The candidate changed during verification")
@@ -192,6 +198,11 @@ class PilotWorker:
             raise WorkerError("The verified candidate artifact could not be confirmed")
         self._artifact = artifact
         return candidate
+
+    def _remaining_work(self, deadline):
+        if self.boundary is None:
+            return _remaining(deadline)
+        return min(self.boundary.worker_seconds(), _remaining(deadline))
 
     def artifact_for(self, candidate: Candidate) -> CandidateArtifact:
         if (self._artifact is None or type(candidate) is not Candidate

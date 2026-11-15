@@ -1,6 +1,7 @@
 """Advance one approved software issue through an independently verified Draft PR."""
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Protocol
@@ -111,10 +112,14 @@ class Coordinator:
         self.worker = worker
         self.slot = slot
 
-    def run_once(self, now: datetime, *, readiness: Readiness | None = None, execute=False):
+    def run_once(
+        self, now: datetime, *, readiness: Readiness | None = None, execute=False,
+        reservation_clock: Callable[[], datetime] | None = None,
+    ):
         if not isinstance(now, datetime) or now.utcoffset() is None:
             raise ValueError("A timezone-aware invocation time is required")
-        timestamp = now.astimezone(timezone.utc).isoformat(timespec="seconds")
+        now_utc = now.astimezone(timezone.utc)
+        timestamp = now_utc.isoformat(timespec="seconds")
         try:
             selection = _select(self.github.snapshot())
         except Exception:
@@ -124,12 +129,15 @@ class Coordinator:
             return Result(selection.status, selection.reason, time_utc=timestamp)
         scope, base = selection.scope, selection.main_sha
         result = Result("blocked", "shadow-eligible", scope.issue, timestamp, base)
-        try:
-            self.ledger.check(scope.issue, now)
-        except ReservationBlocked as exc:
-            return replace(result, reason=exc.reason)
-        except LedgerError:
-            return replace(result, status="unknown", reason="ledger-unavailable")
+        # A live reservation with a trusted clock checks admission atomically
+        # using the new sample after the fresh snapshot.
+        if execute is not True or reservation_clock is None:
+            try:
+                self.ledger.check(scope.issue, now)
+            except ReservationBlocked as exc:
+                return replace(result, reason=exc.reason)
+            except LedgerError:
+                return replace(result, status="unknown", reason="ledger-unavailable")
 
         if execute is not True:
             return result
@@ -143,8 +151,21 @@ class Coordinator:
         if fresh != selection:
             return replace(result, reason="snapshot-changed")
 
+        started_at = now
+        if reservation_clock is not None:
+            try:
+                sampled = reservation_clock()
+                if not isinstance(sampled, datetime) or sampled.utcoffset() is None:
+                    raise ValueError("A timezone-aware reservation time is required")
+                started_at = sampled.astimezone(timezone.utc)
+                if started_at < now_utc:
+                    raise ValueError("The reservation clock predates invocation")
+            except Exception:
+                return replace(result, reason="deployment-gate")
+            result = replace(result, time_utc=started_at.isoformat(timespec="seconds"))
+
         try:
-            attempt = self.ledger.reserve(scope.issue, now)
+            attempt = self.ledger.reserve(scope.issue, started_at)
         except ReservationBlocked as exc:
             return replace(result, reason=exc.reason)
         except LedgerError:
