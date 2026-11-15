@@ -14,8 +14,8 @@ from .ledger import LedgerError, _validate_path
 from .pilot_runtime import BOOTSTRAP_PATHS, PilotAttemptBoundary, _is_first_scope
 from .queue import ApprovedScope
 from .worker import (
-    CandidateRejected,
     MAX_RUNTIME_SECONDS,
+    CandidateRejected,
     WorkerError,
     _git_bytes,
     capture_changes,
