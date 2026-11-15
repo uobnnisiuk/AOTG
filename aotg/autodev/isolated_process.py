@@ -19,7 +19,7 @@ from tempfile import TemporaryDirectory
 from time import monotonic
 
 from .ledger import LedgerError, _validate_path
-from .worker import MAX_RUNTIME_SECONDS, RunResult, WorkerError, _run_in_wsl
+from .worker import CandidateRejected, MAX_RUNTIME_SECONDS, RunResult, WorkerError, _run_in_wsl
 
 _PROFILE = "aotg-pilot"
 _PYTHON = "/usr/bin/python3"
@@ -219,7 +219,8 @@ class IsolatedProcess:
         self._verified_workspace = None
         self._generated = False
 
-    def _run(self, argv, checkout, text, timeout, *, codex_home, scratch=None):
+    def _run(self, argv, checkout, text, timeout, *, codex_home, scratch=None,
+             candidate_verification=False):
         environment = {
             "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "CODEX_HOME": str(codex_home),
         }
@@ -232,10 +233,14 @@ class IsolatedProcess:
         if result.timed_out:
             raise TimeoutError("The isolated process reached its deadline")
         if result.exit_code != 0:
+            # A known failure exit from the pinned offline checker rejects the candidate.
+            # Generation, probes and unrecognized exits can indicate environment faults.
+            if candidate_verification and result.exit_code == 1:
+                raise CandidateRejected("The candidate failed independent verification")
             raise WorkerError("The isolated process did not complete successfully")
 
     def _run_sandbox(self, native, checkout, text, deadline, *command, writable=False,
-                     scratch=None, denied_home=None):
+                     scratch=None, denied_home=None, candidate_verification=False):
         # Profile resolution may initialize authentication even for a sandbox-only command.
         with TemporaryDirectory(prefix="aotg-offline-codex-", dir=checkout.parent) as offline_home:
             denied = (offline_home,) if denied_home is None else (offline_home, denied_home)
@@ -247,7 +252,8 @@ class IsolatedProcess:
                 "--include-managed-config", "-c", profile, "-c", 'cli_auth_credentials_store="file"',
                 "--", "/usr/bin/env", "-u", "CODEX_HOME", "--", *command,
             )
-            self._run(argv, checkout, text, _remaining(deadline), scratch=scratch, codex_home=offline_home)
+            self._run(argv, checkout, text, _remaining(deadline), scratch=scratch,
+                      codex_home=offline_home, candidate_verification=candidate_verification)
 
     def preflight(self, checkout: Path, *, timeout_seconds: float) -> None:
         self._verified_workspace = None
@@ -322,7 +328,8 @@ class IsolatedProcess:
     def _verify_command(self, native, checkout, deadline, text, *arguments):
         with TemporaryDirectory(prefix="aotg-pilot-check-", dir=checkout.parent) as scratch:
             self._run_sandbox(native, checkout, text, deadline, _PYTHON, "-EBsS", *arguments,
-                              scratch=scratch, denied_home=self.deployment.codex_home)
+                              scratch=scratch, denied_home=self.deployment.codex_home,
+                              candidate_verification=True)
 
 
 def _remaining(deadline):
