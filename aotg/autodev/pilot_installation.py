@@ -10,13 +10,19 @@ from aotg.artifacts import _unique_object
 
 from .candidate_git import push_candidate
 from .coordinator import Readiness, Result
-from .github_runtime import GitHubResultComments, GitHubRuntime
+from .github_runtime import _TIMEOUT, GitHubResultComments, GitHubRuntime, _run_gh
 from .isolated_process import CodexDeployment, IsolatedProcess, _approved
 from .ledger import Ledger
-from .linear_read import LinearIntake
-from .pilot_runtime import PilotPorts, load_release, run_approved_pilot
+from .linear_read import LinearIntake, _post
+from .pilot_runtime import (
+    PilotAttemptBoundary,
+    PilotError,
+    PilotPorts,
+    load_release,
+    run_approved_pilot,
+)
 from .pilot_worker import PILOT_PROMPT, PilotWorker
-from .receipt_transport import LinearResultComments, ReceiptTransport
+from .receipt_transport import _MUTATION, LinearResultComments, ReceiptTransport
 from .remote_results import BOOTSTRAP_BODY, CommentTarget, RemoteResultSlot
 from .result_slot import LocalResultSlot, ResultSlotError, _present
 from .runtime_config import (
@@ -36,6 +42,7 @@ class PilotInstallation:
     git: Path
     gh: Path
     codex: CodexDeployment
+    gh_config_dir: Path | None = None
 
 
 def _receipt_targets(path):
@@ -75,12 +82,37 @@ def _verify_slot(local, slot, github_target, linear_target, transport):
         raise ResultSlotError("A bootstrap receipt changed")
 
 
-def run_configured_pilot(installation, readiness, *, now=None):
+def _run_github(boundary, argv, payload, *, cwd, env):
+    # GitHub's own precondition reads can consume time after the port's outer guard.
+    method = argv[5]
+    if method in {"POST", "PATCH"}:
+        boundary.require_quiet(minimum_seconds=_TIMEOUT)
+    elif method == "GET":
+        boundary.remaining()
+    else:
+        raise PilotError("Unexpected GitHub request method")
+    response = _run_gh(argv, payload, cwd=cwd, env=env)
+    boundary.remaining()
+    return response
+
+
+def _request_linear(boundary, authorization, query, variables):
+    if query == _MUTATION:
+        boundary.require_quiet(minimum_seconds=8)
+    elif query.lstrip().startswith("query "):
+        boundary.remaining()
+    else:
+        raise PilotError("Unexpected Linear request operation")
+    response = _post(query, variables, authorization)
+    boundary.remaining()
+    return response
+
+
+def run_configured_pilot(installation, readiness, *, boundary=None, now=None):
     """Run the fixed pilot only from separately released private configuration.
 
-    There is no scheduler entry or automatic retry. The launcher verifies the
-    deployment and its authorization before this function, and does not send
-    configuration files or issue descriptions to the model.
+    The launcher provides a live host check and an absolute monotonic deadline.
+    The model receives only the reviewed public prompt.
     """
     now = datetime.now(timezone.utc) if now is None else now
     if not isinstance(now, datetime) or now.utcoffset() is None:
@@ -90,30 +122,46 @@ def run_configured_pilot(installation, readiness, *, now=None):
     if (
         type(installation) is not PilotInstallation or type(readiness) is not Readiness
         or not readiness.ready() or type(installation.codex) is not CodexDeployment
-        or not _approved(installation.codex.model_authorization, PILOT_PROMPT, MAX_RUNTIME_SECONDS)
+        or type(boundary) is not PilotAttemptBoundary
         or not isinstance(installation.root, Path) or not installation.root.is_absolute()
     ):
         return blocked
     root = installation.root
     config = root / "config"
     try:
+        boundary.worker_seconds()
+        authorization = installation.codex.model_authorization
+        if not _approved(authorization, PILOT_PROMPT, 1) or authorization.max_seconds != MAX_RUNTIME_SECONDS:
+            return blocked
         release = load_release(config / "first-pilot-release.json")
         scopes = load_approvals(config / "approvals.json")
         if (
             len(scopes) != 1 or not release.permits(scopes[0], release.base, now)
-            or installation.codex.model_authorization.expires_at > release.expires_at
+            or authorization.expires_at > release.expires_at
         ):
             return blocked
+        boundary.constrain_authorization(release.issued_at, authorization.expires_at)
+        boundary.worker_seconds()
         authentication = load_linear_authorization(config / "linear-authorization")
         github_target, linear_target = _receipt_targets(config / "receipt-targets.json")
-        github = GitHubRuntime(installation.gh)
-        linear = LinearIntake(authentication)
-        transport = ReceiptTransport(GitHubResultComments(github), LinearResultComments(authentication))
+        github = GitHubRuntime(
+            installation.gh, run=partial(_run_github, boundary), config_dir=installation.gh_config_dir,
+        )
+        request_linear = partial(_request_linear, boundary, authentication)
+        linear = LinearIntake(request=request_linear)
+        transport = ReceiptTransport(
+            GitHubResultComments(github), LinearResultComments(request=request_linear),
+        )
         local = LocalResultSlot(root / "results" / "latest.json")
         slot = RemoteResultSlot(local, github_target, linear_target, transport)
-        worker = PilotWorker(root / "checkout", root / "runs", IsolatedProcess(installation.codex))
-        push = partial(push_candidate, git=installation.git, gh=installation.gh)
-        ports = PilotPorts(github, linear, scopes[0], worker, push, base=release.base)
+        worker = PilotWorker(
+            root / "checkout", root / "runs", IsolatedProcess(installation.codex), boundary=boundary,
+        )
+        push = partial(
+            push_candidate, git=installation.git, gh=installation.gh,
+            gh_config_dir=installation.gh_config_dir,
+        )
+        ports = PilotPorts(github, linear, scopes[0], worker, push, base=release.base, boundary=boundary)
         _verify_slot(local, slot, github_target, linear_target, transport)
     except (ValueError, OSError, RuntimeError):
         return blocked

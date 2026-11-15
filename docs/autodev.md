@@ -44,7 +44,15 @@ python -m aotg.autodev shadow --approvals "$APPROVAL_FILE" \
 - 専用領域の `config/first-pilot-release.json` に、別途承認された1回限りのChatGPTプラン試行を記録する。固定フィールドは `version`（1）、`policy`、`approved_by`、`issue`、`github_issue`、`base`、`scope_digest`、`issued_at`、`expires_at`、`authorization`（`one-chatgpt-plan-pilot-no-extra-charge`）。日時はUTC秒精度で `+00:00` を付ける。許可時間外、変更されたmain、別スコープ、認証や安全条件の不足、オープンPR、既出の予約で停止する。
 - 起動元が、隔離動作を検証したCodexのバイナリ・専用認証・サービス通信・外部ツール制限を確認する。モデルに接続するクライアントと、モデルが実行するコマンドの通信制限は別に検証する。生成とテストは別の作業コピーで実行し、外部から与えた合成fixtureの採点契約も確認する。テスト後に作業差分を取り直す。
 - 検証済みパッチを公開用の別checkoutに再構築し、親コミットと許可済みパスを照合する。予約ブランチが固定ベースを指すことを確認し、通常のHTTPS pushで更新してからDraft PRを作る。両方の結果欄を読み戻せない場合は予約を消費したまま停止する。
-- 初回試行は実行全体の上限を40分とする起動元で行う。試行の証拠を確認してから定期実行の承認を求める。自動マージは [UOB-59](https://linear.app/uobnnisiuk/issue/UOB-59) の独立レビュー・承認・CIの条件を別途検証する。
+- 初回試行は専用のWSLユーザーサービスで1回だけ実行する。サービスの起動、事前確認、候補生成、公開と結果確認、停止までの合計が40分以内になるよう余裕を取る。開始前と書き込み前にWindowsのタスク状態を確認し、Footprintの実行中や試行時間と重なる予定、確認不能を検出した場合は停止する。タイムアウトや応答不明時は台帳・予約ブランチ・結果欄を照合してから判断する。
+- 起動元は配備済みの完全なmain SHAを指定し、作業コピーの変更や有効なスケジューラがないことを確認する。初回モデル試行には、別に承認された `first-pilot-release.json`、承認済みスコープ、同じSHA・スコープ・実行UID・有効期限を対象とした `pilot-deployment.json`、AOTG専用のGitHub／Linear認証が必要。配備の記録には、専用のChatGPTログイン、追加課金のないプラン利用、モデルクライアントの通信先の制限、管理対象の外部ツール無効化について独立に確認した結果を残す。記録と認証はcheckout外の非公開領域に置く。
+- 試行の証拠を確認してから定期実行の承認を求める。自動マージは [UOB-59](https://linear.app/uobnnisiuk/issue/UOB-59) の独立レビュー・承認・CIの条件を別途検証する。
+
+モデルも外部サービス認証も使わず、実際の起動元とWindowsの状態確認を試すには、レビュー済みの `pilot_supervisor.py` をcheckout外の運用者専用領域に固定し、`--probe` で呼び出す。起動元はプロジェクトコードを読み込む前にcheckoutのSHAと未追跡・除外ファイルを含む状態を照合する。完了は起動と状態確認ができたことを示す。
+
+```sh
+python3 -I -B "$AOTG_PINNED_SUPERVISOR" --probe "$AOTG_CHECKOUT" "$MAIN_SHA"
+```
 
 ## K8への配備と復帰
 
