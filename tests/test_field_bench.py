@@ -4,7 +4,8 @@ import threading
 import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from aotg.field_bench import measure_chat
 
@@ -59,11 +60,59 @@ class FieldBenchTest(unittest.TestCase):
         ], delay=.01)
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["content"], "42")
-        self.assertGreater(result["ttft_seconds"], .015)
-        self.assertGreater(result["wall_seconds"], result["ttft_seconds"])
+        # Real clocks can quantize a short stream into one tick, especially on
+        # Windows/Python 3.11. Event selection is checked deterministically below.
+        self.assertGreaterEqual(result["ttft_seconds"], 0)
+        self.assertGreaterEqual(result["wall_seconds"], result["ttft_seconds"])
         self.assertIsNone(result["timings"])
         self.assertEqual(result["usage"], {"completion_tokens": 1})
         self.assertNotIn("synthetic-test-only", json.dumps(result))
+
+    def test_ttft_starts_at_first_content_or_tool_delta(self):
+        cases = [
+            ("content", {"content": "4"}, {"content": "2"}, "stop"),
+            ("tool", {"tool_calls": [{"index": 0, "id": "call1", "function": {"name": "lookup", "arguments": "{"}}]},
+             {"tool_calls": [{"index": 0, "function": {"arguments": "}"}}]}, "tool_calls"),
+        ]
+        for name, first, later, finish in cases:
+            with self.subTest(delta=name):
+                events = [
+                    {"choices": [{"delta": {"role": "assistant"}}]},
+                    {"choices": [{"delta": {"content": "", "tool_calls": []}}]},
+                    {"choices": [{"delta": first}]},
+                    {"choices": [{"delta": later}]},
+                    {"choices": [{"delta": {}, "finish_reason": finish}]},
+                    "[DONE]",
+                ]
+                clock = [0.0]
+                chunks = []
+                for index, event in enumerate(events, 1):
+                    data = event if isinstance(event, str) else json.dumps(event)
+                    chunks.extend([(index / 4, ("data: " + data + "\n").encode()),
+                                   (index / 4, b"\n")])
+                chunks = iter(chunks)
+
+                def readline(_limit):
+                    clock[0], line = next(chunks)
+                    return line
+
+                response = Mock(status=200)
+                response.getheader.return_value = "text/event-stream"
+                response.readline.side_effect = readline
+                connection = Mock()
+                connection.getresponse.return_value = response
+                with patch("aotg.field_bench.http.client.HTTPConnection", return_value=connection), \
+                        patch("aotg.field_bench.time", SimpleNamespace(monotonic=lambda: clock[0])):
+                    result = measure_chat("http://127.0.0.1:1/v1",
+                                          {"model": "test", "messages": [{}], "max_tokens": 16},
+                                          api_key="synthetic-test-only", timeout_seconds=10)
+                self.assertEqual(result["status"], "completed")
+                self.assertEqual(result["ttft_seconds"], .75)
+                self.assertEqual(result["wall_seconds"], 1.5)
+                if name == "content":
+                    self.assertEqual(result["content"], "42")
+                else:
+                    self.assertEqual(result["tool_calls"][0]["function"], {"name": "lookup", "arguments": "{}"})
 
     def test_tool_fragments(self):
         result = self.request([
