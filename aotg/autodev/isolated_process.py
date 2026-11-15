@@ -19,7 +19,13 @@ from tempfile import TemporaryDirectory
 from time import monotonic
 
 from .ledger import LedgerError, _validate_path
-from .worker import CandidateRejected, MAX_RUNTIME_SECONDS, RunResult, WorkerError, _run_in_wsl
+from .worker import (
+    MAX_RUNTIME_SECONDS,
+    CandidateRejected,
+    RunResult,
+    WorkerError,
+    _run_in_wsl,
+)
 
 _PROFILE = "aotg-pilot"
 _PYTHON = "/usr/bin/python3"
