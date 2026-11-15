@@ -19,7 +19,7 @@ from aotg.autodev.isolated_process import (
     _profile,
     _trusted_codex_home,
 )
-from aotg.autodev.worker import RunResult, WorkerError
+from aotg.autodev.worker import CandidateRejected, RunResult, WorkerError
 
 PROMPT = "Approved public fixture task."
 SHA = sha256(PROMPT.encode("utf-8")).hexdigest()
@@ -192,6 +192,31 @@ class BoundaryTests(TestCase):
             self.boundary.generate(self.checkout, PROMPT, timeout_seconds=10)
         with self.assertRaisesRegex(WorkerError, "Explicit authorization"):
             self.boundary.generate(self.checkout, PROMPT, timeout_seconds=10)
+
+    def test_failed_independent_candidate_check_is_rejected(self):
+        self.boundary.preflight(self.checkout, timeout_seconds=10)
+        self.runner.side_effect = None
+        self.runner.return_value = RunResult(1, False)
+        with self.assertRaises(CandidateRejected):
+            self.boundary.verify(self.checkout, timeout_seconds=10, contract=CONTRACT)
+
+    def test_unknown_exit_in_candidate_check_remains_uncertain(self):
+        self.boundary.preflight(self.checkout, timeout_seconds=10)
+        self.runner.side_effect = None
+        for exit_code in (2, -9):
+            with self.subTest(exit_code=exit_code):
+                self.runner.return_value = RunResult(exit_code, False)
+                with self.assertRaises(WorkerError) as failure:
+                    self.boundary.verify(self.checkout, timeout_seconds=10, contract=CONTRACT)
+                self.assertNotIsInstance(failure.exception, CandidateRejected)
+
+    def test_failed_generation_does_not_claim_candidate_rejection(self):
+        self.boundary.preflight(self.checkout, timeout_seconds=10)
+        self.runner.side_effect = None
+        self.runner.return_value = RunResult(1, False)
+        with self.assertRaises(WorkerError) as failure:
+            self.boundary.generate(self.checkout, PROMPT, timeout_seconds=10)
+        self.assertNotIsInstance(failure.exception, CandidateRejected)
 
     def test_verify_uses_read_only_checkout_and_independent_contract(self):
         self.boundary.preflight(self.checkout, timeout_seconds=10)
