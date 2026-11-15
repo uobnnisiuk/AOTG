@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from typing import Protocol
 
 from .ledger import Ledger, LedgerError, ReservationBlocked
-from .worker import CandidateRejected
 from .queue import (
     ApprovedScope,
     GitHubSnapshot,
@@ -15,6 +14,7 @@ from .queue import (
     select_candidate,
     valid_change_path,
 )
+from .worker import CandidateRejected
 
 _SHA = re.compile(r"[0-9a-f]{40}")
 
