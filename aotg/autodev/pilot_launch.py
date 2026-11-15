@@ -16,7 +16,12 @@ from aotg.artifacts import _unique_object
 
 from .candidate_git import _trusted_executable
 from .coordinator import Readiness
-from .isolated_process import CodexDeployment, ModelAuthorization, _trusted_codex
+from .isolated_process import (
+    CodexDeployment,
+    ModelAuthorization,
+    _trusted_codex,
+    _trusted_codex_home,
+)
 from .ledger import _validate_path
 from .pilot_installation import PilotInstallation, run_configured_pilot
 from .pilot_runtime import PilotAttemptBoundary, _utc, load_release
@@ -177,8 +182,12 @@ def _load_deployment(root, expected_commit):
         expires, MAX_RUNTIME_SECONDS, owner_approved=True, dedicated_chatgpt_login_verified=True,
         service_egress_verified=True, managed_tools_verified_disabled=True,
     )
-    codex = CodexDeployment(Path(data["codex"]), data["codex_sha256"], data["uid"], authorization)
+    codex = CodexDeployment(
+        Path(data["codex"]), data["codex_sha256"], data["uid"], authorization,
+        codex_home=config / "codex",
+    )
     _trusted_codex(codex)
+    _trusted_codex_home(codex)
     return PilotInstallation(root, git, gh, codex, gh_config_dir=credentials)
 
 

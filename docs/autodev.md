@@ -54,6 +54,12 @@ python -m aotg.autodev shadow --approvals "$APPROVAL_FILE" \
 python3 -I -B "$AOTG_PINNED_SUPERVISOR" --probe "$AOTG_CHECKOUT" "$MAIN_SHA"
 ```
 
+## 専用認証の準備
+
+- GitHubは所有者のfine-grained PATで、AOTGリポジトリだけを選ぶ。権限は `Contents: Read and write`、`Pull requests: Read and write`、`Issues: Read` と、GitHubが付与する `Metadata: Read`。Linearは結果欄の投稿者が、UOBチームだけにアクセスできる個人APIキーに `Read` と `Write` を設定する。
+- レビュー済みの `auth_import.py` を専用領域で固定し、ローカル端末の非表示入力から新規認証値を登録する。専用ファイルの権限は `0600` とし、新規ファイルの作成だけを許可する。起動元で承認済みmainと作業ツリーを照合し、専用領域に固定した `auth_verify` を呼び出す。結果は本人性、対象、固定結果欄の読み取りに限る。書き込み可否と、発行画面で設定した権限範囲は別に確認する。
+- Codexは既存ChatGPTプランで本人がサインインする。専用のChatGPT認証キャッシュは `config/codex` に保存し、モデルクライアントだけが `CODEX_HOME` として使う。`aotg.autodev.chatgpt_signin` の `probe` と `status` はモデルを起動せず、`device-login` はローカル端末での本人認証時にだけ使う。接続確認で認証が成立しても、初回モデル試行用の承認と通信制限の検証は残る。
+
 ## K8への配備と復帰
 
 - 配備前に、K8のWindowsとWSLの実行主体、専用checkout、GitHub／Linearへの権限、既存のCodexログイン状態を確認する。Codexを起動するアカウントには登録済みプランの利用だけを許可し、追加購入や従量課金の利用は別途承認する。

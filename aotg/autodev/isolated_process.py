@@ -18,6 +18,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from time import monotonic
 
+from .ledger import LedgerError, _validate_path
 from .worker import MAX_RUNTIME_SECONDS, RunResult, WorkerError, _run_in_wsl
 
 _PROFILE = "aotg-pilot"
@@ -26,12 +27,15 @@ _UNSHARE = "/usr/bin/unshare"
 _SHA256 = re.compile(r"(?!0{64})[0-9a-f]{64}")
 _MODEL = re.compile(r"[a-z0-9][a-z0-9.-]{0,63}")
 _PROBE = """\
+import os
 import sys
 from pathlib import Path
 from tempfile import TemporaryFile
 
 probe = Path(sys.argv[1])
 sentinel = Path(sys.argv[2])
+if "CODEX_HOME" in os.environ:
+    raise SystemExit(17)
 try:
     sentinel.read_bytes()
 except OSError:
@@ -82,6 +86,7 @@ class CodexDeployment:
     codex_sha256: str
     uid: int
     model_authorization: ModelAuthorization | None = None
+    codex_home: Path | None = None
 
 
 def _current_uid():
@@ -119,6 +124,29 @@ def _trusted_codex(deployment):
     return str(path)
 
 
+def _trusted_codex_home(deployment, *, checkout=None):
+    home = deployment.codex_home
+    if (
+        not isinstance(home, Path) or not home.is_absolute()
+        or home.name != "codex" or home.parent.name != "config"
+        or type(deployment.uid) is not int or deployment.uid <= 0 or _current_uid() != deployment.uid
+        or (checkout is not None and (home.is_relative_to(checkout) or checkout.is_relative_to(home)))
+    ):
+        raise WorkerError("An independent AOTG Codex home is required")
+    try:
+        if home.resolve(strict=True) != home:
+            raise WorkerError("The AOTG Codex home must be canonical")
+        for directory in (home.parent.parent, home.parent, home):
+            _validate_path(directory, directory=True)
+        auth = home / "auth.json"
+        _validate_path(auth, directory=False)
+        if not 0 < auth.lstat().st_size <= 1024**2:
+            raise WorkerError("The AOTG Codex login metadata is invalid")
+    except (LedgerError, OSError):
+        raise WorkerError("The AOTG Codex login cache is unavailable or not private") from None
+    return home
+
+
 def _workspace(checkout, uid):
     if not isinstance(checkout, Path) or not checkout.is_absolute():
         raise WorkerError("The candidate workspace must be an absolute path")
@@ -134,14 +162,15 @@ def _workspace(checkout, uid):
     return checkout, info.st_dev, info.st_ino
 
 
-def _profile(native, checkout, *, writable, scratch):
+def _profile(native, checkout, *, writable, scratch, denied_homes=()):
     mode = "write" if writable else "read"
     temporary_mode = "write" if scratch else "deny"
+    home_rules = "".join(f'{json.dumps(str(home))}="deny",' for home in denied_homes)
     return (
         f'permissions.{_PROFILE}={{extends=":workspace",filesystem={{'
         f'":root"="deny",":minimal"="read",":tmpdir"="{temporary_mode}",'
         f'":slash_tmp"="deny",{json.dumps(native)}="read",'
-        f'{json.dumps(str(checkout))}="{mode}",'
+        f'{json.dumps(str(checkout))}="{mode}",{home_rules}'
         f'":workspace_roots"={{"."="{mode}"}}}},network={{enabled=false}}}}'
     )
 
@@ -190,8 +219,10 @@ class IsolatedProcess:
         self._verified_workspace = None
         self._generated = False
 
-    def _run(self, argv, checkout, text, timeout, *, scratch=None):
-        environment = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
+    def _run(self, argv, checkout, text, timeout, *, codex_home, scratch=None):
+        environment = {
+            "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "CODEX_HOME": str(codex_home),
+        }
         if scratch is not None:
             environment["TMPDIR"] = str(scratch)
         result = self.runner(argv, checkout, input_text=text, env=environment,
@@ -203,12 +234,20 @@ class IsolatedProcess:
         if result.exit_code != 0:
             raise WorkerError("The isolated process did not complete successfully")
 
-    def _sandbox(self, native, checkout, *command, writable=False, scratch=False):
-        return (
-            *_namespace(offline=True), native, "sandbox", "-P", _PROFILE, "-C", str(checkout),
-            "--include-managed-config", "-c", _profile(native, checkout, writable=writable, scratch=scratch),
-            "--", *command,
-        )
+    def _run_sandbox(self, native, checkout, text, deadline, *command, writable=False,
+                     scratch=None, denied_home=None):
+        # Profile resolution may initialize authentication even for a sandbox-only command.
+        with TemporaryDirectory(prefix="aotg-offline-codex-", dir=checkout.parent) as offline_home:
+            denied = (offline_home,) if denied_home is None else (offline_home, denied_home)
+            profile = _profile(
+                native, checkout, writable=writable, scratch=scratch is not None, denied_homes=denied,
+            )
+            argv = (
+                *_namespace(offline=True), native, "sandbox", "-P", _PROFILE, "-C", str(checkout),
+                "--include-managed-config", "-c", profile, "-c", 'cli_auth_credentials_store="file"',
+                "--", "/usr/bin/env", "-u", "CODEX_HOME", "--", *command,
+            )
+            self._run(argv, checkout, text, _remaining(deadline), scratch=scratch, codex_home=offline_home)
 
     def preflight(self, checkout: Path, *, timeout_seconds: float) -> None:
         self._verified_workspace = None
@@ -220,21 +259,20 @@ class IsolatedProcess:
             TemporaryDirectory(prefix=".aotg-probe-", dir=checkout) as allowed,
             TemporaryDirectory(prefix="aotg-pilot-check-", dir=checkout.parent) as scratch,
         ):
-            sentinel = Path(denied) / "sentinel"
+            synthetic_home = Path(denied)
+            sentinel = synthetic_home / "auth.json"
             sentinel.write_bytes(b"private")
             proof = Path(allowed) / "observed"
-            argv = self._sandbox(
-                native, checkout, _PYTHON, "-EBsS", "-I", "-", str(proof), str(sentinel), "write",
-                writable=True,
+            self._run_sandbox(
+                native, checkout, _PROBE, deadline, _PYTHON, "-EBsS", "-I", "-",
+                str(proof), str(sentinel), "write", writable=True, denied_home=synthetic_home,
             )
-            self._run(argv, checkout, _PROBE, _remaining(deadline))
             if not proof.is_file() or proof.is_symlink() or proof.read_bytes() != b"verified":
                 raise WorkerError("The permission probe could not write to the candidate workspace")
-            argv = self._sandbox(
-                native, checkout, _PYTHON, "-EBsS", "-I", "-", str(proof), str(sentinel), "read", scratch,
-                scratch=True,
+            self._run_sandbox(
+                native, checkout, _PROBE, deadline, _PYTHON, "-EBsS", "-I", "-",
+                str(proof), str(sentinel), "read", scratch, scratch=scratch, denied_home=synthetic_home,
             )
-            self._run(argv, checkout, _PROBE, _remaining(deadline), scratch=scratch)
             if proof.read_bytes() != b"verified" or sentinel.read_bytes() != b"private":
                 raise WorkerError("The permission probe did not verify filesystem isolation")
         if identity != _workspace(checkout, self.deployment.uid):
@@ -254,17 +292,20 @@ class IsolatedProcess:
         if self._generated or not _approved(approval, prompt, timeout_seconds):
             raise WorkerError("Explicit authorization for this bounded model attempt is required")
         native = self._verified(checkout)
+        codex_home = _trusted_codex_home(self.deployment, checkout=checkout)
+        profile = _profile(native, checkout, writable=True, scratch=False, denied_homes=(codex_home,))
         argv = (
             *_namespace(offline=False), native, "--ask-for-approval", "never", "exec",
             "--ignore-user-config", "--ephemeral", "--cd", str(checkout), "--model", approval.model,
-            "-c", f'default_permissions="{_PROFILE}"', "-c", _profile(native, checkout, writable=True, scratch=False),
+            "-c", f'default_permissions="{_PROFILE}"', "-c", profile,
             "-c", 'forced_login_method="chatgpt"', "-c", 'model_provider="openai"',
+            "-c", 'cli_auth_credentials_store="file"', "-c", 'chatgpt_base_url="https://chatgpt.com/backend-api/"',
             "-c", 'web_search="disabled"', "-c", "mcp_servers={}", "-c", "features.apps=false",
             "-c", "features.plugins=false", "-c", "allow_login_shell=false",
             "-c", 'shell_environment_policy.inherit="none"', "-",
         )
         self._generated = True
-        self._run(argv, checkout, prompt, _remaining(deadline))
+        self._run(argv, checkout, prompt, _remaining(deadline), codex_home=codex_home)
 
     def verify(self, checkout: Path, *, timeout_seconds: float, contract: str | None = None) -> None:
         deadline = monotonic() + _finite_timeout(timeout_seconds)
@@ -280,8 +321,8 @@ class IsolatedProcess:
 
     def _verify_command(self, native, checkout, deadline, text, *arguments):
         with TemporaryDirectory(prefix="aotg-pilot-check-", dir=checkout.parent) as scratch:
-            argv = self._sandbox(native, checkout, _PYTHON, "-EBsS", *arguments, scratch=True)
-            self._run(argv, checkout, text, _remaining(deadline), scratch=scratch)
+            self._run_sandbox(native, checkout, text, deadline, _PYTHON, "-EBsS", *arguments,
+                              scratch=scratch, denied_home=self.deployment.codex_home)
 
 
 def _remaining(deadline):
