@@ -19,7 +19,7 @@ from aotg.autodev.pilot_worker import (
     PilotWorker,
 )
 from aotg.autodev.queue import ApprovedScope, scope_digest
-from aotg.autodev.worker import WorkerError
+from aotg.autodev.worker import CandidateRejected, WorkerError
 
 SCOPE = ApprovedScope("UOB-50", 7, "a" * 64, PILOT_PATHS, ("UOB-49",), "")
 SCOPE = replace(SCOPE, approval_sha=scope_digest(SCOPE))
@@ -96,6 +96,19 @@ class PilotWorkerTests(TestCase):
         with self.assertRaises(WorkerError):
             self.worker.implement(SCOPE, self.base, timeout_seconds=60)
         self.runner.generate.assert_called_once()
+
+    def test_incomplete_candidate_is_rejected_without_publication(self):
+        def generate_partial(checkout, prompt, *, timeout_seconds):
+            self.assertEqual(self.preflighted, checkout)
+            self.assertEqual(prompt, PILOT_PROMPT)
+            for name in PILOT_PATHS[:-1]:
+                (checkout / name).write_bytes(b"partial candidate output")
+
+        self.runner.generate.side_effect = generate_partial
+        with self.assertRaises(CandidateRejected):
+            self.worker.implement(SCOPE, self.base, timeout_seconds=60)
+        self.runner.verify.assert_not_called()
+        self.build.assert_not_called()
 
     def test_generated_out_of_scope_changes_cannot_enter_verification(self):
         def generate(checkout, prompt, *, timeout_seconds):
