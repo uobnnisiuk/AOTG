@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 import sys
 import tempfile
 import time
@@ -12,6 +13,8 @@ from unittest.mock import patch
 
 from aotg.artifacts import ArtifactError
 from aotg.field_client import (
+    _namespace_tools,
+    _supervise,
     client_command,
     run_opencode,
     summarize_events,
@@ -28,6 +31,39 @@ def profile(endpoint="http://127.0.0.1:19180/v1"):
         "npm": "@ai-sdk/openai-compatible", "options": {"baseURL": endpoint, "apiKey": "{file:/owner/existing-key}"},
         "models": {"fixture-model": {"name": "fixture-model", "tool_call": True,
                                       "limit": {"context": 8192, "output": 1024}}}}}}
+
+
+def client_namespace_probe():
+    """Probe the exact production wrapper, without an OpenCode/model process.
+
+    Hosted CI may deny unprivileged namespaces even when util-linux is present.
+    Only that known host limitation skips positive native tests. An unexpected
+    acknowledgment or child failure remains a test failure, not a silent skip.
+    """
+    if os.name != "posix" or not Path("/proc/self/ns/pid").exists():
+        return False, "Linux PID namespaces are unavailable on this host"
+    supplied = {"unshare": "/usr/bin/unshare", "setpriv": "/usr/bin/setpriv", "python": sys.executable}
+    if any(not Path(path).is_file() or not os.access(path, os.X_OK) for path in supplied.values()):
+        return False, "Existing client namespace tools are unavailable"
+    tools, _ = _namespace_tools(supplied)
+    with tempfile.TemporaryDirectory(prefix="aotg-client-namespace-probe-") as temporary:
+        root = Path(temporary)
+        stderr = root / "probe.stderr"
+        try:
+            result = _supervise(
+                [tools["python"], "-I", "-S", "-c", "print('aotg-client-namespace-probe')"],
+                root, {"PATH": "/usr/bin:/bin", "LANG": "C", "HOME": str(root)},
+                5, 4096, None, root / "probe.stdout", stderr, tools)
+        except ArtifactError:
+            diagnostic = stderr.read_text(encoding="utf-8", errors="replace") if stderr.exists() else ""
+            if re.search(r"(?:unshare|setpriv):[^\n]*(?:operation not permitted|permission denied)",
+                         diagnostic, flags=re.IGNORECASE):
+                return False, "Host policy denies the required client namespace/capability setup"
+            raise
+        if (result["stop_reason"] != "exited" or result["exit_code"] != 0
+                or result["stdout"] != b"aotg-client-namespace-probe\n"):
+            raise AssertionError("Client namespace probe child failed after setup: " + repr(result))
+    return True, None
 
 
 class ConfigurationTests(unittest.TestCase):
@@ -77,9 +113,35 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(summary["invalid_event_lines"], 1)
         self.assertFalse(summary["selftest_pass_reported"])
 
+    @unittest.skipUnless(sys.platform == "linux", "Client namespace capability classification is Linux-specific")
+    def test_namespace_probe_skips_host_denial_but_not_protocol_regression(self):
+        def denied(command, cwd, env, seconds, output_limit, max_steps, stdout, stderr, tools):
+            stderr.write_text("unshare: unshare failed: Operation not permitted\n", encoding="utf-8")
+            raise ArtifactError("Invalid PID namespace startup acknowledgment")
+
+        with patch(__name__ + "._supervise", side_effect=denied):
+            available, reason = client_namespace_probe()
+        self.assertFalse(available)
+        self.assertIn("Host policy", reason)
+
+        def broken_protocol(command, cwd, env, seconds, output_limit, max_steps, stdout, stderr, tools):
+            stderr.write_text("unexpected child protocol failure\n", encoding="utf-8")
+            raise ArtifactError("Invalid PID namespace startup acknowledgment")
+
+        with patch(__name__ + "._supervise", side_effect=broken_protocol), self.assertRaisesRegex(ArtifactError, "acknowledgment"):
+            client_namespace_probe()
+
 
 @unittest.skipUnless(os.name == "posix", "First-machine process supervision runs in WSL/POSIX")
 class FakeClientTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.namespace_available, cls.namespace_unavailable_reason = client_namespace_probe()
+
+    def require_namespace(self):
+        if not self.namespace_available:
+            self.skipTest(self.namespace_unavailable_reason)
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
@@ -144,6 +206,7 @@ for event in events: print(json.dumps(event), flush=True)
 """
 
     def test_complete_synthetic_client_keeps_quality_independent(self):
+        self.require_namespace()
         self.script(self.complete_body())
         original_profile = self.owner_profile.read_bytes()
         with patch.dict(os.environ, {"API_KEY": "should-not-propagate"}):
@@ -161,12 +224,14 @@ for event in events: print(json.dumps(event), flush=True)
         self.assertNotIn("literal-value", (self.root / "result/result.json").read_text())
 
     def test_public_selftest_tampering_invalidates_completion(self):
+        self.require_namespace()
         self.script(self.complete_body() + "Path('verify.sh').chmod(0o600)\nPath('verify.sh').write_text('changed')\n")
         result = run_opencode(**self.arguments())
         self.assertEqual(result["status"], "protected-input-changed")
         self.assertFalse(result["public_selftests_unchanged"])
 
     def test_timeout_cleans_detached_descendants(self):
+        self.require_namespace()
         self.script("subprocess.Popen([sys.executable,'-c',\"import time;from pathlib import Path;time.sleep(.6);Path('detached-survived').touch()\"], start_new_session=True)\ntime.sleep(30)\n")
         result = run_opencode(**self.arguments(max_seconds=0.15))
         self.assertEqual(result["status"], "wall-time")
@@ -174,6 +239,7 @@ for event in events: print(json.dumps(event), flush=True)
         self.assertFalse((self.root / "result/work/detached-survived").exists())
 
     def test_normal_parent_exit_also_cleans_children(self):
+        self.require_namespace()
         self.script("subprocess.Popen([sys.executable,'-c',\"import time;from pathlib import Path;time.sleep(.6);Path('detached-survived').touch()\"], start_new_session=True)\n")
         result = run_opencode(**self.arguments())
         self.assertEqual(result["status"], "incomplete")
@@ -182,12 +248,14 @@ for event in events: print(json.dumps(event), flush=True)
 
     def test_missing_namespace_fails_without_client_execution(self):
         self.script("Path('client-ran').touch()\n")
-        args = self.arguments(namespace_tools={"unshare": "/bin/false", "setpriv": "/usr/bin/setpriv", "python": sys.executable})
+        # This rejection test still runs when the real namespace probe is denied.
+        args = self.arguments(namespace_tools={"unshare": "/bin/false", "setpriv": "/bin/false", "python": sys.executable})
         with self.assertRaisesRegex(ArtifactError, "namespace"):
             run_opencode(**args)
         self.assertFalse((self.root / "result/work/client-ran").exists())
 
     def test_output_and_step_limits(self):
+        self.require_namespace()
         self.script("print('x' * 100000, flush=True)\ntime.sleep(30)\n")
         result = run_opencode(**self.arguments(max_output_bytes=4096))
         self.assertEqual(result["status"], "output-limit")
