@@ -97,15 +97,25 @@ def check(case, request, expected_status, code=0):
                     break
                 output.extend(chunk)
             seconds = deadline - monotonic()
-            if len(output) > 1024 or seconds <= 0 or child.wait(timeout=seconds) != code:
+            if len(output) > 1024 or seconds <= 0:
                 raise SystemExit("Pilot grading command did not return a confirmed result")
+            returncode = child.wait(timeout=seconds)
         finally:
             if child.poll() is None:
                 child.kill()
 
-    data = json.loads(
-        output.decode("utf-8"), object_pairs_hook=unique_fields, parse_constant=invalid_constant,
-    )
+    # Only the two contractual exits establish that this grader produced a
+    # result after stdout reached EOF. A startup crash or signal is ambiguous.
+    if returncode not in (0, 2):
+        raise SystemExit("Pilot grading command did not return a confirmed result")
+    if returncode != code:
+        raise RejectCandidate("Unexpected pilot grading exit code")
+    try:
+        data = json.loads(
+            output.decode("utf-8"), object_pairs_hook=unique_fields, parse_constant=invalid_constant,
+        )
+    except (ValueError, RecursionError):
+        raise RejectCandidate("Invalid pilot grading output") from None
     if (type(data) is not dict or type(data.get("version")) is not int
             or data != {"version": 1, "case": case, "status": expected_status}):
         raise RejectCandidate("Unexpected pilot grading result")

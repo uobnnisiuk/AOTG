@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from dataclasses import replace
@@ -24,6 +25,7 @@ from aotg.autodev.isolated_process import (
     _trusted_bwrap,
     _trusted_codex_home,
 )
+from aotg.autodev.pilot_worker import PILOT_CONTRACT
 from aotg.autodev.worker import CandidateRejected, RunResult, WorkerError
 
 PROMPT = "Approved public fixture task."
@@ -492,6 +494,44 @@ class VerifierProcessTests(TestCase):
                 code, evidence = self.run_verifier(Path(temporary), script)
                 self.assertEqual(code, exit_code)
                 self.assertEqual(evidence, b"f" * 64 + b" " + verdict + b"\n" if verdict else None)
+
+    def test_pilot_contract_rejects_completed_cli_violations_with_a_receipt(self):
+        grader_with_wrong_malformed_exit = """
+import json
+import sys
+from pathlib import Path
+
+case = sys.argv[2]
+catalog = json.loads(Path(sys.argv[4]).read_bytes())
+observations = next(item["assertions"] for item in catalog["cases"] if item["id"] == case)
+try:
+    request = json.load(sys.stdin)
+except json.JSONDecodeError:
+    status = "malformed"
+else:
+    if request.get("timeout"):
+        status = "timeout"
+    elif len(request["observations"]) < len(observations):
+        status = "missing_observations"
+    else:
+        status = "pass"
+print(json.dumps({"version": 1, "case": case, "status": status}))
+"""
+        for grader, exit_code, verdict in (
+            (grader_with_wrong_malformed_exit, _REJECTED_EXIT, b"f" * 64 + b" reject\n"),
+            ('print("debug\\n" + \'{"version": 1, "case": "cpp-half-open-interval", "status": "pass"}\')',
+             _REJECTED_EXIT, b"f" * 64 + b" reject\n"),
+            ("raise SystemExit(1)", 1, None),
+        ):
+            with self.subTest(exit_code=exit_code, grader=grader), TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                (root / "aotg").mkdir()
+                (root / "aotg" / "offline_bench.py").write_text(grader, encoding="utf-8")
+                relative = Path("tests/fixtures/benchmark/catalog.json")
+                catalog = root / relative
+                catalog.parent.mkdir(parents=True)
+                shutil.copyfile(Path(__file__).resolve().parents[1] / relative, catalog)
+                self.assertEqual(self.run_verifier(root, PILOT_CONTRACT), (exit_code, verdict))
 
     def test_modified_checker_input_produces_no_receipt(self):
         with TemporaryDirectory() as temporary:

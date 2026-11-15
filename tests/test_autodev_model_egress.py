@@ -18,7 +18,10 @@ _SERVER_HELLO_HEADER = b"\x16\x03\x03\x00\x01"
 
 def _tls_hello(hostname):
     outgoing = ssl.MemoryBIO()
-    client = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT).wrap_bio(ssl.MemoryBIO(), outgoing, server_hostname=hostname)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    if hostname is None:
+        context.check_hostname = False  # Emit a synthetic ClientHello without SNI.
+    client = context.wrap_bio(ssl.MemoryBIO(), outgoing, server_hostname=hostname)
     try:
         client.do_handshake()
     except ssl.SSLWantReadError:
