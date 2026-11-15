@@ -11,7 +11,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 from aotg.artifacts import ArtifactError
-from aotg.field_client import client_command, run_opencode, summarize_events, validate_profile
+from aotg.field_client import (
+    client_command,
+    run_opencode,
+    summarize_events,
+    validate_profile,
+)
 
 
 def sha(data):

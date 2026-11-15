@@ -27,3 +27,9 @@ SSEの改行を送らず少量ずつ送信する試験で、最初の実装は�
 ## F-005: 本番の同時ロードとSSD観測
 
 現在のUMA使用状況では、本番モデルを残した候補の同時ロードを前提にできない。停止・切替には所有者の具体的な確認と、今回の復帰検証が必要。既存SSD観測プロセスが存在するので、測定時間帯を記録し、通常利用の24時間観測と負荷試験を混同しない。観測プロセスは変更・停止しない。
+
+## F-006: 公開自己テストと独立採点を分ける
+
+`python -m aotg.field_selftest --source /task/intervals.cpp --public-test /task/PublicTests.cpp --compiler /usr/bin/g++ --allow-execute` は、明示したソースと公開テストだけを読み取り専用の隔離workspaceへコピーし、一時領域でコンパイル・実行する。C++の公開テストは対象ソースをincludeする。C#は既存.NET 8のRoslyn・参照assembly・runtimeを直接指定し、restoreや取得を行わない。ユーザーの`.dotnet`全体を公開せず、必要なツールの部分だけを読み取り専用で渡す。
+
+実機WSLの公開C++／C# starterはいずれも不合格、既知の正例はいずれも合格し、元ファイルのhashは不変だった。隔離確認、書込拒否、timeout、出力上限も検証した。これは公開テストの実行経路の確認であり、推論やOpenCodeによる修正成功の証拠ではない。結果の`independent`と`quality_accepted`は常にfalseで、独立テストやソースレビューを代替しない。
