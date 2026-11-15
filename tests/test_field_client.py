@@ -187,8 +187,16 @@ class FakeClientTests(unittest.TestCase):
 overlay = json.loads(os.environ['OPENCODE_CONFIG_CONTENT'])
 assert overlay['permission']['bash'] == {'*': 'deny', './verify.sh': 'allow'}
 assert overlay['permission']['external_directory'] == 'deny'
+assert overlay['permission']['edit'] == {'*': 'deny', str((Path.cwd() / 'Source.cpp').relative_to('/')): 'allow'}
 assert overlay['enabled_providers'] == ['evo']
 assert overlay['agent']['aotg-field']['steps'] == 4
+assert overlay['agent']['title'] == {'disable': True}
+guidance = overlay['agent']['aotg-field']['prompt']
+for name in ('Source.cpp', 'PublicTests.cpp', 'verify.sh'):
+    assert str(Path.cwd() / name) in guidance
+assert 'structured tool interface' in guidance
+assert 'only allowed bash command is exactly ./verify.sh' in guidance
+assert sys.argv[-1] == 'Repair Source.cpp. Run ./verify.sh and provide a final response.'
 assert os.environ['OPENCODE_DISABLE_MODELS_FETCH'] == 'true'
 assert 'API_KEY' not in os.environ and 'LD_PRELOAD' not in os.environ
 assert Path(os.environ['HOME']).is_dir()
@@ -247,6 +255,34 @@ for event in events: print(json.dumps(event), flush=True)
         self.assertEqual(result["status"], "incomplete")
         time.sleep(0.7)
         self.assertFalse((self.root / "result/work/detached-survived").exists())
+
+    def test_git_ancestor_and_ambiguous_paths_rejected_before_client_execution(self):
+        self.script("Path('client-ran').touch()\n")
+        marker = self.root / ".git"
+        # OpenCode treats each kind as a project marker, including worktrees.
+        for kind in ("directory", "file", "broken-symlink"):
+            with self.subTest(kind=kind):
+                if kind == "directory":
+                    marker.mkdir()
+                elif kind == "file":
+                    marker.write_text("gitdir: nonexistent\n", encoding="utf-8")
+                else:
+                    marker.symlink_to(self.root / "missing-git-directory")
+                try:
+                    with self.assertRaisesRegex(ArtifactError, "outside every Git project"):
+                        run_opencode(**self.arguments())
+                    self.assertFalse((self.root / "result").exists())
+                finally:
+                    if kind == "directory":
+                        marker.rmdir()
+                    else:
+                        marker.unlink()
+        alias = self.root / "alias"
+        alias.symlink_to(self.root, target_is_directory=True)
+        for output in (alias / "result", self.root / "result*", self.root / "result?"):
+            with self.subTest(output=output), self.assertRaises(ArtifactError):
+                run_opencode(**self.arguments(output_dir=output))
+        self.assertFalse((self.root / "result").exists())
 
     def test_missing_namespace_fails_without_client_execution(self):
         self.script("Path('client-ran').touch()\n")

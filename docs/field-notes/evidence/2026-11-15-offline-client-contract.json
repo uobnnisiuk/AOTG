@@ -1,0 +1,70 @@
+{
+  "actual_client_version": "1.1.53",
+  "actual_source_changed_to_fixture": true,
+  "advertised_tools": [
+    "bash",
+    "edit",
+    "read",
+    "write"
+  ],
+  "all_requests_custom_prompt": true,
+  "any_default_prompt": false,
+  "artifact": "aotg-offline-client-contract-diagnostic",
+  "capabilities_dropped": true,
+  "client_result_sha256": "72337fc966668c32593869a6bb92384136ca0ba6cf1287d770a1a5b6ec85fba6",
+  "client_sha256": "497ba2028e851d6d059ff63b23076ba2e3ca763a7a733168e6c6bb98fd456934",
+  "client_status": "completed-awaiting-independent-quality",
+  "date": "2026-11-15",
+  "error": null,
+  "expected_requests": 8,
+  "external_routes": [],
+  "failures": [],
+  "independent_quality_accepted": false,
+  "limitations": [
+    "Deterministic fake SSE output, not real model inference.",
+    "Verification compares synthetic bytes; no compiler or hidden quality harness.",
+    "Tool policy and namespace observation do not constitute a general filesystem sandbox.",
+    "Original outputs remain private; generated paths and conversation text are omitted."
+  ],
+  "limits": {
+    "client_seconds": 45,
+    "outer_seconds": 90,
+    "production_limits_changed": false,
+    "synthetic_steps": 10
+  },
+  "module_bytes_unchanged": true,
+  "module_sha256": {
+    "aotg/__init__.py": "46c9e007176286ab74415bfc6c2e55b9452e710b42880b6af8d61d5901c2a4e9",
+    "aotg/artifacts.py": "4b3def66e8d3fe1a65326930adfdbba970c40c70e5ead99c9330cd85562f60bc",
+    "aotg/field_client.py": "d5b9ad960478449a5d442e15f65569209f3a572ff9315e94cc83c93b7f0068ee"
+  },
+  "native_compilation": false,
+  "network_interfaces": [
+    "lo"
+  ],
+  "new_software_downloaded": false,
+  "outside_directory_denials": 1,
+  "outside_sentinel_unchanged": true,
+  "overlay_sha256": "a8a42cf5f4fe8d842cf368448fa0ab0a217f741ed36570d3138c9d730b73b93f",
+  "owner_credentials_copied": false,
+  "production_access": false,
+  "prompt_sha256": "1ff16432b093bb8f75004c66281bda34131af40079823f9dcefab66d66876968",
+  "public_edit_denials": 1,
+  "raw_evidence_sha256": {
+    "probe_source": "f9adfe3cd8f24015e9e59d074933a7eab8515e3578d512d5214607fa0326828f",
+    "readback": "59a21b7b550f4286e4607c173ee544de32f4c6f04c284fab0befe10310d7554b",
+    "summary": "6dd2629d3b89f531356f53280d0db4b1c39c1665c365639b5f15848a095adbd2"
+  },
+  "real_model_inference": false,
+  "request_count": 8,
+  "status": "passed-transport-only",
+  "successful_tools": [
+    "read",
+    "read",
+    "write",
+    "edit",
+    "bash"
+  ],
+  "title_agent_log_lines": 0,
+  "version": 1
+}

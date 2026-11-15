@@ -176,18 +176,58 @@ def client_command(executable, model):
     return [str(executable), "run", "--format", "json", "--agent", AGENT, "-m", "evo/" + model]
 
 
+def _require_global_project(root):
+    """Pin OpenCode 1.1.53's non-Git project boundary to / without discovery.
+
+    Its read permission uses an absolute path; edit/write use a path relative
+    to the project boundary. An ancestor .git would change that interpretation.
+    This is a tool-policy guard, not protection against a hostile host process.
+    """
+    if (not root.is_absolute() or ".." in root.parts or root.resolve() != root
+            or any(character in str(root) for character in "*?")):
+        raise ArtifactError("Use a canonical workspace without permission wildcards")
+    for parent in (root, *root.parents):
+        marker = parent / ".git"
+        if parent.is_symlink() or marker.exists() or marker.is_symlink():
+            raise ArtifactError("Use a symlink-free workspace outside every Git project")
+
+
 def _configuration(root, source, files, model, seconds, steps):
+    _require_global_project(root)
     paths = [str(root / name) for name in files]
     reads = {"*": "deny", **{path: "allow" for path in paths}}
-    edits = {"*": "deny", str(root / source): "allow"}
+    edits = {"*": "deny", (root / source).relative_to("/").as_posix(): "allow"}
     permissions = {"*": "deny", "read": reads, "list": {"*": "deny", str(root): "allow"},
                    "edit": edits, "bash": {"*": "deny", "./verify.sh": "allow"},
                    "external_directory": "deny", "webfetch": "deny", "websearch": "deny",
                    "codesearch": "deny", "task": "deny", "question": "deny", "skill": "deny"}
+    public_paths = [str(root / name) for name in files if name != source]
+    # In OpenCode 1.1.53 agent.prompt replaces the provider's generic prompt.
+    # That generic prompt suggests discovery tools which this workload denies.
+    prompt = (
+        "You are completing one bounded coding task in the supplied workspace. "
+        "Read the task and supplied files, repair the source, and verify the result.\n"
+        "Editable source: " + str(root / source) + "\n"
+        "Read-only public files:\n" + "\n".join(public_paths) + "\n"
+        "These are all the files needed for this task; no file discovery is needed. "
+        "Use read to inspect them, and edit or write only the editable source. "
+        "Use the provided structured tool interface for every tool call. "
+        "Do not print XML or other tool-call markup as response text. "
+        "The only allowed bash command is exactly ./verify.sh. It builds the source "
+        "and runs the public tests. Do not invoke ls, glob, other shell commands, "
+        "subagents, or network tools. Do not modify public files or tests. "
+        "After the final edit, run ./verify.sh and inspect its result. "
+        "If verification fails, fix the source within the task limits. "
+        "Finish with a concise, truthful result; do not claim unrun tests passed."
+    )
     return {"model": "evo/" + model, "small_model": "evo/" + model, "enabled_providers": ["evo"],
             "provider": {"evo": {"options": {"timeout": int(seconds * 1000)}}},
-            "agent": {AGENT: {"mode": "primary", "model": "evo/" + model,
-                              "temperature": 0, "top_p": 1, "steps": steps,
+            # Both session naming and message-summary naming call agent title.
+            # Disable it so background requests cannot contend for the serial
+            # measurement proxy or consume the finite workload request budget.
+            "agent": {"title": {"disable": True},
+                      AGENT: {"mode": "primary", "model": "evo/" + model,
+                              "prompt": prompt, "temperature": 0, "top_p": 1, "steps": steps,
                               "permission": permissions}},
             "default_agent": AGENT, "permission": permissions, "plugin": [], "mcp": {},
             "instructions": [], "autoupdate": False, "share": "disabled", "lsp": False,
@@ -462,8 +502,9 @@ def run_opencode(*, executable, profile, command, workload, endpoint, model, out
     output = Path(output_dir)
     if not output.is_absolute() or output.exists() or not output.parent.is_dir():
         raise ArtifactError("Use a new absolute results directory beneath an existing parent")
-    output.mkdir(mode=0o700)
     workspace, private = output / "work", output / "private"
+    _require_global_project(workspace)
+    output.mkdir(mode=0o700)
     workspace.mkdir(mode=0o700)
     private.mkdir(mode=0o700)
     for name, data in files.items():
@@ -481,6 +522,7 @@ def run_opencode(*, executable, profile, command, workload, endpoint, model, out
     if any(before[name] != _sha(data) for name, data in files.items()):
         raise ArtifactError("Staged workload changed before client execution")
     invocation = [*command, prompt]
+    _require_global_project(workspace)
     observed = _supervise(invocation, workspace, env, max_seconds, max_output_bytes, max_steps,
                           private / "events.jsonl", private / "stderr.log", namespace_paths)
     summary = summarize_events(observed["stdout"], workspace, source, files)
