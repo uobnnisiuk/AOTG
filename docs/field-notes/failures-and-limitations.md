@@ -48,7 +48,7 @@ Windows SSHはWSLのPID namespaceだけでは回収を証明できない。既�
 
 所有者実機では、制御用のシステムPythonとStrata用Pythonの版が異なる。さらにStrata用Pythonを`-I -S`で起動し、既存の制御ソースだけを指定して読み取り専用import検査を行うと、既存のJinja2が見つからず停止した。実機workerのファイル照合と復帰コマンドのdry-runが通っても、実際のimport closureが成立するとは限らない。
 
-不足を新規ダウンロードで埋めず、既存依存packageの所在と内容を個別に確認し、ハッシュ固定した範囲だけを利用する。`.pth`や暗黙のユーザー設定の読込と混同しない。現時点のこの失敗はサービスを止める前の検出であり、隔離サーバーの実起動成功は未確認。
+不足を新規ダウンロードで埋めず、既存依存packageの所在と内容を個別に確認し、ハッシュ固定した範囲だけを利用する。`.pth`や暗黙のユーザー設定の読込と混同しない。この段階での失敗はサービスを止める前に検出した。その後の実機起動で判明した遅延依存の不足はF-013に記録する。
 
 ## F-009: CI環境の隔離機能と実機の隔離機能を区別する
 
@@ -73,3 +73,33 @@ K8 WSLではuser/mount/PID namespaceを利用できたが、Linux CIのポリシ
 [PR #16](https://github.com/uobnnisiuk/AOTG/pull/16)で、実socketによるSSE・内容・usageの検査を残し、時刻の開始条件は決定論的な時計で別に検証した。roleだけのdeltaと空deltaを無視し、最初のcontentまたはtool deltaでTTFTが始まり、後続deltaで上書きされないことを検査する。再現は`python -m unittest discover -s tests -p test_field_bench.py -v`。11テストと独立レビューが成功し、マージ後[CI 43707952148](https://github.com/uobnnisiuk/AOTG/actions/runs/43707952148)も全4構成で成功した。測定実装・固定済み実機入力は変更していない。
 
 初号機のK8 WSL Python 3.12.3は`clock_gettime(CLOCK_MONOTONIC)`、申告分解能1 nsだったが、申告値を実測精度の証明としない。将来の他OS対応では時計の実装・申告分解能を測定条件に記録し、短い差の扱いを再検討する。汎用版の時計変更や精度改善は未実施。
+
+## F-012: 対話認証後の短い期限に会話の待ち時間を入れない
+
+2026-11-15の最初の認証完了後、親側がクライアント起動、補助観測、準備完了通知を別々のツール呼び出しで行った。通知時には90秒の連携期限を過ぎ、検証器が拒否した。EVOの実記録は `stopped-before-maintenance`、本番変更なし。クライアントは約151.39秒で待機を終了し、実行した課題は0件だった。期限を延長せず、この失敗を保存した。
+
+別ID・別保存先で、同じコード・候補・時間上限の試行を準備した。親の連携処理を認証前に待機させ、認証検知、正確なPID・起動時刻・argv・待受socketの照合、実起動記録、排他的な準備完了通知までを一続きで実行した。保存記録では準備完了通知が受理され、本番停止へ進んだことを確認した。認証から通知までの精密な所要時間は、独立確認できる原本の時刻が保存されていないため数値を採用しない。期限・ハッシュ検証・本番停止前のidle確認を省略した結果ではない。この改善は制御手順の成功であり、モデル性能の改善ではない。
+
+他環境への示唆は、短い期限を持つ機械間連携を会話や複数回の承認処理の遅延から分離すること。失敗した認証・試行の記録を削除して同じIDを再使用しない。今回の制御用スクリプトは私有構成に依存しており、汎用オーケストレータの完成を意味しない。
+
+## F-013: import成功でも遅延依存が不足し得る
+
+同日の次の試行では、認証・連携と本番停止が成立したが、最初のbaselineのStrataサーバーが読み込み中に終了した。ログは `strata_tokenizer` の `import regex` で `ModuleNotFoundError`。固定依存はJinja2とMarkupSafeだけだった。workerは約0.877秒で停止し、完了した比較armは0件。prefill候補の比較は開始できていない。
+
+実機の元のサービスは復帰し、実記録は `worker-failed-restored`、`unit_restore_verified: true`。その後K8経由で推論応答を確認した。ただし、開発課題まで含めた復帰確認はF-014の理由で未完了。成功した復帰の一例は、あらゆる障害からの復帰保証ではない。[実測診断要約](evidence/2026-11-15-first-window.json)
+
+事後に既存環境の `regex 2026.9.10` の5ファイルとdistribution metadataを読み取り、Jinja2 3.1.6、MarkupSafe 3.0.3とともに個別hashを保存した。既存Strata Python 3.12.15を使い、書込み・通信・子プロセスを禁止する監査下で、従来のserver importに加えて遅延tokenizer importまで成功した。GPU・モデル重みのロード、新規取得はしていない。
+
+確実な結論は、従来のimport検査が実起動中の依存を網羅していなかったこと。既存regexの固定リストへの追加は修正候補だが、修正後の隔離サーバー起動と比較は未検証。新しい実行計画に依存一覧とhashを反映し、過去の失敗記録と混ぜずに検証する必要がある。一般化ではエントリポイントのimportだけでなく、実際の遅延初期化経路を検査対象にする。
+
+## F-014: HTTP応答とOpenCodeの終了コード0は課題完了ではない
+
+復帰後、既存K8 OpenCode 1.1.53から同じFlashNext IQ3_S／DFlash2環境を使用した。5リクエストはSSE終端まで完了し、短答確認も通った。しかしC++課題は約42.659秒で終了コード0となった一方、ソースは未変更、公開テスト実行0回だった。最終出力にはglobのtool-call形式の文字列が残り、実際のtool eventには変換されていなかった。readの実tool eventは確認できた。
+
+結果は `incomplete`／`client-failed`。残りのC#課題は、固定した不合格時停止規則どおり実行しなかった。正答率やテスト合格率は、この未実行のテストから算出しない。独立品質は未確認。6件の関連Windows SSHジョブは全件のplan hashとJobEmptyを照合し、クライアントcleanup errorなし、測定用listener残存なしを確認した。
+
+保存されたOpenCode内部のtool記録を追加確認すると、最初のbash `ls` は権限規則で拒否され、その後のソースreadは成功していた。実際に送信されたtool schemaは `bash`、`read`、`edit`、`write` の4種で、globは含まれていなかった。stdoutのeventsだけでは最初の拒否を拾えていなかった。既定のsystem promptにはglobやlsを使う一般的な探索案内があり、限定された権限と一致していなかった。
+
+同じprivate logには主agentのHTTP 409が3件、title agentのLLM処理開始が2件ある。409の宛先・空応答は測定proxyと一致し、固定proxyコードで409を返すのは同時要求を拒否する分岐だけである。したがって、この409はローカルproxyの同時要求拒否と判断する。タイトル処理との競合に整合するが、個々のproxy記録にはagent識別がなく、成功した各応答とtitle処理との一対一の対応は未確認である。409以降の最終glob文字列が発生した原因まで確定したわけではない。
+
+次の修正候補は、タイトル用agentの無効化と、許可ファイル・操作を明示するprimary agentのpromptである。OpenCode 1.1.53では、セッション名とメッセージ要約名に別のタイトル生成経路があるため、固定の `--title` だけでは後者は止まらない。[メッセージ要約の実装](https://github.com/anomalyco/opencode/blob/v1.1.53/packages/opencode/src/session/summary.ts#L113-L158)、[agent無効化の実装](https://github.com/anomalyco/opencode/blob/v1.1.53/packages/opencode/src/agent/agent.ts#L197-L200)。モデル、provider変換、サーバーtool parserの全体としての改善効果は未検証。自由なコマンド権限を与えたり、tool-call文字列を実行したり、自己申告の合格を採用したりしない。

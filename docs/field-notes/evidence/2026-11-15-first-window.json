@@ -1,0 +1,228 @@
+{
+  "artifact": "aotg-field-diagnostic-summary",
+  "baseline_established": false,
+  "classification": "failed first maintenance attempt and restored-service diagnostics; not comparative baseline",
+  "cleanup": {
+    "all_job_empty": true,
+    "all_job_hashes_match": true,
+    "client_cleanup_errors": [],
+    "owned_jobs": 6,
+    "remaining_measurement_listeners": 0
+  },
+  "coding_task": {
+    "exit_code": 0,
+    "independent_quality_accepted": false,
+    "language": "C++",
+    "public_selftest_attempts": 0,
+    "remaining_csharp_task": "not run after first task failed",
+    "seconds_until_incomplete_exit": 42.65897353400942,
+    "source_changed": false,
+    "status": "incomplete",
+    "steps": 3,
+    "tool_observations": {
+      "bash_ls": "policy denied; preserved internal part",
+      "source_read": "completed",
+      "advertised_tools": [
+        "bash",
+        "read",
+        "edit",
+        "write"
+      ],
+      "final_glob": "text only; glob not advertised"
+    }
+  },
+  "date": "2026-11-15",
+  "environment": {
+    "client": "K8 Plus WSL",
+    "drafting": "DFlash2",
+    "engine": "Strata 0.1.59",
+    "gpu": "Radeon 8060S",
+    "model": "Qwen3.8-Flash-Next IQ3_S",
+    "opencode": "1.1.53",
+    "server": "EVO-X3"
+  },
+  "goal_complete": false,
+  "handoff_seconds_after_authentication": null,
+  "optimization_selected": false,
+  "raw_evidence_location": "Owner-private storage; internal paths, addresses, credentials and generated conversation bodies omitted",
+  "raw_evidence_sha256": {
+    "coding_result": "ea633d7be248adab90d701a06f58dc9e6ed19ac81d54c71098caf90f8419de09",
+    "evo_capture_inventory": "28cbcc53d96758eb46b6587fe2308d03f6518b178f9da2ddfd7cd48405c34044",
+    "owner_restoration_result": "d53c509c009f1faab16073f81236d4b2970ace1fdfa39e86460d72361ae507d8",
+    "post_restoration_summary": "0e51f76b170cc434e558c1bda62e9107137b6fa61953d42d9e2c66f819839d1d",
+    "server_error_log": "7c819b514a8fddb74b451f91fd0974c16beb0d36c3d9ade28065987bfbb50559",
+    "worker_summary": "4bc84581ff748032e799d3e341a07e6acdbdc7755947c60d3c7ae11fc4aff828",
+    "opencode_private_log": "addc8c7a68979c44c44531bd09bc1e823b669a0b27aa14dee6e5e2c61c5104dc"
+  },
+  "requests": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "requested_cache_prompt": false,
+      "status": "completed",
+      "timings": {
+        "cache_n": 0,
+        "draft_n": 10,
+        "draft_n_accepted": 5,
+        "predicted_ms": 163.9,
+        "predicted_n": 8,
+        "predicted_per_second": 48.8,
+        "predicted_per_token_ms": 20.488,
+        "prompt_ms": 2483.3,
+        "prompt_n": 643,
+        "prompt_per_second": 258.9,
+        "prompt_per_token_ms": 3.862
+      },
+      "ttft_seconds": 3.3024941489857156,
+      "usage": {
+        "completion_tokens": 8,
+        "prompt_tokens": 643,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "total_tokens": 651
+      },
+      "wall_seconds": 3.433157269988442
+    },
+    {
+      "finish_reason": "stop",
+      "index": 1,
+      "requested_cache_prompt": false,
+      "status": "completed",
+      "timings": {
+        "cache_n": 0,
+        "draft_n": 8,
+        "draft_n_accepted": 4,
+        "predicted_ms": 131.8,
+        "predicted_n": 7,
+        "predicted_per_second": 53.1,
+        "predicted_per_token_ms": 18.829,
+        "prompt_ms": 2450.3,
+        "prompt_n": 651,
+        "prompt_per_second": 265.7,
+        "prompt_per_token_ms": 3.764
+      },
+      "ttft_seconds": 3.279641625005752,
+      "usage": {
+        "completion_tokens": 7,
+        "prompt_tokens": 651,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "total_tokens": 658
+      },
+      "wall_seconds": 3.3853652990073897
+    },
+    {
+      "finish_reason": "tool_calls",
+      "index": 2,
+      "requested_cache_prompt": false,
+      "status": "completed",
+      "timings": {
+        "cache_n": 0,
+        "draft_n": 58,
+        "draft_n_accepted": 32,
+        "predicted_ms": 688.2,
+        "predicted_n": 42,
+        "predicted_per_second": 61,
+        "predicted_per_token_ms": 16.386,
+        "prompt_ms": 20657.2,
+        "prompt_n": 6148,
+        "prompt_per_second": 297.6,
+        "prompt_per_token_ms": 3.36
+      },
+      "ttft_seconds": 21.663385389983887,
+      "usage": {
+        "completion_tokens": 42,
+        "prompt_tokens": 6148,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "total_tokens": 6190
+      },
+      "wall_seconds": 22.18042986499495
+    },
+    {
+      "finish_reason": "tool_calls",
+      "index": 3,
+      "requested_cache_prompt": false,
+      "status": "completed",
+      "timings": {
+        "cache_n": 6189,
+        "draft_n": 88,
+        "draft_n_accepted": 57,
+        "predicted_ms": 979.2,
+        "predicted_n": 71,
+        "predicted_per_second": 72.5,
+        "predicted_per_token_ms": 13.792,
+        "prompt_ms": 937.7,
+        "prompt_n": 133,
+        "prompt_per_second": 141.8,
+        "prompt_per_token_ms": 7.05
+      },
+      "ttft_seconds": 1.8078662070038263,
+      "usage": {
+        "completion_tokens": 71,
+        "prompt_tokens": 6322,
+        "prompt_tokens_details": {
+          "cached_tokens": 6189
+        },
+        "total_tokens": 6393
+      },
+      "wall_seconds": 2.6877458340022713
+    },
+    {
+      "finish_reason": "stop",
+      "index": 4,
+      "requested_cache_prompt": false,
+      "status": "completed",
+      "timings": {
+        "cache_n": 6392,
+        "draft_n": 105,
+        "draft_n_accepted": 64,
+        "predicted_ms": 1181.5,
+        "predicted_n": 81,
+        "predicted_per_second": 68.6,
+        "predicted_per_token_ms": 14.586,
+        "prompt_ms": 812.6,
+        "prompt_n": 98,
+        "prompt_per_second": 120.6,
+        "prompt_per_token_ms": 8.292
+      },
+      "ttft_seconds": 1.8462460259906948,
+      "usage": {
+        "completion_tokens": 81,
+        "prompt_tokens": 6490,
+        "prompt_tokens_details": {
+          "cached_tokens": 6392
+        },
+        "total_tokens": 6571
+      },
+      "wall_seconds": 2.777590726997005
+    }
+  ],
+  "restoration": {
+    "complete_development_workflow_verified": false,
+    "observed_completed_api_requests": 5,
+    "post_check_seconds": 44.01166699899477,
+    "post_check_status": "stopped",
+    "status": "worker-failed-restored",
+    "unit_restore_verified": true
+  },
+  "version": 1,
+  "worker": {
+    "attempted_arms": 1,
+    "completed_arms": 0,
+    "loader_error": "ModuleNotFoundError: No module named regex",
+    "status": "stopped",
+    "stop_reason": "Strata server exited during load",
+    "wall_seconds": 0.8770569599873852
+  },
+  "handoff_timing_note": "Readiness acceptance is preserved; precise authentication-to-publication duration lacks independently preserved primary timestamps and is not asserted.",
+  "client_contention": {
+    "http_409_count": 3,
+    "title_agent_stream_starts": 2,
+    "classification": "local serial proxy rejected concurrent requests",
+    "title_request_individual_join": "not proven"
+  }
+}
