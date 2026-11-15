@@ -1,9 +1,10 @@
-"""Synthetic fake clients only: these tests do not run OpenCode or a model."""
+"""Fake clients plus real nested public compilers; no OpenCode or model runs."""
 
 import hashlib
 import json
 import os
 import re
+import shlex
 import sys
 import tempfile
 import time
@@ -20,6 +21,7 @@ from aotg.field_client import (
     summarize_events,
     validate_profile,
 )
+from aotg.field_sandbox import run_isolated
 
 
 def sha(data):
@@ -279,6 +281,99 @@ for event in events: print(json.dumps(event), flush=True)
         with self.assertRaises(ArtifactError):
             run_opencode(**self.arguments())
         self.assertFalse((self.root / "result").exists())
+
+
+@unittest.skipUnless(sys.platform == "linux", "Nested native public selftests require Linux")
+class NestedNativePublicSelftestTests(unittest.TestCase):
+    """Exercise verify.sh through the real client wrapper and inner sandbox.
+
+    A direct inner-sandbox host probe distinguishes missing host facilities from
+    a regression composing two supported isolation layers. Once both facilities
+    work independently, a nested uid_map failure must fail these tests.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        available, reason = client_namespace_probe()
+        if not available:
+            raise unittest.SkipTest(reason)
+        with tempfile.TemporaryDirectory(prefix="aotg-direct-selftest-probe-") as temporary:
+            probe = run_isolated(["/usr/bin/true"], temporary, execution_authorized=True,
+                                 readonly_workspace=True)
+        if not probe["isolation_verified"]:
+            raise unittest.SkipTest("Host forbids the direct native selftest sandbox")
+
+    def run_nested(self, source_text, public_text, source_name, public_name, toolchain):
+        with tempfile.TemporaryDirectory(prefix="aotg-nested-public-selftest-") as temporary:
+            root = Path(temporary)
+            source, public = root / source_name, root / public_name
+            source.write_text(source_text, encoding="utf-8")
+            public.write_text(public_text, encoding="utf-8")
+            before = source.read_bytes(), public.read_bytes()
+            repository = str(Path(__file__).resolve().parents[1])
+            driver = root / "run_public.py"
+            driver.write_text(
+                "import json, os, sys\nfrom pathlib import Path\n"
+                + "sys.path.insert(0, " + repr(repository) + ")\n"
+                + "from aotg.field_selftest import run_public_selftest\n"
+                + "status = dict(line.split(':', 1) for line in Path('/proc/self/status').read_text().splitlines() if ':' in line)\n"
+                + "caps = {key: int(status[key].strip(), 16) for key in ('CapInh','CapPrm','CapEff','CapBnd','CapAmb')}\n"
+                + "assert all(value == 0 for value in caps.values()) and status['NoNewPrivs'].strip() == '1'\n"
+                + "result = run_public_selftest(" + repr(str(source)) + ", " + repr(str(public))
+                + ", execution_authorized=True, **" + repr(toolchain) + ")\n"
+                + "print(json.dumps({'outer_uid': os.getuid(), 'outer_caps': caps, 'selftest': result}))\n"
+                + "raise SystemExit(0 if result['status'] == 'pass' else 1)\n", encoding="utf-8")
+            verify = root / "verify.sh"
+            verify.write_text("#!/bin/sh\nexec " + shlex.quote(sys.executable)
+                              + " -I -S -B " + shlex.quote(str(driver)) + "\n", encoding="utf-8")
+            verify.chmod(0o500)
+            tools, _ = _namespace_tools({"unshare": "/usr/bin/unshare", "setpriv": "/usr/bin/setpriv",
+                                         "python": sys.executable})
+            observed = _supervise(["./verify.sh"], root,
+                                  {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "HOME": str(root), "TMPDIR": str(root)},
+                                  90, 65536, None, root / "stdout", root / "stderr", tools)
+            self.assertEqual(observed["stop_reason"], "exited", observed)
+            self.assertIn(observed["exit_code"], (0, 1), observed)
+            self.assertEqual(observed["namespace"]["uid"], os.getuid())
+            self.assertEqual(observed["namespace"]["gid"], os.getgid())
+            self.assertTrue(observed["namespace"]["capabilities_dropped"])
+            self.assertTrue(observed["namespace"]["no_new_privs"])
+            self.assertEqual((source.read_bytes(), public.read_bytes()), before)
+            payload = json.loads(observed["stdout"])
+            self.assertEqual(payload["outer_uid"], os.getuid())
+            self.assertEqual(set(payload["outer_caps"].values()), {0})
+            report = payload["selftest"]
+            self.assertTrue(report["isolation"]["isolation_verified"], report)
+            self.assertTrue(report["isolation"]["readonly_workspace"], report)
+            self.assertFalse(report["quality_accepted"])
+            self.assertEqual(report["compile"]["exit_code"], 0, report)
+            return observed["exit_code"], report
+
+    @unittest.skipUnless(Path("/usr/bin/g++").is_file(), "Existing g++ unavailable; no download attempted")
+    def test_cpp_starter_rejected_and_correct_source_passes_inside_client_namespace(self):
+        public = '#include "candidate.cpp"\nint main(){return public_value()==42?0:1;}\n'
+        for value, expected in ((41, "test-failed"), (42, "pass")):
+            with self.subTest(value=value):
+                code, report = self.run_nested("int public_value(){return " + str(value) + ";}\n", public,
+                                              "candidate.cpp", "PublicTests.cpp", {"compiler": "/usr/bin/g++"})
+                self.assertEqual(report["status"], expected, report)
+                self.assertEqual(code, 0 if expected == "pass" else 1)
+
+    def test_csharp_starter_rejected_and_correct_source_passes_inside_client_namespace(self):
+        dotnet = Path.home() / ".dotnet"
+        compiler, csc = dotnet / "dotnet", dotnet / "sdk/8.0.424/Roslyn/bincore/csc.dll"
+        references = dotnet / "packs/Microsoft.NETCore.App.Ref/8.0.30/ref/net8.0"
+        if not compiler.is_file() or not csc.is_file() or not references.is_dir():
+            self.skipTest("Pinned existing .NET8 toolchain unavailable; no download attempted")
+        toolchain = {"compiler": str(compiler), "compiler_kind": "dotnet-csc", "csc_dll": str(csc),
+                     "reference_dir": str(references), "runtime_version": "8.0.30"}
+        public = "public static class PublicTests {public static int Main(){return Candidate.Value()==42?0:1;}}\n"
+        for value, expected in ((41, "test-failed"), (42, "pass")):
+            with self.subTest(value=value):
+                source = "public static class Candidate {public static int Value(){return " + str(value) + ";}}\n"
+                code, report = self.run_nested(source, public, "Candidate.cs", "PublicTests.cs", toolchain)
+                self.assertEqual(report["status"], expected, report)
+                self.assertEqual(code, 0 if expected == "pass" else 1)
 
 
 if __name__ == "__main__":

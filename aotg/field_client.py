@@ -33,17 +33,21 @@ _NAMESPACE_INIT = r"""
 import json, os, subprocess, sys
 fd = int(sys.argv[1])
 old_namespace = sys.argv[2]
+expected_uid, expected_gid = int(sys.argv[3]), int(sys.argv[4])
 current_namespace = os.readlink('/proc/self/ns/pid')
 status = dict(line.split(':', 1) for line in open('/proc/self/status') if ':' in line)
 if (os.getpid() != 1 or current_namespace == old_namespace
+        or os.getuid() != expected_uid or os.geteuid() != expected_uid
+        or os.getgid() != expected_gid or os.getegid() != expected_gid
         or status['NoNewPrivs'].strip() != '1'
-        or any(int(status[key].strip(), 16) != 0 for key in ('CapEff', 'CapPrm', 'CapBnd', 'CapAmb'))):
+        or any(int(status[key].strip(), 16) != 0 for key in ('CapInh', 'CapEff', 'CapPrm', 'CapBnd', 'CapAmb'))):
     raise SystemExit(125)
 record = {'protocol': 'aotg-pid-namespace-v1', 'pid': 1,
+          'uid': os.getuid(), 'gid': os.getgid(),
           'namespace': current_namespace, 'no_new_privs': True, 'capabilities_dropped': True}
 os.write(fd, (json.dumps(record) + '\n').encode())
 os.close(fd)
-child = subprocess.Popen(sys.argv[3:], close_fds=True)
+child = subprocess.Popen(sys.argv[5:], close_fds=True)
 code = child.wait()
 # Exiting namespace PID 1 makes the kernel kill every remaining descendant,
 # even double-forked or setsid children, before the unshare parent returns.
@@ -252,11 +256,14 @@ def _supervise(command, cwd, env, seconds, output_limit, max_steps, stdout_path,
     reason = "exited"
     read_fd, write_fd = os.pipe()
     previous_namespace = os.readlink("/proc/self/ns/pid")
-    wrapped = [namespace_tools["unshare"], "--user", "--map-root-user", "--mount", "--pid",
+    # Preserve the caller's nonroot UID so the public selftest can create its
+    # own user namespace after we drop all capabilities. Mapping parent UID 0
+    # again can require CAP_SETFCAP. keep-caps lasts only until setpriv below.
+    wrapped = [namespace_tools["unshare"], "--user", "--map-current-user", "--keep-caps", "--mount", "--pid",
                "--fork", "--kill-child=KILL", "--mount-proc", "--propagation", "private",
                namespace_tools["setpriv"], "--bounding-set=-all", "--inh-caps=-all", "--ambient-caps=-all",
                "--no-new-privs", namespace_tools["python"], "-I", "-S", "-B", "-c", _NAMESPACE_INIT,
-               str(write_fd), previous_namespace, *command]
+               str(write_fd), previous_namespace, str(os.getuid()), str(os.getgid()), *command]
     with stdout_path.open("xb+") as stdout, stderr_path.open("xb+") as stderr:
         try:
             process = subprocess.Popen(wrapped, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
@@ -290,6 +297,7 @@ def _supervise(command, cwd, env, seconds, output_limit, max_steps, stdout_path,
                 raise ArtifactError("Invalid namespace startup record") from exc
             if (acknowledged.get("protocol") != "aotg-pid-namespace-v1"
                     or acknowledged.get("pid") != 1 or acknowledged.get("namespace") == previous_namespace
+                    or acknowledged.get("uid") != os.getuid() or acknowledged.get("gid") != os.getgid()
                     or acknowledged.get("no_new_privs") is not True
                     or acknowledged.get("capabilities_dropped") is not True):
                 raise ArtifactError("PID namespace security properties not acknowledged")

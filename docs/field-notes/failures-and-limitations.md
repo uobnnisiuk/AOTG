@@ -49,3 +49,13 @@ Windows SSHはWSLのPID namespaceだけでは回収を証明できない。既�
 ## F-009: CI環境の隔離機能と実機の隔離機能を区別する
 
 K8 WSLではuser/mount/PID namespaceを利用できたが、Linux CIのポリシーでは同じ操作が拒否された。実装の要件を緩めず、テストで同じnamespace起動経路を事前に確認し、明示的な権限拒否の場合だけ成功系の実行試験をskipする。未知のprotocol不具合は失敗のままにし、隔離不能時の拒否試験は維持する。CIのgreenを実機隔離の証拠として代用しない。
+
+## F-010: 単独で動く隔離環境も入れ子では起動できないことがある
+
+実測した事実：K8 WSLで、クライアント側の外側user namespaceを`--map-root-user`で作成し、capabilityをすべて落とした後に公開自己テストの内側user namespaceを起動すると、`uid_map`への書込みが`EPERM`で失敗した。それぞれの隔離環境が単独で起動できることだけでは、この組合せの動作を証明できなかった。観測環境はWSL kernel `6.6.87.2-microsoft-standard-WSL2`、util-linux `2.39.3`。モデルやGPU推論を使わずに再現した。
+
+原因についての推論：Linux 5.12以降、親namespaceのUID 0を含むmappingには、書込み元またはnamespace作成時の`CAP_SETFCAP`について追加条件がある。今回の外側UID 0とcapability除去の組合せは、この条件による拒否と整合する。カーネル内部の分岐を直接traceした結果ではない。[Linux user_namespaces(7) のUID mapping条件](https://www.man7.org/linux/man-pages/man7/user_namespaces.7.html)
+
+外側を`--map-current-user --keep-caps`へ変更し、元のUID/GIDを維持した。保持するcapabilityは直後の`setpriv`までとし、クライアント起動前の専用pipeによる確認で`CapInh`、`CapPrm`、`CapEff`、`CapBnd`、`CapAmb`がすべて0、`NoNewPrivs=1`であることを要求する。
+
+修正後は実際のクライアント起動関数から`./verify.sh`を実行し、その内側で既存g++ `13.3.0`と.NET SDK `8.0.424`／runtime `8.0.30`によるコンパイル・実行を検証した。C++／C#の両方で、不正な初期実装は`test-failed`、既知の正しい実装は`pass`になり、公開自己テストと入力ファイルは変更されなかった。再現コマンドは`python3 -m unittest tests.test_field_client.NestedNativePublicSelftestTests -v`。この結果は隔離層の組合せと公開自己テストの実証であり、モデルの品質・推論性能・実機適用完了は別の検証を要する。ほかの環境でも、単独の機能確認に加え、実際に入れ子となる起動経路を検証することが有効と考えられる。
