@@ -18,7 +18,18 @@
     "seconds_until_incomplete_exit": 42.65897353400942,
     "source_changed": false,
     "status": "incomplete",
-    "steps": 3
+    "steps": 3,
+    "tool_observations": {
+      "bash_ls": "policy denied; preserved internal part",
+      "source_read": "completed",
+      "advertised_tools": [
+        "bash",
+        "read",
+        "edit",
+        "write"
+      ],
+      "final_glob": "text only; glob not advertised"
+    }
   },
   "date": "2026-11-15",
   "environment": {
@@ -31,7 +42,7 @@
     "server": "EVO-X3"
   },
   "goal_complete": false,
-  "handoff_seconds_after_authentication": 1.236089,
+  "handoff_seconds_after_authentication": null,
   "optimization_selected": false,
   "raw_evidence_location": "Owner-private storage; internal paths, addresses, credentials and generated conversation bodies omitted",
   "raw_evidence_sha256": {
@@ -40,7 +51,8 @@
     "owner_restoration_result": "d53c509c009f1faab16073f81236d4b2970ace1fdfa39e86460d72361ae507d8",
     "post_restoration_summary": "0e51f76b170cc434e558c1bda62e9107137b6fa61953d42d9e2c66f819839d1d",
     "server_error_log": "7c819b514a8fddb74b451f91fd0974c16beb0d36c3d9ade28065987bfbb50559",
-    "worker_summary": "4bc84581ff748032e799d3e341a07e6acdbdc7755947c60d3c7ae11fc4aff828"
+    "worker_summary": "4bc84581ff748032e799d3e341a07e6acdbdc7755947c60d3c7ae11fc4aff828",
+    "opencode_private_log": "addc8c7a68979c44c44531bd09bc1e823b669a0b27aa14dee6e5e2c61c5104dc"
   },
   "requests": [
     {
@@ -205,5 +217,12 @@
     "status": "stopped",
     "stop_reason": "Strata server exited during load",
     "wall_seconds": 0.8770569599873852
+  },
+  "handoff_timing_note": "Readiness acceptance is preserved; precise authentication-to-publication duration lacks independently preserved primary timestamps and is not asserted.",
+  "client_contention": {
+    "http_409_count": 3,
+    "title_agent_stream_starts": 2,
+    "classification": "local serial proxy rejected concurrent requests",
+    "title_request_individual_join": "not proven"
   }
 }
