@@ -20,6 +20,22 @@ python -m aotg.autodev shadow
 
 `Coordinator.run_once` は既定で書き込みなし。実行モードで必要な `GitHubPort`、`WorkerPort`、`ResultSlot` は信頼できるローカル配備が用意する。レポートと台帳はAOTG専用とし、既存の他プロジェクトのスケジュール、ロック、承認、データ、予算から分離する。[Footprintの運用例](https://github.com/uobnnisiuk/footprint-sim/blob/main/docs/autodev-daily.md) · [時間ごとの確認](https://github.com/uobnnisiuk/footprint-sim/blob/main/docs/autodev-hourly.md) · [候補選定](https://github.com/uobnnisiuk/footprint-sim/blob/main/docs/autodev-queue.md)
 
+## 承認キューのシャドウ接続
+
+引数なしの `python -m aotg.autodev shadow` は公開GitHubを読み取る。運用者が管理する承認ファイルを使えば、モデル起動・予約・書き込みを伴わずに選定結果を確認できる。
+
+```sh
+python -m aotg.autodev shadow --approvals "$APPROVAL_FILE" \
+  --github-cli "$VERIFIED_GH" --linear-authorization "$LINEAR_AUTHORIZATION_FILE" \
+  --ledger "$AOTG_LEDGER"
+```
+
+- 承認ファイルとLinear認証ファイルは、WSLのcheckout外にある運用者専用ディレクトリに置く。親ディレクトリは `0700`、ファイルは `0600`。認証ファイルには別途承認されたLinear接続の認証値を1行だけ置く。認証値・承認履歴・結果ログはGit管理外。
+- 承認ファイルの形式は `{"version":1,"policy":"AOTG-AUTODEV-V1","repo":"uobnnisiuk/AOTG","scopes":[]}`。空なら実行候補を選ばない。各スコープに `issue`、`github_issue`、`revision`、`allowed_paths`、`dependencies`、`approval_sha` を指定する。最新版と承認対象を照合するため、`LinearIntake.snapshot` の版と依存関係を確認し、許可内容を `scope_digest` で固定する。承認はハッシュを計算したことでは成立しない。承認ファイルへの登録は、所有者が対象と変更範囲を明示した後に行う。
+- GitHub CLIは信頼できる既存の実行ファイルを絶対パスで指定する。GitHub Issue番号と作成者、Linearのプロジェクト・依存・版を別々に照合する。空の承認ファイルから認証先や候補を推定しない。
+- 結果送信には、運用者が指定したGitHub #3とLinear UOB-58の固定コメントを使う。初期本文は `` `AOTG-AUTODEV-V1/result` ``。コメントのID・所属課題・作成者を照合し、構造化済みの単一結果だけを更新する。2サービスの更新は一括確定できないため、途中で失敗した場合は保留記録を残し、再送前に両方の実状態を確認する。
+- Draft作成用のGitHubアダプターは、先に検証済みコミットが専用ブランチに置かれ、固定されたベースと変更パスに一致することを要求する。承認済みモデル実行・隔離された生成・最終コミットの検査と公開は、配備側が別途接続する。シャドウCLIに本番実行モードは追加していない。
+
 ## K8への配備と復帰
 
 - 配備前に、K8のWindowsとWSLの実行主体、専用checkout、GitHub／Linearへの権限、既存のCodexログイン状態を確認する。Codexを起動するアカウントには登録済みプランの利用だけを許可し、追加購入や従量課金の利用は別途承認する。
