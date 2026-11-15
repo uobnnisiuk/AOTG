@@ -95,7 +95,7 @@ class PilotLaunchTests(unittest.TestCase):
             load.assert_called_once()
         start.assert_not_called()
 
-    def test_deployment_verifies_fixed_private_codex_home(self):
+    def test_deployment_verifies_fixed_private_codex_home_and_bwrap(self):
         root = Path.cwd() / "aotg-deployment-fixture"
         now = datetime.now(timezone.utc).replace(microsecond=0)
         release = SimpleNamespace(
@@ -105,6 +105,7 @@ class PilotLaunchTests(unittest.TestCase):
         data = {
             "version": 1, "policy": pilot_launch.POLICY, "base": SHA, "scope_digest": release.scope_digest,
             "uid": 2000, "codex": "/example/codex", "codex_sha256": "b" * 64, "gh": "/example/gh",
+            "bwrap": "/example/private-bin/bwrap", "bwrap_sha256": "c" * 64,
             "model": "approved-model", "verified_at": release.issued_at.isoformat(timespec="seconds"),
             "expires_at": release.expires_at.isoformat(timespec="seconds"),
             "attestations": sorted(pilot_launch._ATTESTATIONS),
@@ -117,12 +118,28 @@ class PilotLaunchTests(unittest.TestCase):
             patch.object(pilot_launch, "_trusted_executable"),
             patch.object(pilot_launch, "_trusted_codex"),
             patch.object(pilot_launch, "_trusted_codex_home") as home,
+            patch.object(pilot_launch, "_trusted_bwrap") as bwrap,
         ):
             installation = pilot_launch._load_deployment(root, SHA)
             self.assertEqual(installation.codex.codex_home, root / "config" / "codex")
             self.assertEqual(installation.gh_config_dir, root / "config" / "github")
+            self.assertEqual(installation.codex.bwrap, Path(data["bwrap"]))
+            self.assertEqual(installation.codex.bwrap_sha256, data["bwrap_sha256"])
             records.assert_called_once_with(root / "config" / "pilot-deployment.json", 8192)
             home.assert_called_once_with(installation.codex)
+            bwrap.assert_called_once_with(installation.codex, checkout=root / "checkout")
+            bwrap.side_effect = WorkerError("Untrusted sandbox pin")
+            with self.assertRaisesRegex(WorkerError, "Untrusted sandbox pin"):
+                pilot_launch._load_deployment(root, SHA)
+            bwrap.side_effect = None
+            bwrap.reset_mock()
+            for field in ("bwrap", "bwrap_sha256"):
+                invalid = {name: value for name, value in data.items() if name != field}
+                records.return_value = json.dumps(invalid).encode()
+                with self.subTest(field=field), self.assertRaisesRegex(ValueError, "could not be verified"):
+                    pilot_launch._load_deployment(root, SHA)
+            bwrap.assert_not_called()
+            records.return_value = json.dumps(data).encode()
             home.side_effect = WorkerError("Dedicated login unavailable")
             with self.assertRaisesRegex(WorkerError, "Dedicated login"):
                 pilot_launch._load_deployment(root, SHA)

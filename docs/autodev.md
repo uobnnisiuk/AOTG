@@ -75,3 +75,11 @@ python3 -I -B "$AOTG_PINNED_SUPERVISOR" --probe "$AOTG_CHECKOUT" "$MAIN_SHA"
 - タスク名は `AOTG Local AutoDev`。初回は登録に必要な承認を得て無効状態で準備する。同名タスクがあれば停止して状態を照合する。無効のshadow用タスク定義は `aotg.autodev.task_definition.disabled_task_xml` で生成できる。配備時は毎時最大1回の確認、重複起動と欠落回の追いかけを禁止し、40分で実行を打ち切る設定を確認する。Workや他の負荷と安全に共存できる証拠が欠けた場合は候補を実行しない。
 - スケジュールを有効にする前に、破棄可能な専用環境でshadowを実施し、固定結果欄の読み戻しと重複拒否を確認する。既定では無効を維持する。実Issueの初回モデル実行は承認された試行枠を使い、GitHub側のDraft PRと照合できた時に実動作として記録する。
 - 復帰時はAOTGタスクだけを無効にし、実行中の作業が収束したことを確認する。登録前の状態へ戻す場合はAOTGタスクだけを撤去し、予約済みの台帳・ブランチ・結果は調査と再開判定のため保持する。
+
+### 初回試行の通信と利用枠
+
+モデルを呼び出すCodex本体の通信は、プロセス単位のLinuxネットワーク分離とTLS中継で制限する。中継は `chatgpt.com:443` へのCONNECTと一致するTLSサーバー名を確認してから接続する。許可外の要求、中継の障害、制限の初期化失敗は実行結果を不明として停止する。Codexが起動するコマンドは、既存の権限プロファイルでさらに分離し、認証領域と中継口へのアクセスを拒否する。
+
+配備記録の `bwrap` と `bwrap_sha256` は、AOTG専用領域に置いたホスト標準のBubblewrap実行ファイルとそのSHA-256を指定する。公式の配布情報で確認したファイルを使い、専用ディレクトリにはその実行ファイルだけを置く。コードや候補の作業領域から指定先を変更できないようにする。
+
+利用枠は専用ChatGPT認証でCodex App Serverの `account/read`（`refreshToken: false`）と `account/rateLimits/read` を使って読み取る。利用枠の残量は照会時点の値として扱う。利用枠内だけで開始するには、購入済みクレジットが使われないことと自動購入が無効であることを同じアカウントの利用状況で確認する。クレジットの購入、上限のリセット操作、従量課金APIへの切替は行わない。[Codex App Server](https://learn.chatgpt.com/docs/app-server#authentication-and-accounts) · [利用状況](https://chatgpt.com/codex/settings/usage) · [自動購入の仕様](https://help.openai.com/en/articles/12642688-using-credits-for-flexible-usage-in-chatgpt-personal-plans)

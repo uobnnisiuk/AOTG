@@ -5,8 +5,10 @@ import shutil
 import subprocess
 import sys
 import unittest
+from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from aotg.autodev.worker import (
     ChangeSet,
@@ -135,9 +137,69 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 3)
         self.assertFalse(result.timed_out)
         command = (sys.executable, "-c", "import time; time.sleep(20)")
-        result = _run_in_wsl(command, Path.cwd(), input_text="", env={}, timeout_seconds=0.1)
-        self.assertTrue(result.timed_out)
-        self.assertLess(result.exit_code, 0)
+        for options in ({}, {"cancelled": lambda: False}):
+            with self.subTest(cancellable=bool(options)):
+                result = _run_in_wsl(command, Path.cwd(), input_text="", env={}, timeout_seconds=0.1, **options)
+                self.assertTrue(result.timed_out)
+                self.assertLess(result.exit_code, 0)
+
+    @unittest.skipUnless(os.name == "posix", "Local process runner targets Linux/WSL")
+    def test_cancellable_linux_process_receives_complete_input_exactly_once(self):
+        payload = "synthetic-fixture" * 3800
+        expected = sha256(payload.encode()).hexdigest()
+        script = (
+            "import hashlib, sys, time; time.sleep(0.15); "
+            "sys.exit(hashlib.sha256(sys.stdin.buffer.read()).hexdigest() != sys.argv[1])"
+        )
+        result = _run_in_wsl(
+            (sys.executable, "-c", script, expected), Path.cwd(), input_text=payload, env={},
+            timeout_seconds=5, cancelled=lambda: False,
+        )
+        self.assertEqual((result.exit_code, result.timed_out), (0, False))
+
+    @unittest.skipUnless(os.name == "posix", "Local process runner targets Linux/WSL")
+    def test_cancelled_linux_process_is_killed_and_reaped(self):
+        launched = []
+        popen = subprocess.Popen
+
+        def remember(*args, **kwargs):
+            process = popen(*args, **kwargs)
+            launched.append(process)
+            return process
+
+        with TemporaryDirectory() as name:
+            ready = Path(name) / "ready"
+            script = (
+                "from pathlib import Path; import sys, time; "
+                "Path(sys.argv[1]).touch(); time.sleep(20)"
+            )
+            with (
+                patch("aotg.autodev.worker.subprocess.Popen", side_effect=remember),
+                self.assertRaisesRegex(WorkerError, "egress boundary stopped"),
+            ):
+                _run_in_wsl(
+                    (sys.executable, "-c", script, str(ready)), Path.cwd(), input_text="synthetic-fixture" * 3800,
+                    env={}, timeout_seconds=5, cancelled=ready.exists,
+                )
+            self.assertTrue(ready.exists())
+        self.assertEqual(len(launched), 1)
+        self.assertLess(launched[0].returncode, 0)
+        with self.assertRaises(ChildProcessError):
+            os.waitpid(launched[0].pid, os.WNOHANG)
+
+    @unittest.skipUnless(os.name == "posix", "Local process runner targets Linux/WSL")
+    def test_failed_cancellation_observation_blocks_process_start(self):
+        def unavailable():
+            raise OSError("synthetic observation failure")
+
+        with patch("aotg.autodev.worker.subprocess.Popen") as popen:
+            for cancelled in (lambda: True, lambda: None, unavailable):
+                with self.subTest(cancelled=cancelled), self.assertRaisesRegex(WorkerError, "egress boundary"):
+                    _run_in_wsl(
+                        (sys.executable, "-c", "pass"), Path.cwd(), input_text="",
+                        env={}, timeout_seconds=5, cancelled=cancelled,
+                    )
+            popen.assert_not_called()
 
     @unittest.skipUnless(os.name == "posix", "Local process runner targets Linux/WSL")
     def test_linux_process_gets_only_explicit_environment_values(self):

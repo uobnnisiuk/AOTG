@@ -42,7 +42,7 @@ class _SignInArguments(argparse.ArgumentParser):
         self.exit(2, "AOTG ChatGPT authentication arguments could not be verified\n")
 
 
-def _read_connect(client):
+def _read_connect(client, *, authority=_AUTHORITY):
     header = bytearray()
     deadline = monotonic() + 5
     while not header.endswith(b"\r\n\r\n"):
@@ -55,8 +55,8 @@ def _read_connect(client):
         if not data or len(header) > _HEADER_MAX:
             return False
     request, *headers = bytes(header[:-4]).split(b"\r\n")
-    if request not in (b"CONNECT " + _AUTHORITY + b" HTTP/1.1",
-                       b"CONNECT " + _AUTHORITY + b" HTTP/1.0"):
+    if request not in (b"CONNECT " + authority + b" HTTP/1.1",
+                       b"CONNECT " + authority + b" HTTP/1.0"):
         return False
     names = set()
     for field in headers:
@@ -66,18 +66,18 @@ def _read_connect(client):
             not sep or not re.fullmatch(rb"[a-z0-9-]+", name) or name in names
             or any(byte < 32 or byte > 126 for byte in value)
             or name in (b"proxy-authorization", b"authorization", b"transfer-encoding", b"content-length")
-            or (name == b"host" and value.strip() != _AUTHORITY)
+            or (name == b"host" and value.strip() != authority)
         ):
             return False
         names.add(name)
     return True
 
 
-def _dial_auth(denied=None):
+def _dial_auth(denied=None, *, host=_HOST):
     if denied is not None and denied.is_set():
         raise SignInError("Authentication endpoint no longer allowed")
     addresses = socket.getaddrinfo(
-        _HOST, 443, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP,
+        host, 443, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP,
     )
     deadline = monotonic() + 5
     for family, kind, proto, _, address in addresses:
@@ -125,8 +125,9 @@ class _BoundedServer(socketserver.ThreadingMixIn):
     allow_reuse_address = False
     request_queue_size = 4
 
-    def __init__(self, address, handle):
+    def __init__(self, address, handle, *, on_failure=None):
         self.handle_connection = handle
+        self.on_failure = on_failure
         self.active = set()
         self.changed = Condition()
         super().__init__(address, _Handler)
@@ -134,6 +135,8 @@ class _BoundedServer(socketserver.ThreadingMixIn):
     def process_request(self, request, client_address):
         with self.changed:
             if len(self.active) >= self.request_queue_size:
+                if self.on_failure is not None:
+                    self.on_failure()
                 self.shutdown_request(request)
                 return
             self.active.add(request)
@@ -160,7 +163,8 @@ class _BoundedServer(socketserver.ThreadingMixIn):
 
     def handle_error(self, request, client_address):
         # Connection contents and exceptions are never rendered.
-        pass
+        if self.on_failure is not None:
+            self.on_failure()
 
 
 class _Handler(socketserver.BaseRequestHandler):
