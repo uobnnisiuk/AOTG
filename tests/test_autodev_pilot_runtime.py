@@ -27,6 +27,7 @@ from aotg.autodev.queue import (
     scope_digest,
 )
 from aotg.autodev.result_slot import LocalResultSlot
+from aotg.autodev.worker import CandidateRejected, WorkerError
 
 BASE = "1" * 40
 HEAD = "2" * 40
@@ -168,6 +169,28 @@ class PilotRuntimeTests(TestCase):
         self.assertEqual(self.slot.read(), result.redacted())
         self.assertEqual(self.run_pilot(release=self.release).reason, "open-pr")
         self.worker.implement.assert_called_once()
+
+    def test_candidate_rejection_records_failure_and_allows_a_later_issue(self):
+        self.worker.implement.side_effect = CandidateRejected("private model output")
+        result = self.run_pilot(release=self.release)
+        self.assertEqual((result.status, result.reason), ("blocked", "candidate-rejected"))
+        self.assertEqual(self.github.actions, ["reserved"])
+        self.push.assert_not_called()
+        self.assertEqual(self.slot.read(), result.redacted())
+        self.assertNotIn("private model output", str(self.slot.read()))
+        self.ledger.check("UOB-51", NOW + timedelta(days=2))
+        with self.assertRaises(ReservationBlocked):
+            self.ledger.check("UOB-50", NOW + timedelta(days=2))
+
+    def test_uncertain_worker_failure_keeps_the_queue_blocked(self):
+        self.worker.implement.side_effect = WorkerError("environment unavailable")
+        result = self.run_pilot(release=self.release)
+        self.assertEqual((result.status, result.reason), ("unknown", "worker-result-unconfirmed"))
+        self.push.assert_not_called()
+        self.assertNotIn("environment unavailable", str(self.slot.read()))
+        with self.assertRaises(ReservationBlocked) as blocked:
+            self.ledger.check("UOB-51", NOW + timedelta(days=2))
+        self.assertEqual(blocked.exception.reason, "active")
 
     def test_unverifiable_artifact_does_not_push(self):
         self.worker.artifact_for.return_value = SimpleNamespace(
