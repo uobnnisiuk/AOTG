@@ -28,6 +28,10 @@ SSEの改行を送らず少量ずつ送信する試験で、最初の実装は�
 
 現在のUMA使用状況では、本番モデルを残した候補の同時ロードを前提にできない。停止・切替には所有者の具体的な確認と、今回の復帰検証が必要。既存SSD観測プロセスが存在するので、測定時間帯を記録し、通常利用の24時間観測と負荷試験を混同しない。観測プロセスは変更・停止しない。
 
+追加の読み取り確認では、既存観測は60秒ごとにprocess情報を読み、1時間ごとに書込み集計を保存していた。試行ごとの読込み・書込み速度には不足するため、既存観測を維持したまま、block stat・I/O PSI・CPU累積counterを1秒ごとに読む有限の補助計測を用意した。実機で2秒の接続・形式確認を実施し、2サンプルと終了記録、所有SSHジョブの回収を確認した。この区間のI/O差分は0であり、モデル推論の性能やボトルネックの証拠ではない。
+
+本測定では実際の時刻と欠測区間を確認する。ホスト全体のcounterは他の仕事を含み、待ち時間counterは並行I/Oで壁時計以上に増え得る。これらだけで飽和や原因を断定しない。512-byte sectorと各counterの意味は[Linux block statistics](https://docs.kernel.org/block/stat.html)、待ち状態は[PSI](https://docs.kernel.org/accounting/psi.html)に従う。
+
 ## F-006: 公開自己テストと独立採点を分ける
 
 `python -m aotg.field_selftest --source /task/intervals.cpp --public-test /task/PublicTests.cpp --compiler /usr/bin/g++ --allow-execute` は、明示したソースと公開テストだけを読み取り専用の隔離workspaceへコピーし、一時領域でコンパイル・実行する。C++の公開テストは対象ソースをincludeする。C#は既存.NET 8のRoslyn・参照assembly・runtimeを直接指定し、restoreや取得を行わない。ユーザーの`.dotnet`全体を公開せず、必要なツールの部分だけを読み取り専用で渡す。
@@ -59,3 +63,13 @@ K8 WSLではuser/mount/PID namespaceを利用できたが、Linux CIのポリシ
 外側を`--map-current-user --keep-caps`へ変更し、元のUID/GIDを維持した。保持するcapabilityは直後の`setpriv`までとし、クライアント起動前の専用pipeによる確認で`CapInh`、`CapPrm`、`CapEff`、`CapBnd`、`CapAmb`がすべて0、`NoNewPrivs=1`であることを要求する。
 
 修正後は実際のクライアント起動関数から`./verify.sh`を実行し、その内側で既存g++ `13.3.0`と.NET SDK `8.0.424`／runtime `8.0.30`によるコンパイル・実行を検証した。C++／C#の両方で、不正な初期実装は`test-failed`、既知の正しい実装は`pass`になり、公開自己テストと入力ファイルは変更されなかった。再現コマンドは`python3 -m unittest tests.test_field_client.NestedNativePublicSelftestTests -v`。この結果は隔離層の組合せと公開自己テストの実証であり、モデルの品質・推論性能・実機適用完了は別の検証を要する。ほかの環境でも、単独の機能確認に加え、実際に入れ子となる起動経路を検証することが有効と考えられる。
+
+## F-011: 短時間のTTFTテストは時計分解能を無視できない
+
+観測した事実：PR #15のマージ後[CI 43707077964](https://github.com/uobnnisiuk/AOTG/actions/runs/43707077964)で、Windows／Python 3.11.9の1テストが失敗した。各SSE eventの前に10 ms待つfixtureに対し、TTFTが15 msより大きいという期待値があり、実際の値は`0.014999999999986358`だった。他の3構成は成功した。これは合成SSEのテストで、EVOの推論結果ではない。
+
+原因についての推論：その版のWindows実装は`GetTickCount64()`を使うため、時計の刻みと浮動小数点境界による結果と整合する。失敗したCIホストで時計分解能を直接測定したわけではない。[CPython 3.11.9の実装](https://github.com/python/cpython/blob/v3.11.9/Python/pytime.c#L968-L1005)
+
+[PR #16](https://github.com/uobnnisiuk/AOTG/pull/16)で、実socketによるSSE・内容・usageの検査を残し、時刻の開始条件は決定論的な時計で別に検証した。roleだけのdeltaと空deltaを無視し、最初のcontentまたはtool deltaでTTFTが始まり、後続deltaで上書きされないことを検査する。再現は`python -m unittest discover -s tests -p test_field_bench.py -v`。11テストと独立レビューが成功し、マージ後[CI 43707952148](https://github.com/uobnnisiuk/AOTG/actions/runs/43707952148)も全4構成で成功した。測定実装・固定済み実機入力は変更していない。
+
+初号機のK8 WSL Python 3.12.3は`clock_gettime(CLOCK_MONOTONIC)`、申告分解能1 nsだったが、申告値を実測精度の証明としない。将来の他OS対応では時計の実装・申告分解能を測定条件に記録し、短い差の扱いを再検討する。汎用版の時計変更や精度改善は未実施。
