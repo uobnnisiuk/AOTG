@@ -33,3 +33,19 @@ SSEの改行を送らず少量ずつ送信する試験で、最初の実装は�
 `python -m aotg.field_selftest --source /task/intervals.cpp --public-test /task/PublicTests.cpp --compiler /usr/bin/g++ --allow-execute` は、明示したソースと公開テストだけを読み取り専用の隔離workspaceへコピーし、一時領域でコンパイル・実行する。C++の公開テストは対象ソースをincludeする。C#は既存.NET 8のRoslyn・参照assembly・runtimeを直接指定し、restoreや取得を行わない。ユーザーの`.dotnet`全体を公開せず、必要なツールの部分だけを読み取り専用で渡す。
 
 実機WSLの公開C++／C# starterはいずれも不合格、既知の正例はいずれも合格し、元ファイルのhashは不変だった。隔離確認、書込拒否、timeout、出力上限も検証した。これは公開テストの実行経路の確認であり、推論やOpenCodeによる修正成功の証拠ではない。結果の`independent`と`quality_accepted`は常にfalseで、独立テストやソースレビューを代替しない。
+
+## F-007: 親プロセスの終了だけでは試行の終了を証明できない
+
+独立レビューで、親から離れた子が親の終了後も動き、遅れてファイルを作る反例を再現した。固定したOpenCode版もLinuxではbashをdetachedで起動するため、架空の条件だけの問題ではない。K8のクライアントには専用PID namespace、EVOの候補には所有するsystemd cgroupの残存確認を使い、残存が不明なら次の候補へ進まない。
+
+Windows SSHはWSLのPID namespaceだけでは回収を証明できない。既存SSHを停止状態で起動し、kill-on-close付きWindows Job Objectへ割り当ててから再開する私用transportを検証した。実Windowsの親・子・孫による正常終了、timeout、WSL側の強制終了試験で残存と遅延markerがないことを確認。実SSHによる既存APIのhealth GETも成功した。これは接続と終了処理の実証であり、生成性能や実機サービス復帰の実証ではない。各接続のJobEmpty結果を確認してから測定記録を確定する。
+
+## F-008: 隔離起動には既存Python依存関係の明示が必要
+
+所有者実機では、制御用のシステムPythonとStrata用Pythonの版が異なる。さらにStrata用Pythonを`-I -S`で起動し、既存の制御ソースだけを指定して読み取り専用import検査を行うと、既存のJinja2が見つからず停止した。実機workerのファイル照合と復帰コマンドのdry-runが通っても、実際のimport closureが成立するとは限らない。
+
+不足を新規ダウンロードで埋めず、既存依存packageの所在と内容を個別に確認し、ハッシュ固定した範囲だけを利用する。`.pth`や暗黙のユーザー設定の読込と混同しない。現時点のこの失敗はサービスを止める前の検出であり、隔離サーバーの実起動成功は未確認。
+
+## F-009: CI環境の隔離機能と実機の隔離機能を区別する
+
+K8 WSLではuser/mount/PID namespaceを利用できたが、Linux CIのポリシーでは同じ操作が拒否された。実装の要件を緩めず、テストで同じnamespace起動経路を事前に確認し、明示的な権限拒否の場合だけ成功系の実行試験をskipする。未知のprotocol不具合は失敗のままにし、隔離不能時の拒否試験は維持する。CIのgreenを実機隔離の証拠として代用しない。
