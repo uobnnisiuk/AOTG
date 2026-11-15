@@ -1,0 +1,291 @@
+"""Run the reviewed AOTG pilot under an explicit WSL execution boundary.
+
+Codex permission profiles constrain agent commands, not service-client traffic.
+Real generation requires independently verified deployment and owner approval.
+The offline probe and candidate tests never invoke inference or use network.
+"""
+
+import hashlib
+import json
+import math
+import os
+import re
+import stat
+import sys
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from time import monotonic
+
+from .worker import MAX_RUNTIME_SECONDS, RunResult, WorkerError, _run_in_wsl
+
+_PROFILE = "aotg-pilot"
+_PYTHON = "/usr/bin/python3"
+_UNSHARE = "/usr/bin/unshare"
+_SHA256 = re.compile(r"(?!0{64})[0-9a-f]{64}")
+_MODEL = re.compile(r"[a-z0-9][a-z0-9.-]{0,63}")
+_PROBE = """\
+import sys
+from pathlib import Path
+from tempfile import TemporaryFile
+
+probe = Path(sys.argv[1])
+sentinel = Path(sys.argv[2])
+try:
+    sentinel.read_bytes()
+except OSError:
+    pass
+else:
+    raise SystemExit(13)
+try:
+    sentinel.write_bytes(b"modified")
+except OSError:
+    pass
+else:
+    raise SystemExit(14)
+if sys.argv[3] == "write":
+    probe.write_bytes(b"verified")
+else:
+    if probe.read_bytes() != b"verified":
+        raise SystemExit(15)
+    try:
+        probe.write_bytes(b"modified")
+    except OSError:
+        pass
+    else:
+        raise SystemExit(16)
+    with TemporaryFile(dir=sys.argv[4]) as scratch:
+        scratch.write(b"verified")
+"""
+
+
+@dataclass(frozen=True, slots=True)
+class ModelAuthorization:
+    """Evidence supplied by the trusted launcher, never by a candidate or issue."""
+
+    model: str
+    prompt_sha256: str
+    expires_at: datetime
+    max_seconds: int
+    owner_approved: bool = False
+    dedicated_chatgpt_login_verified: bool = False
+    service_egress_verified: bool = False
+    managed_tools_verified_disabled: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class CodexDeployment:
+    """Pinned native client under the expected, non-root AOTG account."""
+
+    codex: Path
+    codex_sha256: str
+    uid: int
+    model_authorization: ModelAuthorization | None = None
+
+
+def _current_uid():
+    if sys.platform != "linux":
+        raise WorkerError("The isolated process requires the Linux deployment")
+    return os.geteuid()
+
+
+def _trusted_codex(deployment):
+    path = deployment.codex
+    if (not isinstance(path, Path) or not path.is_absolute()
+            or not isinstance(deployment.codex_sha256, str)
+            or not _SHA256.fullmatch(deployment.codex_sha256)
+            or type(deployment.uid) is not int or deployment.uid <= 0
+            or _current_uid() != deployment.uid):
+        raise WorkerError("The Codex executable and AOTG identity must be pinned")
+    try:
+        if path.resolve(strict=True) != path:
+            raise WorkerError("The native Codex executable must not be a link")
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, "rb") as source:
+            info = os.fstat(source.fileno())
+            if (
+                not stat.S_ISREG(info.st_mode) or not info.st_mode & stat.S_IXUSR
+                or info.st_mode & 0o022 or info.st_uid not in (0, deployment.uid)
+                or not 0 < info.st_size <= 512 * 1024**2
+                or source.read(4) != b"\x7fELF"
+            ):
+                raise WorkerError("The pinned Codex executable is not a trusted native client")
+            source.seek(0)
+            if hashlib.file_digest(source, "sha256").hexdigest() != deployment.codex_sha256:
+                raise WorkerError("The Codex executable digest changed")
+    except OSError:
+        raise WorkerError("The Codex executable could not be verified") from None
+    return str(path)
+
+
+def _workspace(checkout, uid):
+    if not isinstance(checkout, Path) or not checkout.is_absolute():
+        raise WorkerError("The candidate workspace must be an absolute path")
+    try:
+        info = checkout.lstat()
+        if (
+            checkout.resolve(strict=True) != checkout or not stat.S_ISDIR(info.st_mode)
+            or info.st_uid != uid or stat.S_IMODE(info.st_mode) != 0o700
+        ):
+            raise WorkerError("The candidate workspace is not owner-private")
+    except OSError:
+        raise WorkerError("The candidate workspace could not be verified") from None
+    return checkout, info.st_dev, info.st_ino
+
+
+def _profile(native, checkout, *, writable, scratch):
+    mode = "write" if writable else "read"
+    temporary_mode = "write" if scratch else "deny"
+    return (
+        f'permissions.{_PROFILE}={{extends=":workspace",filesystem={{'
+        f'":root"="deny",":minimal"="read",":tmpdir"="{temporary_mode}",'
+        f'":slash_tmp"="deny",{json.dumps(native)}="read",'
+        f'{json.dumps(str(checkout))}="{mode}",'
+        f'":workspace_roots"={{"."="{mode}"}}}},network={{enabled=false}}}}'
+    )
+
+
+def _namespace(*, offline):
+    args = (_UNSHARE, "--user", "--map-current-user", "--mount", "--pid", "--fork",
+            "--kill-child", "--mount-proc")
+    return (*args, "--net", "--") if offline else (*args, "--")
+
+
+def _finite_timeout(seconds):
+    if type(seconds) not in (int, float) or not math.isfinite(seconds) or not 0 < seconds <= MAX_RUNTIME_SECONDS:
+        raise WorkerError("The isolated command requires a bounded timeout")
+    return seconds
+
+
+def _approved(approval, prompt, timeout_seconds):
+    if (
+        type(approval) is not ModelAuthorization or type(approval.model) is not str
+        or not _MODEL.fullmatch(approval.model) or not isinstance(approval.expires_at, datetime)
+        or approval.expires_at.utcoffset() is None or type(approval.max_seconds) is not int
+        or not timeout_seconds <= approval.max_seconds <= MAX_RUNTIME_SECONDS
+        or any(condition is not True for condition in (
+            approval.owner_approved, approval.dedicated_chatgpt_login_verified,
+            approval.service_egress_verified, approval.managed_tools_verified_disabled,
+        ))
+    ):
+        return False
+    now = datetime.now(timezone.utc)
+    if (approval.expires_at - now).total_seconds() < timeout_seconds:
+        return False
+    if not isinstance(prompt, str):
+        return False
+    payload = prompt.encode("utf-8")
+    return 0 < len(payload) <= 64 * 1024 and hashlib.sha256(payload).hexdigest() == approval.prompt_sha256
+
+
+class IsolatedProcess:
+    """Preflight, launch, and verify without handing the candidate service credentials."""
+
+    def __init__(self, deployment: CodexDeployment, *, runner=None):
+        if type(deployment) is not CodexDeployment:
+            raise WorkerError("An explicit Codex deployment is required")
+        self.deployment = deployment
+        self.runner = _run_in_wsl if runner is None else runner
+        self._verified_workspace = None
+        self._generated = False
+
+    def _run(self, argv, checkout, text, timeout, *, scratch=None):
+        environment = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
+        if scratch is not None:
+            environment["TMPDIR"] = str(scratch)
+        result = self.runner(argv, checkout, input_text=text, env=environment,
+                             timeout_seconds=_finite_timeout(timeout))
+        if type(result) is not RunResult or type(result.exit_code) is not int or type(result.timed_out) is not bool:
+            raise WorkerError("The isolated process result could not be verified")
+        if result.timed_out:
+            raise TimeoutError("The isolated process reached its deadline")
+        if result.exit_code != 0:
+            raise WorkerError("The isolated process did not complete successfully")
+
+    def _sandbox(self, native, checkout, *command, writable=False, scratch=False):
+        return (
+            *_namespace(offline=True), native, "sandbox", "-P", _PROFILE, "-C", str(checkout),
+            "--include-managed-config", "-c", _profile(native, checkout, writable=writable, scratch=scratch),
+            "--", *command,
+        )
+
+    def preflight(self, checkout: Path, *, timeout_seconds: float) -> None:
+        self._verified_workspace = None
+        deadline = monotonic() + _finite_timeout(timeout_seconds)
+        native = _trusted_codex(self.deployment)
+        identity = _workspace(checkout, self.deployment.uid)
+        with (
+            TemporaryDirectory(prefix="aotg-private-probe-", dir=checkout.parent) as denied,
+            TemporaryDirectory(prefix=".aotg-probe-", dir=checkout) as allowed,
+            TemporaryDirectory(prefix="aotg-pilot-check-", dir=checkout.parent) as scratch,
+        ):
+            sentinel = Path(denied) / "sentinel"
+            sentinel.write_bytes(b"private")
+            proof = Path(allowed) / "observed"
+            argv = self._sandbox(
+                native, checkout, _PYTHON, "-EBsS", "-I", "-", str(proof), str(sentinel), "write",
+                writable=True,
+            )
+            self._run(argv, checkout, _PROBE, _remaining(deadline))
+            if not proof.is_file() or proof.is_symlink() or proof.read_bytes() != b"verified":
+                raise WorkerError("The permission probe could not write to the candidate workspace")
+            argv = self._sandbox(
+                native, checkout, _PYTHON, "-EBsS", "-I", "-", str(proof), str(sentinel), "read", scratch,
+                scratch=True,
+            )
+            self._run(argv, checkout, _PROBE, _remaining(deadline), scratch=scratch)
+            if proof.read_bytes() != b"verified" or sentinel.read_bytes() != b"private":
+                raise WorkerError("The permission probe did not verify filesystem isolation")
+        if identity != _workspace(checkout, self.deployment.uid):
+            raise WorkerError("The candidate workspace changed during preflight")
+        self._verified_workspace = identity
+
+    def _verified(self, checkout):
+        native = _trusted_codex(self.deployment)
+        if self._verified_workspace is None or _workspace(checkout, self.deployment.uid) != self._verified_workspace:
+            raise WorkerError("Preflight is required for this exact candidate workspace")
+        return native
+
+    def generate(self, checkout: Path, prompt: str, *, timeout_seconds: float) -> None:
+        timeout_seconds = _finite_timeout(timeout_seconds)
+        deadline = monotonic() + timeout_seconds
+        approval = self.deployment.model_authorization
+        if self._generated or not _approved(approval, prompt, timeout_seconds):
+            raise WorkerError("Explicit authorization for this bounded model attempt is required")
+        native = self._verified(checkout)
+        argv = (
+            *_namespace(offline=False), native, "--ask-for-approval", "never", "exec",
+            "--ignore-user-config", "--ephemeral", "--cd", str(checkout), "--model", approval.model,
+            "-c", f'default_permissions="{_PROFILE}"', "-c", _profile(native, checkout, writable=True, scratch=False),
+            "-c", 'forced_login_method="chatgpt"', "-c", 'model_provider="openai"',
+            "-c", 'web_search="disabled"', "-c", "mcp_servers={}", "-c", "features.apps=false",
+            "-c", "features.plugins=false", "-c", "allow_login_shell=false",
+            "-c", 'shell_environment_policy.inherit="none"', "-",
+        )
+        self._generated = True
+        self._run(argv, checkout, prompt, _remaining(deadline))
+
+    def verify(self, checkout: Path, *, timeout_seconds: float, contract: str | None = None) -> None:
+        deadline = monotonic() + _finite_timeout(timeout_seconds)
+        native = self._verified(checkout)
+        if contract is not None and (not isinstance(contract, str)
+                                    or not 0 < len(contract.encode("utf-8")) <= 64 * 1024):
+            raise WorkerError("Only a bounded independent contract script can be supplied")
+        self._verify_command(
+            native, checkout, deadline, "", "-m", "unittest", "discover", "-s", "tests",
+        )
+        if contract is not None:
+            self._verify_command(native, checkout, deadline, contract, "-I", "-")
+
+    def _verify_command(self, native, checkout, deadline, text, *arguments):
+        with TemporaryDirectory(prefix="aotg-pilot-check-", dir=checkout.parent) as scratch:
+            argv = self._sandbox(native, checkout, _PYTHON, "-EBsS", *arguments, scratch=True)
+            self._run(argv, checkout, text, _remaining(deadline), scratch=scratch)
+
+
+def _remaining(deadline):
+    remaining = deadline - monotonic()
+    if remaining <= 0:
+        raise TimeoutError("The candidate verification deadline elapsed")
+    return remaining

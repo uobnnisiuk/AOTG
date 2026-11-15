@@ -34,7 +34,17 @@ python -m aotg.autodev shadow --approvals "$APPROVAL_FILE" \
 - 承認ファイルの形式は `{"version":1,"policy":"AOTG-AUTODEV-V1","repo":"uobnnisiuk/AOTG","scopes":[]}`。空なら実行候補を選ばない。各スコープに `issue`、`github_issue`、`revision`、`allowed_paths`、`dependencies`、`approval_sha` を指定する。最新版と承認対象を照合するため、`LinearIntake.snapshot` の版と依存関係を確認し、許可内容を `scope_digest` で固定する。承認はハッシュを計算したことでは成立しない。承認ファイルへの登録は、所有者が対象と変更範囲を明示した後に行う。
 - GitHub CLIは信頼できる既存の実行ファイルを絶対パスで指定する。GitHub Issue番号と作成者、Linearのプロジェクト・依存・版を別々に照合する。空の承認ファイルから認証先や候補を推定しない。
 - 結果送信には、運用者が指定したGitHub #3とLinear UOB-58の固定コメントを使う。初期本文は `` `AOTG-AUTODEV-V1/result` ``。コメントのID・所属課題・作成者を照合し、構造化済みの単一結果だけを更新する。2サービスの更新は一括確定できないため、途中で失敗した場合は保留記録を残し、再送前に両方の実状態を確認する。
-- Draft作成用のGitHubアダプターは、先に検証済みコミットが専用ブランチに置かれ、固定されたベースと変更パスに一致することを要求する。承認済みモデル実行・隔離された生成・最終コミットの検査と公開は、配備側が別途接続する。シャドウCLIに本番実行モードは追加していない。
+- Draft作成用のGitHubアダプターは、先に検証済みコミットが専用ブランチに置かれ、固定されたベースと変更パスに一致することを要求する。検証済みの候補を渡す初回パイロットの接続は下記を参照。シャドウCLIに本番実行モードは追加していない。
+
+## 初回パイロット
+
+初回候補は [GitHub #7](https://github.com/uobnnisiuk/AOTG/issues/7) のオフライン採点に固定する。既存の合成C++／C# fixtureを使う。許可された3つの変更パス、現在のLinear依存関係、実行したいmain、承認済みスコープのダイジェストを照合する。モデルに渡す指示は管理された固定文とし、Linearの本文は版の照合だけに使う。
+
+- `pilot_installation.run_configured_pilot` はAOTG専用の信頼できる起動元から1回呼び出す。既存の `shadow` コマンドと無効タスクには実モデル起動を追加しない。
+- 専用領域の `config/first-pilot-release.json` に、別途承認された1回限りのChatGPTプラン試行を記録する。固定フィールドは `version`（1）、`policy`、`approved_by`、`issue`、`github_issue`、`base`、`scope_digest`、`issued_at`、`expires_at`、`authorization`（`one-chatgpt-plan-pilot-no-extra-charge`）。日時はUTC秒精度で `+00:00` を付ける。許可時間外、変更されたmain、別スコープ、認証や安全条件の不足、オープンPR、既出の予約で停止する。
+- 起動元が、隔離動作を検証したCodexのバイナリ・専用認証・サービス通信・外部ツール制限を確認する。モデルに接続するクライアントと、モデルが実行するコマンドの通信制限は別に検証する。生成とテストは別の作業コピーで実行し、外部から与えた合成fixtureの採点契約も確認する。テスト後に作業差分を取り直す。
+- 検証済みパッチを公開用の別checkoutに再構築し、親コミットと許可済みパスを照合する。予約ブランチが固定ベースを指すことを確認し、通常のHTTPS pushで更新してからDraft PRを作る。両方の結果欄を読み戻せない場合は予約を消費したまま停止する。
+- 初回試行は実行全体の上限を40分とする起動元で行う。試行の証拠を確認してから定期実行の承認を求める。自動マージは [UOB-59](https://linear.app/uobnnisiuk/issue/UOB-59) の独立レビュー・承認・CIの条件を別途検証する。
 
 ## K8への配備と復帰
 
