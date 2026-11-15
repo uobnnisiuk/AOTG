@@ -1,11 +1,15 @@
+import json
 import os
 import time
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from subprocess import CompletedProcess
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from aotg.autodev import pilot_launch
+from aotg.autodev.worker import WorkerError
 
 SHA = "8" * 40
 UNIT = "aotg-pilot-0123456789abcdef.service"
@@ -90,6 +94,38 @@ class PilotLaunchTests(unittest.TestCase):
             self.assertEqual(pilot_launch.main(["--expected-commit", SHA, "--deadline-ns", deadline]), 1)
             load.assert_called_once()
         start.assert_not_called()
+
+    def test_deployment_verifies_fixed_private_codex_home(self):
+        root = Path.cwd() / "aotg-deployment-fixture"
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        release = SimpleNamespace(
+            base=SHA, scope_digest="a" * 64, issued_at=now - timedelta(minutes=10),
+            expires_at=now + timedelta(hours=1),
+        )
+        data = {
+            "version": 1, "policy": pilot_launch.POLICY, "base": SHA, "scope_digest": release.scope_digest,
+            "uid": 2000, "codex": "/example/codex", "codex_sha256": "b" * 64, "gh": "/example/gh",
+            "model": "approved-model", "verified_at": release.issued_at.isoformat(timespec="seconds"),
+            "expires_at": release.expires_at.isoformat(timespec="seconds"),
+            "attestations": sorted(pilot_launch._ATTESTATIONS),
+        }
+        with (
+            patch.object(pilot_launch, "load_release", return_value=release),
+            patch.object(pilot_launch, "_private_bytes", return_value=json.dumps(data).encode()) as records,
+            patch.object(pilot_launch.os, "geteuid", return_value=2000, create=True),
+            patch.object(pilot_launch, "_validate_path"),
+            patch.object(pilot_launch, "_trusted_executable"),
+            patch.object(pilot_launch, "_trusted_codex"),
+            patch.object(pilot_launch, "_trusted_codex_home") as home,
+        ):
+            installation = pilot_launch._load_deployment(root, SHA)
+            self.assertEqual(installation.codex.codex_home, root / "config" / "codex")
+            self.assertEqual(installation.gh_config_dir, root / "config" / "github")
+            records.assert_called_once_with(root / "config" / "pilot-deployment.json", 8192)
+            home.assert_called_once_with(installation.codex)
+            home.side_effect = WorkerError("Dedicated login unavailable")
+            with self.assertRaisesRegex(WorkerError, "Dedicated login"):
+                pilot_launch._load_deployment(root, SHA)
 
 
 if __name__ == "__main__":
