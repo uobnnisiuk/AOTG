@@ -1,13 +1,14 @@
 """Exercise the coordinator with independent fake workers and remote evidence."""
 
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
 
 from aotg.autodev.coordinator import Candidate, Coordinator, Draft, Readiness, Snapshot
-from aotg.autodev.ledger import Ledger
+from aotg.autodev.ledger import Ledger, ReservationBlocked
+from aotg.autodev.worker import CandidateRejected, WorkerError
 from aotg.autodev.queue import (
     ApprovedScope,
     GitHubSnapshot,
@@ -141,6 +142,29 @@ class CoordinatorTests(TestCase):
         next_result = self.coordinator.run_once(NOW, execute=True, readiness=self.readiness)
         self.assertEqual(next_result.status, "blocked")
         self.assertEqual(self.github.writes, ["reserve", "draft"])
+
+    def test_verified_candidate_failure_does_not_block_later_issues(self):
+        self.worker.failure = CandidateRejected("untrusted candidate details")
+        result = self.coordinator.run_once(NOW, execute=True, readiness=self.readiness)
+        self.assertEqual((result.status, result.reason), ("blocked", "candidate-rejected"))
+        self.assertEqual(self.github.writes, ["reserve"])
+        self.assertEqual(self.slot.events[-1], result.redacted())
+        self.assertNotIn("untrusted candidate details", str(self.slot.events))
+        ledger = Ledger(self.root)
+        self.assertTrue((self.root / "UOB-50.outcome.json").is_file())
+        ledger.check("UOB-51", NOW + timedelta(days=2))
+        with self.assertRaises(ReservationBlocked) as blocked:
+            ledger.check(ISSUE, NOW + timedelta(days=2))
+        self.assertEqual(blocked.exception.reason, "already-attempted")
+
+    def test_unconfirmed_worker_failure_stays_blocked(self):
+        self.worker.failure = WorkerError("unconfirmed environment fault")
+        result = self.coordinator.run_once(NOW, execute=True, readiness=self.readiness)
+        self.assertEqual((result.status, result.reason), ("unknown", "worker-result-unconfirmed"))
+        self.assertNotIn("unconfirmed environment fault", str(self.slot.events))
+        with self.assertRaises(ReservationBlocked) as blocked:
+            Ledger(self.root).check("UOB-51", NOW + timedelta(days=2))
+        self.assertEqual(blocked.exception.reason, "active")
 
     def test_worker_timeout_is_recorded_without_exception_details(self):
         self.worker.failure = TimeoutError("test-only output")
