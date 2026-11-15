@@ -2,6 +2,7 @@
 
 import json
 import os
+import subprocess
 import sys
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -12,6 +13,8 @@ from unittest import TestCase, skipUnless
 from unittest.mock import Mock, patch
 
 from aotg.autodev.isolated_process import (
+    _REJECTED_EXIT,
+    _VERIFIER,
     CodexDeployment,
     IsolatedProcess,
     ModelAuthorization,
@@ -60,7 +63,7 @@ class BoundaryTests(TestCase):
         self.addCleanup(target.stop)
         return target.start()
 
-    def _simulate_process(self, argv, _checkout, *, env, **_options):
+    def _simulate_process(self, argv, _checkout, *, env, input_text, **_options):
         if "sandbox" in argv:
             home = Path(env["CODEX_HOME"])
             self.assertNotEqual(home, self.home)
@@ -72,7 +75,18 @@ class BoundaryTests(TestCase):
             self.offline_homes.append(home)
             if argv[-1] == "write":
                 Path(argv[-3]).write_bytes(b"verified")
+            if argv[-4] == _VERIFIER:
+                self._write_verdict(argv, input_text, "pass")
         return RunResult(0, False)
+
+    def _write_verdict(self, argv, input_text, verdict, *, nonce=None):
+        path = Path(argv[-3])
+        if nonce is None:
+            nonce = input_text.partition("\n")[0]
+        path.write_text(f"{nonce} {verdict}\n", encoding="ascii", newline="\n")
+        if os.name == "posix":
+            path.chmod(0o600)
+        return path
 
     def _assert_offline_call(self, call):
         args = call.args[0]
@@ -195,20 +209,63 @@ class BoundaryTests(TestCase):
 
     def test_failed_independent_candidate_check_is_rejected(self):
         self.boundary.preflight(self.checkout, timeout_seconds=10)
-        self.runner.side_effect = None
-        self.runner.return_value = RunResult(1, False)
+        def rejected(argv, checkout, *, input_text, **kwargs):
+            self.assertEqual(argv[-2], "contract")
+            self._write_verdict(argv, input_text, "reject")
+            return RunResult(_REJECTED_EXIT, False)
+
+        self.runner.side_effect = rejected
         with self.assertRaises(CandidateRejected):
             self.boundary.verify(self.checkout, timeout_seconds=10, contract=CONTRACT)
 
-    def test_unknown_exit_in_candidate_check_remains_uncertain(self):
+    def test_sandbox_startup_and_unverified_exit_remain_uncertain(self):
         self.boundary.preflight(self.checkout, timeout_seconds=10)
         self.runner.side_effect = None
-        for exit_code in (2, -9):
+        for exit_code in (0, 1, 2, _REJECTED_EXIT, -9):
             with self.subTest(exit_code=exit_code):
                 self.runner.return_value = RunResult(exit_code, False)
                 with self.assertRaises(WorkerError) as failure:
                     self.boundary.verify(self.checkout, timeout_seconds=10, contract=CONTRACT)
                 self.assertNotIsInstance(failure.exception, CandidateRejected)
+
+    def test_tampered_mismatched_or_lost_receipt_remains_uncertain(self):
+        self.boundary.preflight(self.checkout, timeout_seconds=10)
+        for fault in ("nonce", "verdict", "deleted", "exit"):
+            def changed(argv, checkout, *, input_text, **kwargs):
+                path = self._write_verdict(
+                    argv, input_text, "pass" if fault == "verdict" else "reject",
+                    nonce="0" * 64 if fault == "nonce" else None,
+                )
+                if fault == "deleted":
+                    path.unlink()
+                return RunResult(1 if fault == "exit" else _REJECTED_EXIT, False)
+
+            self.runner.side_effect = changed
+            with self.subTest(fault=fault), self.assertRaises(WorkerError) as result:
+                self.boundary.verify(self.checkout, timeout_seconds=10, contract=CONTRACT)
+            self.assertNotIsInstance(result.exception, CandidateRejected)
+
+    def test_suite_exit_cannot_claim_independent_rejection(self):
+        self.boundary.preflight(self.checkout, timeout_seconds=10)
+        def rejected(argv, checkout, *, input_text, **kwargs):
+            self.assertEqual(argv[-2], "suite")
+            self._write_verdict(argv, input_text, "reject")
+            return RunResult(_REJECTED_EXIT, False)
+
+        self.runner.side_effect = rejected
+        with self.assertRaises(WorkerError) as result:
+            self.boundary.verify(self.checkout, timeout_seconds=10)
+        self.assertNotIsInstance(result.exception, CandidateRejected)
+
+    def test_verifier_timeout_has_precedence_over_rejection_evidence(self):
+        self.boundary.preflight(self.checkout, timeout_seconds=10)
+        def timed_out(argv, checkout, *, input_text, **kwargs):
+            self._write_verdict(argv, input_text, "reject")
+            return RunResult(_REJECTED_EXIT, True)
+
+        self.runner.side_effect = timed_out
+        with self.assertRaises(TimeoutError):
+            self.boundary.verify(self.checkout, timeout_seconds=10, contract=CONTRACT)
 
     def test_failed_generation_does_not_claim_candidate_rejection(self):
         self.boundary.preflight(self.checkout, timeout_seconds=10)
@@ -221,7 +278,7 @@ class BoundaryTests(TestCase):
     def test_verify_uses_read_only_checkout_and_independent_contract(self):
         self.boundary.preflight(self.checkout, timeout_seconds=10)
         self.boundary.verify(self.checkout, timeout_seconds=10, contract=CONTRACT)
-        suite, independent = self.runner.call_args_list[2:]
+        independent, suite = self.runner.call_args_list[2:]
         for call in (suite, independent):
             self._assert_offline_call(call)
             args = call.args[0]
@@ -232,10 +289,15 @@ class BoundaryTests(TestCase):
             self.assertIn(json.dumps(str(self.home)) + '="deny"', args[args.index("-c") + 1])
         self.assertNotEqual(suite.kwargs["env"]["TMPDIR"], independent.kwargs["env"]["TMPDIR"])
         self.assertEqual(len(self.offline_homes), 4)
-        self.assertEqual(suite.args[0][-5:], ("-m", "unittest", "discover", "-s", "tests"))
-        self.assertEqual(independent.args[0][-2:], ("-I", "-"))
-        self.assertEqual(independent.kwargs["input_text"], CONTRACT)
-        self.assertLessEqual(independent.kwargs["timeout_seconds"], suite.kwargs["timeout_seconds"])
+        for call, mode, script in ((independent, "contract", CONTRACT), (suite, "suite", "")):
+            self.assertEqual(call.args[0][-4], _VERIFIER)
+            self.assertEqual(call.args[0][-2:], (mode, sha256(script.encode()).hexdigest()))
+            nonce, _, configured = call.kwargs["input_text"].partition("\n")
+            self.assertRegex(nonce, "^[a-f0-9]{64}$")
+            self.assertEqual(configured, script)
+            self.assertNotIn(nonce, call.args[0])
+            self.assertNotIn(nonce, call.kwargs["env"].values())
+        self.assertLessEqual(suite.kwargs["timeout_seconds"], independent.kwargs["timeout_seconds"])
         self.assertEqual(list(self.checkout.iterdir()), [])
 
     def test_profile_denies_external_read_and_model_command_network(self):
@@ -280,3 +342,33 @@ class CodexHomeTests(TestCase):
         self.auth.chmod(0o644)
         with self.assertRaisesRegex(WorkerError, "not private"):
             _trusted_codex_home(self.deployment)
+
+
+@skipUnless(sys.platform == "linux" and os.geteuid() != 0, "requires non-root Linux")
+class VerifierProcessTests(TestCase):
+    def run_verifier(self, root, script, *, hashed_script=None):
+        receipt = root / "verdict"
+        nonce = "f" * 64
+        digest = sha256((script if hashed_script is None else hashed_script).encode()).hexdigest()
+        result = subprocess.run(
+            [sys.executable, "-I", "-S", "-B", "-c", _VERIFIER, str(receipt), "contract", digest],
+            cwd=root, input=(nonce + "\n" + script).encode(), capture_output=True, timeout=8,
+        )
+        return result.returncode, receipt.read_bytes() if receipt.is_file() else None
+
+    def test_only_explicit_trusted_checker_rejection_produces_receipt(self):
+        for script, exit_code, verdict in (
+            ("pass", 0, b"pass"),
+            ("raise RejectCandidate()", _REJECTED_EXIT, b"reject"),
+            ("raise SystemExit(1)", 1, None),
+            ("raise SystemExit(42)", _REJECTED_EXIT, None),
+        ):
+            with self.subTest(script=script), TemporaryDirectory() as temporary:
+                code, evidence = self.run_verifier(Path(temporary), script)
+                self.assertEqual(code, exit_code)
+                self.assertEqual(evidence, b"f" * 64 + b" " + verdict + b"\n" if verdict else None)
+
+    def test_modified_checker_input_produces_no_receipt(self):
+        with TemporaryDirectory() as temporary:
+            self.assertEqual(self.run_verifier(Path(temporary), "pass", hashed_script="raise RejectCandidate()"),
+                             (2, None))

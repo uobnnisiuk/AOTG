@@ -49,8 +49,8 @@ intact. Do not access any model, network, service, firmware, compiler download,
 nonpublic evidence, credentials or external file. Do not commit or push.
 """
 
-# Executed by the isolated verifier as a fixed stdin script, outside the
-# candidate's test files. Only the candidate CLI child interprets its code.
+# Executed by the isolated verifier as a fixed script with its trusted
+# RejectCandidate exception. Only the candidate CLI child runs candidate code.
 PILOT_CONTRACT = """import copy
 import json
 import os
@@ -73,6 +73,9 @@ def unique_fields(items):
         data[key] = value
     return data
 
+def invalid_constant(_):
+    raise ValueError("Non-JSON pilot result constant")
+
 def check(case, request, expected_status, code=0):
     if len(request) > 4096:
         raise SystemExit("Pilot contract input exceeded its bound")
@@ -93,16 +96,19 @@ def check(case, request, expected_status, code=0):
                 if not chunk:
                     break
                 output.extend(chunk)
-            if len(output) > 1024 or child.wait(timeout=max(0, deadline - monotonic())) != code:
-                raise SystemExit("Unexpected pilot result envelope")
+            seconds = deadline - monotonic()
+            if len(output) > 1024 or seconds <= 0 or child.wait(timeout=seconds) != code:
+                raise SystemExit("Pilot grading command did not return a confirmed result")
         finally:
             if child.poll() is None:
                 child.kill()
 
-    data = json.loads(output, object_pairs_hook=unique_fields)
+    data = json.loads(
+        output.decode("utf-8"), object_pairs_hook=unique_fields, parse_constant=invalid_constant,
+    )
     if (type(data) is not dict or type(data.get("version")) is not int
             or data != {"version": 1, "case": case, "status": expected_status}):
-        raise SystemExit("Unexpected pilot grading result")
+        raise RejectCandidate("Unexpected pilot grading result")
 
 def encoded(value):
     return json.dumps(value).encode("utf-8")

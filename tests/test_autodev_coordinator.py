@@ -1,5 +1,6 @@
 """Exercise the coordinator with independent fake workers and remote evidence."""
 
+import json
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -21,9 +22,11 @@ BASE = "1" * 40
 HEAD = "2" * 40
 REVISION = "3" * 64
 ISSUE = "UOB-50"
+NEXT_ISSUE = "UOB-51"
 BRANCH = "autodev/uob-50"
 PATH = "tests/test_offline_benchmark.py"
 NOW = datetime(2026, 1, 1, tzinfo=timezone.utc)
+LATER = NOW + timedelta(days=2)
 
 
 class FakeGitHub:
@@ -99,6 +102,22 @@ class CoordinatorTests(TestCase):
         self.coordinator = Coordinator(Ledger(self.root), self.github, self.worker, self.slot)
         self.readiness = Readiness(True, True, True, True)
 
+    def assert_persisted_outcome(self, outcome):
+        reservation = json.loads((self.root / f"{ISSUE}.reservation.json").read_bytes())
+        saved = json.loads((self.root / f"{ISSUE}.outcome.json").read_bytes())
+        self.assertEqual(saved, {**reservation, "outcome": outcome})
+
+    def assert_definitive_outcome_allows_only_a_distinct_issue(self):
+        # Simulate removal of the GitHub reservation so the ledger decides admission.
+        del self.github.branches[BRANCH]
+        retry = self.coordinator.run_once(LATER, execute=True, readiness=self.readiness)
+        self.assertEqual((retry.status, retry.reason), ("blocked", "already-attempted"))
+        self.assertEqual(self.github.writes, ["reserve"])
+        self.assertEqual(len(self.worker.calls), 1)
+        next_reservation = Ledger(self.root).reserve(NEXT_ISSUE, LATER)
+        self.assertEqual(next_reservation.issue, NEXT_ISSUE)
+        self.assertTrue((self.root / f"{NEXT_ISSUE}.reservation.json").is_file())
+
     def test_shadow_and_missing_approval_do_not_write(self):
         self.assertEqual(self.coordinator.run_once(NOW).reason, "shadow-eligible")
         result = self.coordinator.run_once(NOW, execute=True)
@@ -150,28 +169,44 @@ class CoordinatorTests(TestCase):
         self.assertEqual(self.github.writes, ["reserve"])
         self.assertEqual(self.slot.events[-1], result.redacted())
         self.assertNotIn("untrusted candidate details", str(self.slot.events))
-        ledger = Ledger(self.root)
-        self.assertTrue((self.root / "UOB-50.outcome.json").is_file())
-        ledger.check("UOB-51", NOW + timedelta(days=2))
-        with self.assertRaises(ReservationBlocked) as blocked:
-            ledger.check(ISSUE, NOW + timedelta(days=2))
-        self.assertEqual(blocked.exception.reason, "already-attempted")
+        self.assert_persisted_outcome("failure")
+        self.assert_definitive_outcome_allows_only_a_distinct_issue()
 
     def test_unconfirmed_worker_failure_stays_blocked(self):
         self.worker.failure = WorkerError("unconfirmed environment fault")
         result = self.coordinator.run_once(NOW, execute=True, readiness=self.readiness)
         self.assertEqual((result.status, result.reason), ("unknown", "worker-result-unconfirmed"))
         self.assertNotIn("unconfirmed environment fault", str(self.slot.events))
-        with self.assertRaises(ReservationBlocked) as blocked:
-            Ledger(self.root).check("UOB-51", NOW + timedelta(days=2))
-        self.assertEqual(blocked.exception.reason, "active")
+        self.assert_persisted_outcome("unknown")
+        ledger = Ledger(self.root)
+        with self.assertRaisesRegex(ReservationBlocked, "^already-attempted$"):
+            ledger.reserve(ISSUE, LATER)
+        with self.assertRaisesRegex(ReservationBlocked, "^active$"):
+            ledger.reserve(NEXT_ISSUE, LATER)
+        self.assertFalse((self.root / f"{NEXT_ISSUE}.reservation.json").exists())
+
+    def test_unconfirmed_rejection_receipt_leaves_the_reservation_active(self):
+        def reject_with_unconfirmed_receipt(*args, **kwargs):
+            self.slot.stale = True
+            raise CandidateRejected("untrusted candidate details")
+
+        self.worker.implement = reject_with_unconfirmed_receipt
+        result = self.coordinator.run_once(NOW, execute=True, readiness=self.readiness)
+        self.assertEqual((result.status, result.reason), ("unknown", "result-unconfirmed"))
+        self.assertEqual(self.github.writes, ["reserve"])
+        self.assertEqual([event["reason"] for event in self.slot.events], ["reserved", "candidate-rejected"])
+        self.assertTrue((self.root / f"{ISSUE}.reservation.json").is_file())
+        self.assertFalse((self.root / f"{ISSUE}.outcome.json").exists())
+        with self.assertRaisesRegex(ReservationBlocked, "^active$"):
+            Ledger(self.root).reserve(NEXT_ISSUE, LATER)
 
     def test_worker_timeout_is_recorded_without_exception_details(self):
         self.worker.failure = TimeoutError("test-only output")
         result = self.coordinator.run_once(NOW, execute=True, readiness=self.readiness)
-        self.assertEqual(result.reason, "worker-timeout")
+        self.assertEqual((result.status, result.reason), ("blocked", "worker-timeout"))
         self.assertNotIn("test-only output", str(self.slot.events))
-        self.assertEqual(self.github.writes, ["reserve"])
+        self.assert_persisted_outcome("timeout")
+        self.assert_definitive_outcome_allows_only_a_distinct_issue()
 
     def test_main_changed_during_worker_blocks_publication(self):
         original = self.worker.implement

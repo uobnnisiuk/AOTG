@@ -10,6 +10,7 @@ import json
 import math
 import os
 import re
+import secrets
 import stat
 import sys
 from dataclasses import dataclass
@@ -32,6 +33,60 @@ _PYTHON = "/usr/bin/python3"
 _UNSHARE = "/usr/bin/unshare"
 _SHA256 = re.compile(r"(?!0{64})[0-9a-f]{64}")
 _MODEL = re.compile(r"[a-z0-9][a-z0-9.-]{0,63}")
+_MAX_CONTRACT_BYTES = 64 * 1024 - 65
+_REJECTED_EXIT = 42
+_VERIFIER = """\
+import ctypes
+import hashlib
+import os
+import subprocess
+import sys
+
+class RejectCandidate(Exception):
+    pass
+
+# Candidate subprocesses do not receive this process's input or nonce.
+# Disallow same-UID inspection of this verifier's memory and descriptors.
+libc = ctypes.CDLL(None, use_errno=True)
+header = (ctypes.c_uint32 * 2)(0x20080522, 0)
+capabilities = (ctypes.c_uint32 * 6)()
+CAP_SYS_PTRACE = 1 << 19
+if (libc.prctl(4, 0, 0, 0, 0) or libc.prctl(38, 1, 0, 0, 0)
+        or libc.capget(header, capabilities) or (capabilities[0] | capabilities[1]) & CAP_SYS_PTRACE):
+    raise SystemExit(2)
+
+payload = sys.stdin.buffer.read(65537)
+nonce, separator, script = payload.partition(b"\\n")
+if (len(payload) > 65536 or not separator or len(nonce) != 64
+        or any(byte not in b"0123456789abcdef" for byte in nonce)
+        or hashlib.sha256(script).hexdigest() != sys.argv[3]):
+    raise SystemExit(2)
+
+verdict = b"pass"
+exit_code = 0
+if sys.argv[2] == "contract":
+    try:
+        exec(compile(script, "<independent AOTG contract>", "exec"), {"RejectCandidate": RejectCandidate})
+    except RejectCandidate:
+        verdict = b"reject"
+        exit_code = 42
+elif sys.argv[2] == "suite" and not script:
+    completed = subprocess.run(
+        [sys.executable, "-EBsS", "-m", "unittest", "discover", "-s", "tests"],
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    # The suite imports candidate-authored code. Its failure alone does not
+    # establish a rejection by the independent contract.
+    if completed.returncode != 0:
+        raise SystemExit(2)
+else:
+    raise SystemExit(2)
+
+descriptor = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+with os.fdopen(descriptor, "wb") as receipt:
+    receipt.write(nonce + b" " + verdict + b"\\n")
+raise SystemExit(exit_code)
+"""
 _PROBE = """\
 import os
 import sys
@@ -193,6 +248,35 @@ def _finite_timeout(seconds):
     return seconds
 
 
+def _verified_verdict(path, nonce, mode, exit_code):
+    if exit_code == 0:
+        verdict = b"pass"
+    elif mode == "contract" and exit_code == _REJECTED_EXIT:
+        verdict = b"reject"
+    else:
+        raise WorkerError("The isolated checker exit could not be verified")
+    expected = nonce.encode("ascii") + b" " + verdict + b"\n"
+    try:
+        _validate_path(path, directory=False)
+        initial = path.lstat()
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+        with os.fdopen(os.open(path, flags), "rb") as receipt:
+            actual = os.fstat(receipt.fileno())
+            if not os.path.samestat(initial, actual) or actual.st_size != len(expected):
+                raise WorkerError("The isolated checker receipt changed")
+            value = receipt.read(len(expected) + 1)
+            final = os.fstat(receipt.fileno())
+            _validate_path(path, directory=False)
+            if (not os.path.samestat(final, path.lstat()) or final.st_mtime_ns != actual.st_mtime_ns
+                    or final.st_size != actual.st_size):
+                raise WorkerError("The isolated checker receipt changed")
+    except (OSError, LedgerError):
+        raise WorkerError("The isolated checker receipt could not be verified") from None
+    if not secrets.compare_digest(value, expected):
+        raise WorkerError("The isolated checker receipt did not match the exit")
+    return verdict
+
+
 def _approved(approval, prompt, timeout_seconds):
     if (
         type(approval) is not ModelAuthorization or type(approval.model) is not str
@@ -225,8 +309,7 @@ class IsolatedProcess:
         self._verified_workspace = None
         self._generated = False
 
-    def _run(self, argv, checkout, text, timeout, *, codex_home, scratch=None,
-             candidate_verification=False):
+    def _run(self, argv, checkout, text, timeout, *, codex_home, scratch=None):
         environment = {
             "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "CODEX_HOME": str(codex_home),
         }
@@ -238,15 +321,10 @@ class IsolatedProcess:
             raise WorkerError("The isolated process result could not be verified")
         if result.timed_out:
             raise TimeoutError("The isolated process reached its deadline")
-        if result.exit_code != 0:
-            # A known failure exit from the pinned offline checker rejects the candidate.
-            # Generation, probes and unrecognized exits can indicate environment faults.
-            if candidate_verification and result.exit_code == 1:
-                raise CandidateRejected("The candidate failed independent verification")
-            raise WorkerError("The isolated process did not complete successfully")
+        return result.exit_code
 
     def _run_sandbox(self, native, checkout, text, deadline, *command, writable=False,
-                     scratch=None, denied_home=None, candidate_verification=False):
+                     scratch=None, denied_home=None, evidence=None):
         # Profile resolution may initialize authentication even for a sandbox-only command.
         with TemporaryDirectory(prefix="aotg-offline-codex-", dir=checkout.parent) as offline_home:
             denied = (offline_home,) if denied_home is None else (offline_home, denied_home)
@@ -258,8 +336,13 @@ class IsolatedProcess:
                 "--include-managed-config", "-c", profile, "-c", 'cli_auth_credentials_store="file"',
                 "--", "/usr/bin/env", "-u", "CODEX_HOME", "--", *command,
             )
-            self._run(argv, checkout, text, _remaining(deadline), scratch=scratch,
-                      codex_home=offline_home, candidate_verification=candidate_verification)
+            exit_code = self._run(argv, checkout, text, _remaining(deadline), scratch=scratch,
+                                  codex_home=offline_home)
+        if evidence is not None:
+            if _verified_verdict(*evidence, exit_code) == b"reject":
+                raise CandidateRejected("The candidate failed the independent contract")
+        elif exit_code != 0:
+            raise WorkerError("The isolated process did not complete successfully")
 
     def preflight(self, checkout: Path, *, timeout_seconds: float) -> None:
         self._verified_workspace = None
@@ -317,25 +400,29 @@ class IsolatedProcess:
             "-c", 'shell_environment_policy.inherit="none"', "-",
         )
         self._generated = True
-        self._run(argv, checkout, prompt, _remaining(deadline), codex_home=codex_home)
+        if self._run(argv, checkout, prompt, _remaining(deadline), codex_home=codex_home) != 0:
+            raise WorkerError("The isolated process did not complete successfully")
 
     def verify(self, checkout: Path, *, timeout_seconds: float, contract: str | None = None) -> None:
         deadline = monotonic() + _finite_timeout(timeout_seconds)
         native = self._verified(checkout)
         if contract is not None and (not isinstance(contract, str)
-                                    or not 0 < len(contract.encode("utf-8")) <= 64 * 1024):
+                                    or not 0 < len(contract.encode("utf-8")) <= _MAX_CONTRACT_BYTES):
             raise WorkerError("Only a bounded independent contract script can be supplied")
-        self._verify_command(
-            native, checkout, deadline, "", "-m", "unittest", "discover", "-s", "tests",
-        )
         if contract is not None:
-            self._verify_command(native, checkout, deadline, contract, "-I", "-")
+            self._verify_command(native, checkout, deadline, "contract", contract)
+        self._verify_command(native, checkout, deadline, "suite", "")
 
-    def _verify_command(self, native, checkout, deadline, text, *arguments):
+    def _verify_command(self, native, checkout, deadline, mode, script):
         with TemporaryDirectory(prefix="aotg-pilot-check-", dir=checkout.parent) as scratch:
-            self._run_sandbox(native, checkout, text, deadline, _PYTHON, "-EBsS", *arguments,
-                              scratch=scratch, denied_home=self.deployment.codex_home,
-                              candidate_verification=True)
+            receipt = Path(scratch) / "verdict"
+            nonce = secrets.token_hex(32)
+            source_hash = hashlib.sha256(script.encode("utf-8")).hexdigest()
+            self._run_sandbox(
+                native, checkout, nonce + "\n" + script, deadline,
+                _PYTHON, "-I", "-S", "-B", "-c", _VERIFIER, str(receipt), mode, source_hash,
+                scratch=scratch, denied_home=self.deployment.codex_home, evidence=(receipt, nonce, mode),
+            )
 
 
 def _remaining(deadline):
