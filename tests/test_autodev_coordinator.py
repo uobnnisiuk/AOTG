@@ -8,7 +8,6 @@ from unittest import TestCase
 
 from aotg.autodev.coordinator import Candidate, Coordinator, Draft, Readiness, Snapshot
 from aotg.autodev.ledger import Ledger, ReservationBlocked
-from aotg.autodev.worker import CandidateRejected, WorkerError
 from aotg.autodev.queue import (
     ApprovedScope,
     GitHubSnapshot,
@@ -16,6 +15,7 @@ from aotg.autodev.queue import (
     scope_digest,
 )
 from aotg.autodev.result_slot import LocalResultSlot
+from aotg.autodev.worker import CandidateRejected, WorkerError
 
 BASE = "1" * 40
 HEAD = "2" * 40
