@@ -1,5 +1,6 @@
 """Exercise the pilot worker with temporary repositories and a fake isolated runner."""
 
+import json
 import shutil
 import subprocess
 from dataclasses import replace
@@ -7,7 +8,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from time import monotonic_ns
 from unittest import TestCase, skipUnless
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from aotg.autodev.candidate_git import build_candidate
 from aotg.autodev.coordinator import Candidate
@@ -19,7 +20,7 @@ from aotg.autodev.pilot_worker import (
     PilotWorker,
 )
 from aotg.autodev.queue import ApprovedScope, scope_digest
-from aotg.autodev.worker import WorkerError
+from aotg.autodev.worker import CandidateRejected, WorkerError
 
 SCOPE = ApprovedScope("UOB-50", 7, "a" * 64, PILOT_PATHS, ("UOB-49",), "")
 SCOPE = replace(SCOPE, approval_sha=scope_digest(SCOPE))
@@ -29,6 +30,71 @@ def _run_git(path, *args):
     return subprocess.run(
         ("git", "-C", str(path), *args), check=True, capture_output=True, text=True,
     ).stdout.strip()
+
+
+class ContractRejection(Exception):
+    """The exception a trusted runner injects into the fixed grader script."""
+
+
+class PilotContractTests(TestCase):
+    @staticmethod
+    def run_contract(responses, *, readable=True):
+        processes = []
+        reads = []
+        for payload, code in responses:
+            manager = MagicMock()
+            child = manager.__enter__.return_value
+            child.poll.return_value = code
+            child.wait.return_value = code
+            processes.append(manager)
+            reads.extend((payload, b""))
+        with (
+            patch("subprocess.Popen", side_effect=processes),
+            patch("select.select", return_value=([True] if readable else [], [], [])),
+            patch("os.read", side_effect=reads),
+        ):
+            exec(PILOT_CONTRACT, {"RejectCandidate": ContractRejection})
+
+    def test_complete_valid_fixture_outputs_pass(self):
+        statuses = (
+            ("pass", 0), ("missing_observations", 0), ("timeout", 0),
+            ("malformed", 2), ("malformed", 2), ("malformed", 2), ("assertion_mismatch", 0),
+        )
+        self.run_contract([
+            (json.dumps({"version": 1, "case": case, "status": status}).encode("utf-8"), code)
+            for case in ("cpp-half-open-interval", "csharp-atomic-batch")
+            for status, code in statuses
+        ])
+
+    def test_complete_wrong_result_is_definitively_rejected(self):
+        expected = {"version": 1, "case": "cpp-half-open-interval", "status": "pass"}
+        for observed in (
+            [],
+            {**expected, "status": "assertion_mismatch"},
+            {**expected, "version": True},
+            {**expected, "version": 1.0},
+            {**expected, "unexpected": []},
+        ):
+            with self.subTest(observed=observed), self.assertRaises(ContractRejection):
+                self.run_contract([(json.dumps(observed).encode("utf-8"), 0)])
+
+    def test_bad_or_truncated_result_is_not_definitive(self):
+        for payload, error in (
+            (b"", json.JSONDecodeError),
+            (b'{"version": 1', json.JSONDecodeError),
+            (b'{"version": 1, "version": 1}', ValueError),
+            (b'{"version": NaN}', ValueError),
+            (bytes([255]), UnicodeDecodeError),
+            (b" " * 1025, SystemExit),
+        ):
+            with self.subTest(payload=payload[:40]), self.assertRaises(error):
+                self.run_contract([(payload, 0)])
+
+    def test_signal_unexpected_exit_and_read_timeout_are_not_definitive(self):
+        payload = b'{"version": 1, "case": "cpp-half-open-interval", "status": "wrong"}'
+        for code, readable in ((-9, True), (3, True), (0, False)):
+            with self.subTest(code=code, readable=readable), self.assertRaises(SystemExit):
+                self.run_contract([(payload, code)], readable=readable)
 
 
 @skipUnless(shutil.which("git"), "Git is required for workspace isolation tests")
@@ -96,6 +162,19 @@ class PilotWorkerTests(TestCase):
         with self.assertRaises(WorkerError):
             self.worker.implement(SCOPE, self.base, timeout_seconds=60)
         self.runner.generate.assert_called_once()
+
+    def test_incomplete_candidate_is_rejected_without_publication(self):
+        def generate_partial(checkout, prompt, *, timeout_seconds):
+            self.assertEqual(self.preflighted, checkout)
+            self.assertEqual(prompt, PILOT_PROMPT)
+            for name in PILOT_PATHS[:-1]:
+                (checkout / name).write_bytes(b"partial candidate output")
+
+        self.runner.generate.side_effect = generate_partial
+        with self.assertRaises(CandidateRejected):
+            self.worker.implement(SCOPE, self.base, timeout_seconds=60)
+        self.runner.verify.assert_not_called()
+        self.build.assert_not_called()
 
     def test_generated_out_of_scope_changes_cannot_enter_verification(self):
         def generate(checkout, prompt, *, timeout_seconds):

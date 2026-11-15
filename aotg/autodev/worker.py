@@ -23,6 +23,10 @@ class WorkerError(RuntimeError):
     """A workspace or process failed the worker's verification."""
 
 
+class CandidateRejected(WorkerError):
+    """A completed candidate definitively failed an approved local check."""
+
+
 @dataclass(frozen=True)
 class PreparedCheckout:
     path: Path
@@ -207,7 +211,7 @@ def capture_changes(prepared: PreparedCheckout, allowed_paths: tuple[str, ...]) 
     changed = tuple(sorted(name for name in baseline.keys() | after.keys()
                            if baseline.get(name) != after.get(name)))
     if not changed or set(changed) - set(allowed_paths):
-        raise WorkerError("The candidate has no changes or exceeds the approved scope")
+        raise CandidateRejected("The candidate has no changes or exceeds the approved scope")
     sections = []
     for path in changed:
         before_data, before_executable = baseline.get(path, (b"", False))

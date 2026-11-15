@@ -14,6 +14,7 @@ from .queue import (
     select_candidate,
     valid_change_path,
 )
+from .worker import CandidateRejected
 
 _SHA = re.compile(r"[0-9a-f]{40}")
 
@@ -223,6 +224,10 @@ class Coordinator:
             return self._finish(attempt, "success", replace(
                 result, status="draft_pr", reason="draft-verified", head=candidate.head, pr=pr,
             ))
+        except CandidateRejected:
+            if stage == "worker-result-unconfirmed":
+                return self._finish(attempt, "failure", replace(result, reason="candidate-rejected"))
+            return self._finish(attempt, "unknown", replace(result, status="unknown", reason=stage))
         except TimeoutError:
             if stage == "worker-result-unconfirmed":
                 return self._finish(attempt, "timeout", replace(result, reason="worker-timeout"))
