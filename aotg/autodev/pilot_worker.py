@@ -14,6 +14,7 @@ from .ledger import LedgerError, _validate_path
 from .pilot_runtime import BOOTSTRAP_PATHS, PilotAttemptBoundary, _is_first_scope
 from .queue import ApprovedScope
 from .worker import (
+    CandidateRejected,
     MAX_RUNTIME_SECONDS,
     WorkerError,
     _git_bytes,
@@ -166,7 +167,7 @@ class PilotWorker:
         _remaining(deadline)
         changes = capture_changes(generated, PILOT_PATHS)
         if changes.paths != PILOT_PATHS or any(name in PILOT_PATHS for name, _, _ in generated.baseline):
-            raise WorkerError("Pilot candidate must add all three approved files")
+            raise CandidateRejected("Pilot candidate must add all three approved files")
 
         verifier = prepare_checkout(source, run / "verification", base)
         _git_bytes(
