@@ -78,21 +78,26 @@ class PilotContractTests(TestCase):
             with self.subTest(observed=observed), self.assertRaises(ContractRejection):
                 self.run_contract([(json.dumps(observed).encode("utf-8"), 0)])
 
-    def test_bad_or_truncated_result_is_not_definitive(self):
-        for payload, error in (
-            (b"", json.JSONDecodeError),
-            (b'{"version": 1', json.JSONDecodeError),
-            (b'{"version": 1, "version": 1}', ValueError),
-            (b'{"version": NaN}', ValueError),
-            (bytes([255]), UnicodeDecodeError),
-            (b" " * 1025, SystemExit),
+    def test_complete_invalid_output_is_definitively_rejected(self):
+        for payload in (
+            b"",
+            b'{"version": 1',
+            b'{"version": 1, "version": 1}',
+            b'{"version": NaN}',
+            b'debug\n{"version": 1, "case": "cpp-half-open-interval", "status": "pass"}',
+            bytes([255]),
+            b"[" * 1024,
         ):
-            with self.subTest(payload=payload[:40]), self.assertRaises(error):
+            with self.subTest(payload=payload), self.assertRaises(ContractRejection):
                 self.run_contract([(payload, 0)])
+
+    def test_output_over_the_limit_remains_unknown(self):
+        with self.assertRaises(SystemExit):
+            self.run_contract([(b" " * 1025, 0)])
 
     def test_signal_unexpected_exit_and_read_timeout_are_not_definitive(self):
         payload = b'{"version": 1, "case": "cpp-half-open-interval", "status": "wrong"}'
-        for code, readable in ((-9, True), (3, True), (0, False)):
+        for code, readable in ((-9, True), (1, True), (3, True), (0, False)):
             with self.subTest(code=code, readable=readable), self.assertRaises(SystemExit):
                 self.run_contract([(payload, code)], readable=readable)
 
