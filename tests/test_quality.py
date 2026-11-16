@@ -201,7 +201,10 @@ class NativeCppTests(unittest.TestCase):
         self.assertEqual(len(report["source_sha256"]), 64)
         self.assertEqual(len(report["executable_sha256"]), 64)
         self.assertIn("g++", report["toolchain"]["version_probe"]["stdout"])
-        self.assertEqual(report["toolchain"]["compiler_flags"], ["-std=c++17", "-O2", "-fwrapv"])
+        self.assertEqual(report["toolchain"]["compiler_flags"],
+                         ["-std=c++17", "-O2", "-fsanitize=undefined",
+                          "-fno-sanitize-recover=all"])
+        self.assertTrue(report["toolchain"]["sanitizer_check"]["active"])
         self.assertNotIn(tempfile.gettempdir() + os.sep + "aotg-quality-", json.dumps(report))
 
     def test_correct_but_unreviewed_source_is_not_quality_accepted(self):
@@ -227,25 +230,80 @@ class NativeCppTests(unittest.TestCase):
             self.assertFalse(report["quality_accepted"])
 
     def test_signed_overflow_implementations_fail_independent_grading(self):
-        # Synthetic negative examples: -O2 alone wrongly accepts all three.
-        # The accepted review receipts here are test fixtures, never real reviews.
+        # Each would incorrectly pass at -O2 without UBSan. Review receipts in
+        # this test are synthetic; they are never real independent acceptance.
         candidates = (
-            "#include <algorithm>\n"
+            "#include <algorithm>\\n"
             "bool overlaps(int a,int b,int c,int d) {"
             " return std::min(b,d)-std::max(a,c)>0; }",
-            "#include <algorithm>\n"
+            "#include <algorithm>\\n"
             "bool overlaps(int a,int b,int c,int d) {"
             " return b-a>0 && d-c>0 && std::min(b,d)-std::max(a,c)>0; }",
             "bool overlaps(int a,int b,int c,int d) {"
             " return b-a>0 && d-c>0 && a<d && c<b; }",
+            "#include <algorithm>\\n"
+            "bool overlaps(int a,int b,int c,int d) {"
+            " return a<d && c<b && b-a>0 && d-c>0; }",
         )
         for source in candidates:
             with self.subTest(source=source):
                 report = self.evaluate(source, source_review=synthetic_review(source))
-                self.assertEqual(report["behavioral_status"], "assertion-mismatch")
-                self.assertEqual(report["status"], "assertion-mismatch")
-                self.assertIn(9, report["grading"]["mismatches"])
+                self.assertEqual(report["behavioral_status"], "runtime-error")
+                self.assertEqual(report["status"], "runtime-error")
                 self.assertFalse(report["quality_accepted"])
+                self.assertTrue(report["toolchain"]["sanitizer_check"]["active"])
+                self.assertIsNone(report["grading"])
+                self.assertIn("signed integer overflow", report["execution"]["stderr"])
+
+    def test_unavailable_sanitizer_fails_closed_before_candidate_compile(self):
+        real_run = quality_module._run
+
+        def fake_disabled(argv, directory, timeout_seconds, phase, tool_directories=(), *, dotnet=False):
+            if phase == "sanitizer-run":
+                return {"status": "ok", "exit_code": 0, "seconds": 0.001,
+                        "stdout": "", "stderr": "", "output_truncated": False}
+            return real_run(argv, directory, timeout_seconds, phase, tool_directories, dotnet=dotnet)
+
+        with patch("aotg.quality._run", side_effect=fake_disabled):
+            report = self.evaluate(GOOD_CPP, source_review=synthetic_review(GOOD_CPP))
+        self.assertEqual(report["behavioral_status"], "sanitizer-unavailable")
+        self.assertEqual(report["status"], "sanitizer-unavailable")
+        self.assertIsNone(report["compile"])
+        self.assertIsNone(report["execution"])
+        self.assertFalse(report["toolchain"]["sanitizer_check"]["active"])
+        self.assertFalse(report["quality_accepted"])
+
+    def test_public_cli_rejects_overflow_without_source_review(self):
+        import subprocess
+        import sys
+
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            for name, source, status in (
+                ("reference", GOOD_CPP, "pass"),
+                ("overflow", "#include <algorithm>\\n"
+                 "bool overlaps(int a,int b,int c,int d) {"
+                 " return std::min(b,d)-std::max(a,c)>0; }", "runtime-error"),
+            ):
+                with self.subTest(name=name):
+                    source_path = directory / (name + ".cpp")
+                    report_path = directory / (name + ".json")
+                    source_path.write_text(source, encoding="utf-8")
+                    result = subprocess.run(
+                        [sys.executable, "-m", "aotg.quality", "--case", CASES[0],
+                         "--source", str(source_path),
+                         "--compiler", str(Path(shutil.which("g++")).resolve()),
+                         "--compiler-kind", "g++", "--allow-execute",
+                         "--isolation-evidence", "synthetic-public-cli-regression",
+                         "--output", str(report_path)],
+                        cwd=Path(__file__).resolve().parents[1], capture_output=True,
+                        text=True, timeout=60, check=False,
+                    )
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    report = json.loads(report_path.read_text(encoding="utf-8"))
+                    self.assertEqual(report["behavioral_status"], status)
+                    self.assertTrue(report["toolchain"]["sanitizer_check"]["active"])
+                    self.assertFalse(report["quality_accepted"])
 
     def test_original_buggy_fixture_is_rejected(self):
         source = (CATALOG.parent / "intervals.cpp").read_text(encoding="utf-8")
