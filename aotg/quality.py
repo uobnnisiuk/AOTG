@@ -31,6 +31,10 @@ CATALOG = Path(__file__).resolve().parents[1] / "tests/fixtures/benchmark/catalo
 MAX_SOURCE_BYTES = 1024 * 1024
 MAX_OUTPUT_BYTES = 64 * 1024
 CASES = ("cpp-half-open-interval", "csharp-atomic-batch")
+# GCC optimizes signed-overflow expressions under -O2 as undefined behavior;
+# -fwrapv makes overflowing +, -, * wrap, allowing boundary tests to expose
+# incorrect interval arithmetic without requiring an extra sanitizer runtime.
+CXX_GRADING_FLAGS = ("-std=c++17", "-O2", "-fwrapv")
 
 
 def _sha(data):
@@ -355,6 +359,8 @@ def grade_source(case_id, source_path, *, compiler, compiler_kind, runtime_argv=
                    "captured_output_bytes": MAX_OUTPUT_BYTES},
         "compile": None, "execution": None, "grading": None,
     }
+    if compiler_kind == "g++":
+        report["toolchain"]["compiler_flags"] = list(CXX_GRADING_FLAGS)
     report["source_review"] = _review_gate(source_review, report)
     with tempfile.TemporaryDirectory(prefix="aotg-quality-") as temporary:
         directory = Path(temporary)
@@ -377,7 +383,7 @@ def grade_source(case_id, source_path, *, compiler, compiler_kind, runtime_argv=
                        dotnet=compiler_kind == "dotnet-csc")
         report["toolchain"]["version_probe"] = version
         if compiler_kind == "g++":
-            argv = [str(executable), "-std=c++17", "-O2", str(candidate), str(harness), "-o", str(output)]
+            argv = [str(executable), *CXX_GRADING_FLAGS, str(candidate), str(harness), "-o", str(output)]
         elif compiler_kind in ("csc", "dotnet-csc"):
             prefix = [*dotnet_prefix, str(csc_dll)] if dotnet_inputs else [str(executable)]
             refs = ["/nostdlib+", *("/reference:" + str(p) for p in references)] if dotnet_inputs else []
