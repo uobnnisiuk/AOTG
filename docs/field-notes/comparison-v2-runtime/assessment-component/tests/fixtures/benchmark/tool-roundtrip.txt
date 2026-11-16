@@ -1,0 +1,1 @@
+Call the catalog_lookup tool for item P-42 and report only the returned stock integer.

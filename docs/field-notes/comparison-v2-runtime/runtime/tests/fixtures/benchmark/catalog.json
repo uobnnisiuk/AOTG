@@ -1,0 +1,316 @@
+{
+  "schema_version": 1,
+  "kind": "benchmark-input-catalog",
+  "defaults": {
+    "seed": 4242,
+    "temperature": 0,
+    "top_p": 1,
+    "top_k": 20,
+    "min_p": 0,
+    "presence_penalty": 0,
+    "frequency_penalty": 0,
+    "repeat_penalty": 1
+  },
+  "cases": [
+    {
+      "id": "short-answer",
+      "kind": "synthetic-prompt",
+      "prompt_path": "short-answer.txt",
+      "max_output_tokens": 16,
+      "expected_answer": "42"
+    },
+    {
+      "id": "tool-roundtrip",
+      "kind": "synthetic-tool",
+      "prompt_path": "tool-roundtrip.txt",
+      "max_output_tokens": 128,
+      "expected_tool_call": {
+        "name": "catalog_lookup",
+        "arguments": {
+          "item": "P-42"
+        }
+      },
+      "tool_result": {
+        "stock": 13
+      },
+      "expected_answer": "13"
+    },
+    {
+      "id": "cpp-half-open-interval",
+      "kind": "synthetic-coding",
+      "language": "C++17",
+      "prompt_path": "cpp-interval-task.txt",
+      "starter_path": "intervals.cpp",
+      "max_output_tokens": 1024,
+      "assertions": [
+        {
+          "arguments": [
+            0,
+            2,
+            2,
+            4
+          ],
+          "result": false
+        },
+        {
+          "arguments": [
+            0,
+            3,
+            2,
+            4
+          ],
+          "result": true
+        },
+        {
+          "arguments": [
+            -8,
+            -2,
+            -4,
+            0
+          ],
+          "result": true
+        },
+        {
+          "arguments": [
+            4,
+            9,
+            1,
+            4
+          ],
+          "result": false
+        },
+        {
+          "arguments": [
+            4,
+            9,
+            2,
+            7
+          ],
+          "result": true
+        },
+        {
+          "arguments": [
+            1,
+            1,
+            0,
+            2
+          ],
+          "result": false
+        },
+        {
+          "arguments": [
+            2,
+            1,
+            0,
+            3
+          ],
+          "result": false
+        },
+        {
+          "arguments": [
+            0,
+            3,
+            2,
+            1
+          ],
+          "result": false
+        },
+        {
+          "arguments": [
+            -2147483648,
+            2147483647,
+            2147483646,
+            2147483647
+          ],
+          "result": true
+        },
+        {
+          "arguments": [
+            -2147483648,
+            0,
+            -2147483648,
+            0
+          ],
+          "result": true
+        },
+        {
+          "arguments": [
+            -2147483648,
+            2147483647,
+            -2147483648,
+            2147483647
+          ],
+          "result": true
+        },
+        {
+          "arguments": [
+            -2147483648,
+            2147483647,
+            0,
+            1
+          ],
+          "result": true
+        },
+        {
+          "arguments": [
+            0,
+            1,
+            -2147483648,
+            2147483647
+          ],
+          "result": true
+        },
+        {
+          "arguments": [
+            -2147483648,
+            -2147483647,
+            2147483646,
+            2147483647
+          ],
+          "result": false
+        },
+        {
+          "arguments": [
+            2147483646,
+            2147483647,
+            -2147483648,
+            -2147483647
+          ],
+          "result": false
+        }
+      ]
+    },
+    {
+      "id": "csharp-atomic-batch",
+      "kind": "synthetic-coding",
+      "language": "C#",
+      "prompt_path": "csharp-batch-task.txt",
+      "starter_path": "BatchRegistry.cs",
+      "max_output_tokens": 1024,
+      "assertion_sequences": [
+        {
+          "name": "duplicate-existing-rolls-back-batch",
+          "operations": [
+            {
+              "try_register": [
+                "stored"
+              ],
+              "result": true
+            },
+            {
+              "try_register": [
+                "fresh",
+                "stored"
+              ],
+              "result": false
+            },
+            {
+              "contains": "fresh",
+              "result": false
+            },
+            {
+              "contains": "stored",
+              "result": true
+            },
+            {
+              "try_register": [
+                "fresh"
+              ],
+              "result": true
+            }
+          ]
+        },
+        {
+          "name": "duplicate-within-new-batch-rolls-back",
+          "operations": [
+            {
+              "try_register": [
+                "x",
+                "x"
+              ],
+              "result": false
+            },
+            {
+              "contains": "x",
+              "result": false
+            },
+            {
+              "try_register": [
+                "x"
+              ],
+              "result": true
+            }
+          ]
+        },
+        {
+          "name": "order-and-empty",
+          "operations": [
+            {
+              "try_register": [],
+              "result": true
+            },
+            {
+              "try_register": [
+                "first",
+                "second"
+              ],
+              "result": true
+            },
+            {
+              "contains": "second",
+              "result": true
+            },
+            {
+              "try_register": [
+                "third"
+              ],
+              "result": true
+            }
+          ]
+        },
+        {
+          "name": "ordinal-comparison",
+          "operations": [
+            {
+              "try_register": [
+                "key",
+                "KEY"
+              ],
+              "result": true
+            },
+            {
+              "contains": "key",
+              "result": true
+            },
+            {
+              "contains": "KEY",
+              "result": true
+            },
+            {
+              "contains": "Key",
+              "result": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mono-options-alias-collision",
+      "kind": "public-source-reference",
+      "language": "C#",
+      "prompt_path": "mono-options-task.txt",
+      "max_output_tokens": 4096,
+      "upstream": {
+        "repository": "https://github.com/mono/mono",
+        "revision": "a22465351be5c8688fee6d6cf3029bd639696f05",
+        "path": "mcs/class/Mono.Options/Mono.Options/Options.cs",
+        "sha256": "ad2e8f57cb6b26bb7f4f81c52d78fa274d97d332fae387be90967d40ac4a7abb"
+      },
+      "assertions": [
+        "Register q, then attempt to add quiet|q. The operation fails and quiet is absent.",
+        "After the failure the original q still resolves and quiet can be registered in a valid option.",
+        "Successful option registration still supports multiple aliases."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+# Synthetic cross-runtime protocol integration
+
+This opt-in local fixture uses no service, engine, model, SSH, download or real sleep. It does not create an actual run plan or authority. Its temporary transport/executable-named files are inert synthetic bytes.
+
+Run `python3 -B integration-tests/test_cross_runtime.py -v` from the candidate root. The fixture verifies the exact source inventory in `source-pins.json` before importing the existing boundary fakes and candidate runtime. This is a test harness import gate, not qualification of the future production launcher.
+
+Seven tests pass. The full worker `execute` runs 64 synthetic arms, emits actual ready markers, and invokes the real client `await_arm` and `finish_arm`. Their generated remote snippets run synchronously against temporary local files. The worker consumes and validates the real written done markers. Thus 128 transport snippets cross the two implementations, while process launch, hardware checks, telemetry and monotonic progress are explicitly simulated. All64 cleanup/barrier calls complete in the synthetic fixture; this says nothing about actual restoration.
+
+The full client read-only preflight validates all actual candidate module hashes and synthetic frozen workload/transport inputs. Worker plan and full field validation are real. Cases cover every schedule dimension, paired profile identities, raw versus canonical SHA bindings, changed ready/done identities, missing/wrong/extra runtime pins, and reserialization with equal canonical content but changed raw bytes. A mismatched marker fails before a second arm and leaves the worker stopped result. No client coding task runs and quality is always unaccepted.
+
+`integration-result.json` pins the seven-test run and output. The initial fixture source had a string-literal syntax typo; its failure records are retained under `syntax-fixture-attempt-*`, corrected before any test body ran. No core source changed to fix it. `portable-runner-tests.json` records the21 focused runtime tests rerun against runner `094caf28e7c8fd652474b7100e86a1a58f799b915940cf6ed15e2c4b9e71e80a`, whose only delta after the reviewed late-refusal fix is locating the adjacent `runtime` directory relative to `__file__`. Earlier core manifest and review hashes remain historical; these additive pins identify this revision. The22 coordinator tests have no affected source and were not redundantly rerun.
+
+No benchmark, hardware performance, native quality, live cleanup, rollback or Goal completion is claimed. Concrete launchers, staged plans, approvals, real transport and evidence collection still require their separate integration and review.
