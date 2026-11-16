@@ -85,12 +85,33 @@ class ObservationTests(unittest.TestCase):
         self.assertEqual(grade_observations("AOTG:0:false", [True])["mismatches"], [0])
 
     def test_trusted_catalog_builds_both_harnesses(self):
-        for case_id, extension, count in ((CASES[0], ".cpp", 9), (CASES[1], ".cs", 16)):
+        for case_id, extension, count in ((CASES[0], ".cpp", 15), (CASES[1], ".cs", 16)):
             harness, expected, suffix = _harness(_catalog_case(case_id, CATALOG))
             self.assertEqual(suffix, extension)
             self.assertEqual(len(expected), count)
             self.assertEqual(harness.count("AOTG:"), count)
             self.assertTrue(all(type(value) is bool for value in expected))
+
+    def test_cpp_catalog_matches_task_spec_and_boundary_cases(self):
+        prompt = (CATALOG.parent / "cpp-interval-task.txt").read_text(encoding="utf-8")
+        self.assertIn("half-open", prompt)
+        self.assertIn("empty or reversed", prompt)
+        self.assertIn("all int values", prompt)
+        assertions = _catalog_case(CASES[0], CATALOG)["assertions"]
+        self.assertEqual(len(assertions), 15)
+        vectors = [item["arguments"] for item in assertions]
+        for values in (
+            [-2147483648, 0, -2147483648, 0],
+            [-2147483648, 2147483647, -2147483648, 2147483647],
+            [-2147483648, 2147483647, 0, 1],
+            [0, 1, -2147483648, 2147483647],
+            [-2147483648, -2147483647, 2147483646, 2147483647],
+            [2147483646, 2147483647, -2147483648, -2147483647],
+        ):
+            self.assertIn(values, vectors)
+        for item in assertions:
+            a, b, c, d = item["arguments"]
+            self.assertIs(item["result"], a < b and c < d and a < d and c < b)
 
     def test_invalid_catalog_never_generates_code(self):
         with self.assertRaises(ArtifactError):
@@ -176,10 +197,11 @@ class NativeCppTests(unittest.TestCase):
         report = self.evaluate(GOOD_CPP, source_review=synthetic_review(GOOD_CPP))
         self.assertEqual(report["status"], "pass", report)
         self.assertTrue(report["quality_accepted"])
-        self.assertEqual(report["grading"]["observed"], 9)
+        self.assertEqual(report["grading"]["observed"], 15)
         self.assertEqual(len(report["source_sha256"]), 64)
         self.assertEqual(len(report["executable_sha256"]), 64)
         self.assertIn("g++", report["toolchain"]["version_probe"]["stdout"])
+        self.assertEqual(report["toolchain"]["compiler_flags"], ["-std=c++17", "-O2", "-fwrapv"])
         self.assertNotIn(tempfile.gettempdir() + os.sep + "aotg-quality-", json.dumps(report))
 
     def test_correct_but_unreviewed_source_is_not_quality_accepted(self):
@@ -200,9 +222,30 @@ class NativeCppTests(unittest.TestCase):
                                (synthetic_review(source, "rejected"), "source-review-rejected")):
             report = self.evaluate(source, source_review=review)
             self.assertEqual(report["behavioral_status"], "pass")
-            self.assertEqual(report["grading"]["observed"], 9)
+            self.assertEqual(report["grading"]["observed"], 15)
             self.assertEqual(report["status"], status)
             self.assertFalse(report["quality_accepted"])
+
+    def test_signed_overflow_implementations_fail_independent_grading(self):
+        # Synthetic negative examples: -O2 alone wrongly accepts all three.
+        # The accepted review receipts here are test fixtures, never real reviews.
+        candidates = (
+            "#include <algorithm>\n"
+            "bool overlaps(int a,int b,int c,int d) {"
+            " return std::min(b,d)-std::max(a,c)>0; }",
+            "#include <algorithm>\n"
+            "bool overlaps(int a,int b,int c,int d) {"
+            " return b-a>0 && d-c>0 && std::min(b,d)-std::max(a,c)>0; }",
+            "bool overlaps(int a,int b,int c,int d) {"
+            " return b-a>0 && d-c>0 && a<d && c<b; }",
+        )
+        for source in candidates:
+            with self.subTest(source=source):
+                report = self.evaluate(source, source_review=synthetic_review(source))
+                self.assertEqual(report["behavioral_status"], "assertion-mismatch")
+                self.assertEqual(report["status"], "assertion-mismatch")
+                self.assertIn(9, report["grading"]["mismatches"])
+                self.assertFalse(report["quality_accepted"])
 
     def test_original_buggy_fixture_is_rejected(self):
         source = (CATALOG.parent / "intervals.cpp").read_text(encoding="utf-8")
