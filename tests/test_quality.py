@@ -233,15 +233,15 @@ class NativeCppTests(unittest.TestCase):
         # Each would incorrectly pass at -O2 without UBSan. Review receipts in
         # this test are synthetic; they are never real independent acceptance.
         candidates = (
-            "#include <algorithm>\\n"
+            "#include <algorithm>\n"
             "bool overlaps(int a,int b,int c,int d) {"
             " return std::min(b,d)-std::max(a,c)>0; }",
-            "#include <algorithm>\\n"
+            "#include <algorithm>\n"
             "bool overlaps(int a,int b,int c,int d) {"
             " return b-a>0 && d-c>0 && std::min(b,d)-std::max(a,c)>0; }",
             "bool overlaps(int a,int b,int c,int d) {"
             " return b-a>0 && d-c>0 && a<d && c<b; }",
-            "#include <algorithm>\\n"
+            "#include <algorithm>\n"
             "bool overlaps(int a,int b,int c,int d) {"
             " return a<d && c<b && b-a>0 && d-c>0; }",
         )
@@ -281,7 +281,7 @@ class NativeCppTests(unittest.TestCase):
             directory = Path(temporary)
             for name, source, status in (
                 ("reference", GOOD_CPP, "pass"),
-                ("overflow", "#include <algorithm>\\n"
+                ("overflow", "#include <algorithm>\n"
                  "bool overlaps(int a,int b,int c,int d) {"
                  " return std::min(b,d)-std::max(a,c)>0; }", "runtime-error"),
             ):
