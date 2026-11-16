@@ -31,10 +31,20 @@ CATALOG = Path(__file__).resolve().parents[1] / "tests/fixtures/benchmark/catalo
 MAX_SOURCE_BYTES = 1024 * 1024
 MAX_OUTPUT_BYTES = 64 * 1024
 CASES = ("cpp-half-open-interval", "csharp-atomic-batch")
-# GCC optimizes signed-overflow expressions under -O2 as undefined behavior;
-# -fwrapv makes overflowing +, -, * wrap, allowing boundary tests to expose
-# incorrect interval arithmetic without requiring an extra sanitizer runtime.
-CXX_GRADING_FLAGS = ("-std=c++17", "-O2", "-fwrapv")
+# GCC -O2 can fold invalid overflow arithmetic into correct-looking comparisons.
+# GCC UBSan detects signed overflow, and aborts before accepting the observation.
+# Unsupported or inactive instrumentation is rejected by a trusted probe.
+CXX_GRADING_FLAGS = ("-std=c++17", "-O2", "-fsanitize=undefined",
+                     "-fno-sanitize-recover=all")
+CXX_SANITIZER_PROBE = (
+    "int main() {\n"
+    "  volatile int limit = 2147483647;\n"
+    "  volatile int increment = 1;\n"
+    "  volatile int overflow = limit + increment;\n"
+    "  (void)overflow;\n"
+    "  return 0;\n"
+    "}\n"
+)
 
 
 def _sha(data):
@@ -382,6 +392,33 @@ def grade_source(case_id, source_path, *, compiler, compiler_kind, runtime_argv=
         version = _run(version_argv, directory, 5, "version", tool_directories,
                        dotnet=compiler_kind == "dotnet-csc")
         report["toolchain"]["version_probe"] = version
+        if compiler_kind == "g++":
+            # A flag accepted by the compiler is not proof that runtime
+            # instrumentation is usable. Compile and execute a trusted
+            # overflowing program under the very same flags and environment.
+            # A missing UBSan runtime, ignored flags, missing diagnostics,
+            # crash, or timeout must never turn into a quality pass.
+            probe_source = directory / "sanitizer_probe.cpp"
+            probe_binary = directory / ("sanitizer_probe.exe" if os.name == "nt" else "sanitizer_probe")
+            probe_source.write_text(CXX_SANITIZER_PROBE, encoding="utf-8")
+            probe_compile = _run([str(executable), *CXX_GRADING_FLAGS, str(probe_source),
+                                  "-o", str(probe_binary)], directory, compile_timeout_seconds,
+                                 "sanitizer-compile", tool_directories)
+            probe_run = None
+            if (probe_compile["status"] == "ok" and probe_compile["exit_code"] == 0
+                    and probe_binary.is_file()):
+                probe_run = _run([str(probe_binary)], directory, timeout_seconds,
+                                 "sanitizer-run", tool_directories)
+            active = (probe_run is not None and probe_run["status"] == "ok"
+                      and probe_run["exit_code"] != 0
+                      and "runtime error: signed integer overflow:" in probe_run["stderr"])
+            report["toolchain"]["sanitizer_check"] = {
+                "active": bool(active), "probe_sha256": _sha(CXX_SANITIZER_PROBE.encode("utf-8")),
+                "compile": probe_compile, "execution": probe_run,
+            }
+            if not active:
+                report["status"] = report["behavioral_status"] = "sanitizer-unavailable"
+                return report
         if compiler_kind == "g++":
             argv = [str(executable), *CXX_GRADING_FLAGS, str(candidate), str(harness), "-o", str(output)]
         elif compiler_kind in ("csc", "dotnet-csc"):
