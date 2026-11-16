@@ -410,8 +410,8 @@ def grade_source(case_id, source_path, *, compiler, compiler_kind, runtime_argv=
             # control succeeds, both under the exact same compiler flags.
             probe_source = directory / "overflow_probe.cpp"
             probe_source.write_text(CXX_SANITIZER_PROBE, encoding="utf-8")
-            suffix = ".exe" if os.name == "nt" else ""
-            probe_binary = directory / ("overflow_probe" + suffix)
+            probe_extension = ".exe" if os.name == "nt" else ""
+            probe_binary = directory / ("overflow_probe" + probe_extension)
 
             ubsan_compile = _run(
                 [str(executable), *CXX_GRADING_FLAGS, str(probe_source), "-o", str(probe_binary)],
@@ -436,7 +436,7 @@ def grade_source(case_id, source_path, *, compiler, compiler_kind, runtime_argv=
                                     "trap-run", tool_directories)
                 control_source = directory / "non_overflow_control.cpp"
                 control_source.write_text(CXX_TRAP_CONTROL, encoding="utf-8")
-                control_binary = directory / ("non_overflow_control" + suffix)
+                control_binary = directory / ("non_overflow_control" + probe_extension)
                 control_compile = _run(
                     [str(executable), *CXX_TRAP_FLAGS, str(control_source), "-o", str(control_binary)],
                     directory, compile_timeout_seconds, "trap-control-compile", tool_directories)
