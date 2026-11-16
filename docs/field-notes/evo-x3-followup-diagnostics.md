@@ -1,7 +1,8 @@
 # EVO-X3 follow-up: passive memory observation and stronger C++ grading
 
-On 2026-11-16, the restored production service remained running while a bounded
-unprivileged observer sampled the host. Separately, the unchanged C++ submission
+On 2026-11-16, a bounded unprivileged observer sampled the host. The restored
+production service had the same recorded state before and after that capture;
+continuous service uptime was not measured. Separately, the unchanged C++ submission
 from the earlier real OpenCode task passed the stronger grader in PR23. Neither
 operation reran a model task or stopped the service. The first-machine Goal remains
 incomplete; these results do not supply the missing comparison trials.
