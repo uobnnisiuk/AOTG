@@ -1,0 +1,82 @@
+--- a/field-worker.py
++++ b/field-worker.py
+@@ -665 +665 @@
+-    def __init__(self, plan, telemetry, stream, deadline):
++    def __init__(self, plan, telemetry, stream, deadline, observation_stream):
+@@ -666,0 +667,2 @@
++        self.observation_stream = observation_stream
++        self.observation_sequence = 0
+@@ -667,0 +670 @@
++        anchor_started = utc()
+@@ -670,0 +674,4 @@
++        self.anchor = {"utc_read_start": anchor_started, "utc_read_end": utc(),
++                       "pswpout": self.pswpout, "initial_gtt_bytes": self.gtt}
++        self.record_observation({"phase": "startup-anchor", "anchor": self.anchor,
++                                 "guard_verdict": "not-evaluated"})
+@@ -681,0 +689,10 @@
++    def record_observation(self, record):
++        """Flush separate evidence; observation never implies guard acceptance."""
++        event = {"artifact": "aotg-resource-observation", "version": 1,
++                 "run_id": self.plan["run_id"], **record}
++        try:
++            self.observation_stream.write(canonical(event) + "\n")
++            self.observation_stream.flush()
++        except Exception as exc:
++            raise StopTrial("Resource observation evidence write failed") from exc
++
+@@ -694,17 +711,32 @@
+-            edge = resource_check(sample, bdf=self.plan["gpu"]["bdf"], alarm_keys=self.plan["required_alarm_keys"],
+-                                  disk_free=sample["disk_free_bytes"], pswpout=sample["pswpout"],
+-                                  initial_pswpout=self.pswpout, initial_gtt=self.gtt)
+-            if owned is not None:
+-                owned.refresh()
+-                if edge >= 70 and self.pause_since is None:
+-                    owned.send(signal.SIGSTOP)
+-                    self.pause_since = now
+-                elif self.pause_since is not None and edge <= 60:
+-                    owned.send(signal.SIGCONT)
+-                    self.pause_since = None
+-                if self.pause_since is not None:
+-                    # Include children discovered after the first pause signal.
+-                    owned.send(signal.SIGSTOP)
+-                    require(now - self.pause_since <= 30, "GPU thermal pacing exceeded 30 seconds")
+-            else:
+-                require(edge < 70, "GPU not cool enough to start next arm")
++            sequence = self.observation_sequence
++            self.observation_sequence += 1
++            observed = {"sequence": sequence, "observed_at_utc": utc(),
++                        "sample_utc": sample.get("utc"), "anchor": self.anchor}
++            self.record_observation({**observed, "phase": "observed", "sample": sample,
++                                     "guard_verdict": "not-evaluated"})
++            try:
++                edge = resource_check(sample, bdf=self.plan["gpu"]["bdf"], alarm_keys=self.plan["required_alarm_keys"],
++                                      disk_free=sample["disk_free_bytes"], pswpout=sample["pswpout"],
++                                      initial_pswpout=self.pswpout, initial_gtt=self.gtt)
++                if owned is not None:
++                    owned.refresh()
++                    if edge >= 70 and self.pause_since is None:
++                        owned.send(signal.SIGSTOP)
++                        self.pause_since = now
++                    elif self.pause_since is not None and edge <= 60:
++                        owned.send(signal.SIGCONT)
++                        self.pause_since = None
++                    if self.pause_since is not None:
++                        # Include children discovered after the first pause signal.
++                        owned.send(signal.SIGSTOP)
++                        require(now - self.pause_since <= 30, "GPU thermal pacing exceeded 30 seconds")
++                else:
++                    require(edge < 70, "GPU not cool enough to start next arm")
++            except Exception as exc:
++                try:
++                    self.record_observation({**observed, "phase": "guard-result", "guard_verdict": "rejected",
++                                             "reason": str(exc), "error_type": type(exc).__name__})
++                except Exception as evidence_error:
++                    exc.add_note("Guard verdict evidence write failed: " + type(evidence_error).__name__)
++                raise
++            self.record_observation({**observed, "phase": "guard-result", "guard_verdict": "passed"})
+@@ -829,2 +861,3 @@
+-        with open(task / "resources.jsonl", "x", encoding="utf-8") as resource_stream:
+-            monitor = Monitor(plan, telemetry, resource_stream, deadline)
++        with open(task / "resources.jsonl", "x", encoding="utf-8") as resource_stream, \
++                open(task / "resource-observations.jsonl", "x", encoding="utf-8") as observation_stream:
++            monitor = Monitor(plan, telemetry, resource_stream, deadline, observation_stream)
