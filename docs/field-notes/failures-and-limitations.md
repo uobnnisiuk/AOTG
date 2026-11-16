@@ -103,3 +103,17 @@ K8 WSLではuser/mount/PID namespaceを利用できたが、Linux CIのポリシ
 同じprivate logには主agentのHTTP 409が3件、title agentのLLM処理開始が2件ある。409の宛先・空応答は測定proxyと一致し、固定proxyコードで409を返すのは同時要求を拒否する分岐だけである。したがって、この409はローカルproxyの同時要求拒否と判断する。タイトル処理との競合に整合するが、個々のproxy記録にはagent識別がなく、成功した各応答とtitle処理との一対一の対応は未確認である。409以降の最終glob文字列が発生した原因まで確定したわけではない。
 
 次の修正候補は、タイトル用agentの無効化と、許可ファイル・操作を明示するprimary agentのpromptである。OpenCode 1.1.53では、セッション名とメッセージ要約名に別のタイトル生成経路があるため、固定の `--title` だけでは後者は止まらない。[メッセージ要約の実装](https://github.com/anomalyco/opencode/blob/v1.1.53/packages/opencode/src/session/summary.ts#L113-L158)、[agent無効化の実装](https://github.com/anomalyco/opencode/blob/v1.1.53/packages/opencode/src/agent/agent.ts#L197-L200)。モデル、provider変換、サーバーtool parserの全体としての改善効果は未検証。自由なコマンド権限を与えたり、tool-call文字列を実行したり、自己申告の合格を採用したりしない。
+
+## F-015: 保護停止の判定値は、停止前に保存しなければ原因を再検証できない
+
+2026-11-16、別途開始承認を得た新しい有限比較窓では、認証済み待機から機械間連携が成立した。最初のbaselineは前回不足していたregexの遅延importを通過し、nativeエンジンの重みロードへ進んだ。しかしworkerは約3.204秒で `New swapout or counter reset` を記録して停止した。開始したarmは1件、完了0件。閾値を緩めず、その比較を再試行しなかった。[実測診断要約](evidence/2026-11-16-guard-stop-window.json)
+
+固定コードでは、Monitorの開始時に `/proc/vmstat` を読み、その新しいpswpoutを基準値にしていた。過去の固定planのcounterとの比較ではない。現在値とこの基準値の一致を検査してからサンプルを保存するため、拒否されたサンプル自体は残らなかった。保存された15サンプルのpswpoutは全て48、swap使用量は192,512 bytesだったが、これらは停止前の合格サンプルであり、停止値を示さない。コードと合格記録から基準値48と、発火値が48と異なることは推論できるが、初期値そのものの独立した保存記録はない。増加量、増加とcounter resetの区別、原因となったプロセス、OOMは未確認。メモリ不足やGPU故障と断定できない。
+
+serverのKeyboardInterruptは停止時のlifeline処理を通っており、workerの回収処理と整合する。これを新しいPython依存不足の証拠とは扱わない。完全なモデル起動・推論readyも観測できていない。
+
+K8側は約6.180秒で `Owned remote state operation failed` を保存した。worker終了後のready待ち失敗と整合するが、制御SSHの詳細stderrは一時ファイルから保存されず、厳密な応答内容を再確認できない。K8 CLIのexit 0も課題成功ではなく、停止したsummaryを確認したhandoffはexit 2だった。比較の集約結果も16 ledger／正規化0件、baseline無効、採用候補なしのincompleteである。
+
+補助I/Oは約5秒間の6サンプルを保存し、専用Windows Jobの回収を確認した。終了記録はなく、vmstatのpswpoutも採っていないため、失われた停止値を補完できない。ホスト全体の読書きcounterは診断情報として保存するが、飽和やモデル負荷だけによる因果関係を主張しない。
+
+元サービスの復帰は実記録で `worker-failed-restored`／`unit_restore_verified: true` を確認した。復帰後の課題と独立品質の結果は[最適化の知見](optimization-findings.md#o-005-復帰後の開発作業が進んでも比較試行の欠測は埋まらない)に分ける。今後の計測修正候補は、保護閾値を維持したまま拒否サンプルと開始時counterを保存すること、制御エラーの詳細を有限量で保持すること、停止summaryをCLIの終了コードにも反映すること。これらは未実装であり、本試行の失われた値を後から作るものではない。
