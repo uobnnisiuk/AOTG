@@ -404,6 +404,9 @@ def grade_source(case_id, source_path, *, compiler, compiler_kind, runtime_argv=
         report["toolchain"]["version_probe"] = version
         if compiler_kind == "g++":
             # Confirm overflow detection in this very execution environment.
+            # Use a separate fixed timeout: a candidate's millisecond execution
+            # budget must not spuriously disable the compiler preflight on Windows.
+            probe_timeout_seconds = 5.0
             # UBSan is the primary mechanism; some MinGW distributions omit
             # libubsan, so -ftrapv is a narrower opt-in fallback. It is only
             # accepted when a trusted overflowing test fails and a non-overflow
@@ -418,7 +421,7 @@ def grade_source(case_id, source_path, *, compiler, compiler_kind, runtime_argv=
                 directory, compile_timeout_seconds, "ubsan-compile", tool_directories)
             ubsan_run = None
             if ubsan_compile["status"] == "ok" and ubsan_compile["exit_code"] == 0 and probe_binary.is_file():
-                ubsan_run = _run([str(probe_binary)], directory, timeout_seconds,
+                ubsan_run = _run([str(probe_binary)], directory, probe_timeout_seconds,
                                  "ubsan-run", tool_directories)
             ubsan_active = (ubsan_run is not None and ubsan_run["status"] == "ok"
                             and ubsan_run["exit_code"] != 0
@@ -432,7 +435,7 @@ def grade_source(case_id, source_path, *, compiler, compiler_kind, runtime_argv=
                     directory, compile_timeout_seconds, "trap-compile", tool_directories)
                 trap_run = None
                 if trap_compile["status"] == "ok" and trap_compile["exit_code"] == 0 and probe_binary.is_file():
-                    trap_run = _run([str(probe_binary)], directory, timeout_seconds,
+                    trap_run = _run([str(probe_binary)], directory, probe_timeout_seconds,
                                     "trap-run", tool_directories)
                 control_source = directory / "non_overflow_control.cpp"
                 control_source.write_text(CXX_TRAP_CONTROL, encoding="utf-8")
@@ -443,7 +446,7 @@ def grade_source(case_id, source_path, *, compiler, compiler_kind, runtime_argv=
                 control_run = None
                 if (control_compile["status"] == "ok" and control_compile["exit_code"] == 0
                         and control_binary.is_file()):
-                    control_run = _run([str(control_binary)], directory, timeout_seconds,
+                    control_run = _run([str(control_binary)], directory, probe_timeout_seconds,
                                         "trap-control-run", tool_directories)
                 trap_active = (
                     trap_run is not None and trap_run["status"] == "ok"
