@@ -16,15 +16,18 @@ from aotg.field_evidence import (
 )
 
 
-def example_run():
+def example_run(*, metric_gates=None, workload_ids=("cpp", "csharp"),
+                candidate_ids=("baseline", "threads", "batch")):
+    metric_gates = {} if metric_gates is None else metric_gates
     plan = freeze_plan(
         identity_sha256=digest({"model": "fixed", "quant": "fixed", "sampling": 4242}),
         verifier_sha256=digest("verifier"),
         candidates=[{"id": name, "profile_sha256": digest(name)}
-                    for name in ("baseline", "threads", "batch")],
+                    for name in candidate_ids],
         workloads=[{"id": name, "input_sha256": digest(name),
                     "tests_sha256": digest(name + "-independent"), "cache_cohort": "cold"}
-                   for name in ("cpp", "csharp")],
+                   for name in workload_ids],
+        metric_gates=metric_gates,
         limits={"trial_seconds": 120, "total_seconds": 3600,
                 "max_temperature_c": 75, "min_mem_available_bytes": 1024,
                 "max_swapout_bytes": 0},
@@ -40,7 +43,9 @@ def example_run():
             "profile_sha256": profiles[row["candidate_id"]]["profile_sha256"],
             "source_sha256": digest("result-source"),
             "cache_cohort": "cold", "status": "passed", "reason": "completed",
-            "metrics": {"wall_seconds": 8 if row["candidate_id"] == "threads" else 10},
+            "metrics": {"wall_seconds": 8 if row["candidate_id"] == "threads" else 10,
+                        **{name: 0.5 if gate["direction"] == "minimize" else 100
+                           for name, gate in metric_gates.items()}},
             "resources": {"peak_temperature_c": 65, "min_mem_available_bytes": 4096,
                           "swapout_delta_bytes": 0, "gpu_errors": 0, "io_errors": 0},
             "quality": quality_record(
@@ -55,11 +60,189 @@ def example_run():
                                "independent": True, "reviewer": "independent-reviewer",
                                "verdict": "accepted", "evidence_reference": "review-record"}),
         })
-    return {"artifact": "aotg-field-run", "version": 1, "plan": plan,
-            "plan_sha256": digest(plan), "elapsed_seconds": 200, "trials": trials}
+    return {"artifact": "aotg-field-run", "version": 2, "plan": plan,
+            "plan_sha256": digest(plan), "elapsed_seconds": 800, "trials": trials}
 
 
 class FieldEvidenceTests(unittest.TestCase):
+    def test_any_candidate_resource_stop_prohibits_otherwise_valid_winner(self):
+        for resource, unsafe in (("peak_temperature_c", 76), ("min_mem_available_bytes", 1023),
+                                 ("swapout_delta_bytes", 1), ("gpu_errors", 1), ("io_errors", 1)):
+            with self.subTest(resource=resource):
+                run = example_run()
+                failed = next(t for t in run["trials"] if t["candidate_id"] == "batch")
+                failed["resources"][resource] = unsafe
+                result = compare_field_run(run)
+                self.assertTrue(result["baseline_valid"])
+                self.assertEqual(result["comparisons"][0]["status"], "pass")
+                self.assertEqual(result["comparisons"][1]["status"], "reject")
+                self.assertTrue(result["global_resource_stop"])
+                self.assertEqual(result["resource_stop_trial_indices"], [failed["index"]])
+                self.assertEqual(result["status"], "incomplete")
+                self.assertIsNone(result["selected_candidate_id"])
+
+    def test_independently_incorrect_candidate_does_not_imply_global_resource_stop(self):
+        run = example_run()
+        failed = next(t for t in run["trials"] if t["candidate_id"] == "batch")
+        failed["quality"]["checks"]["correctness"] = False
+        failed["quality"]["result_sha256"] = digest({key: value for key, value in failed["quality"].items()
+                                                      if key != "result_sha256"})
+        result = compare_field_run(run)
+        self.assertEqual(result["status"], "adopt")
+        self.assertEqual(result["selected_candidate_id"], "threads")
+        self.assertFalse(result["global_resource_stop"])
+        self.assertEqual(result["resource_stop_trial_indices"], [])
+
+    def test_each_workload_and_alternative_has_both_balanced_orders(self):
+        run = example_run()
+        for case in run["plan"]["workloads"]:
+            for name in ("threads", "batch"):
+                rows = [r for r in run["plan"]["schedule"] if r["comparison_id"] == name
+                        and r["workload_id"] == case["id"]]
+                orders = [[r["candidate_id"] for r in rows[i:i + 4]] for i in range(0, 16, 4)]
+                self.assertEqual(orders, [["baseline", name, name, "baseline"],
+                                          [name, "baseline", "baseline", name],
+                                          [name, "baseline", "baseline", name],
+                                          ["baseline", name, name, "baseline"]])
+
+    def test_unbalanced_schedule_cannot_masquerade_as_v2_plan(self):
+        plan = example_run()["plan"]
+        plan["schedule"][4]["candidate_id"] = "baseline"
+        plan["schedule"][5]["candidate_id"] = "threads"
+        plan["schedule"][6]["candidate_id"] = "threads"
+        plan["schedule"][7]["candidate_id"] = "baseline"
+        with self.assertRaisesRegex(ArtifactError, "Schedule differs"):
+            validate_field_plan(plan)
+
+    def test_physical_outer_inner_order_confound_is_not_adopted(self):
+        run = example_run(workload_ids=("cpp",))
+        for row in run["plan"]["schedule"]:
+            run["trials"][row["index"]]["metrics"]["wall_seconds"] = 11 if row["index"] % 4 in (0, 3) else 9
+        result = compare_field_run(run)
+        self.assertEqual(result["status"], "retain_baseline")
+        for comparison in result["comparisons"]:
+            self.assertEqual(comparison["status"], "hold")
+            self.assertTrue(any(value < 0 for value in comparison["paired_improvement_fractions"]))
+
+    def test_baab_only_metric_regression_uses_actual_baseline_role(self):
+        run = example_run(metric_gates={"ttft_seconds": {"direction": "minimize", "max_regression_fraction": 0.1}})
+        self.assertEqual(run["trials"][4]["candidate_id"], "threads")
+        run["trials"][4]["metrics"]["ttft_seconds"] = 5
+        result = compare_field_run(run)
+        self.assertEqual(result["status"], "retain_baseline")
+        self.assertEqual(result["comparisons"][0]["metric_regressions"][0]["baseline_index"], 5)
+        self.assertEqual(result["comparisons"][0]["metric_regressions"][0]["candidate_index"], 4)
+
+    def test_noisy_adjacent_wins_do_not_certify_separated_improvement(self):
+        run = example_run(workload_ids=("cpp",))
+        for row in run["plan"]["schedule"]:
+            if row["comparison_id"] == "threads":
+                values = ((10.0, 9.4, 7.4, 8.0) if row["block"] in (0, 3) else (9.4, 10.0, 8.0, 7.4))
+                run["trials"][row["index"]]["metrics"]["wall_seconds"] = values[row["index"] % 4]
+        result = compare_field_run(run)
+        self.assertEqual(result["status"], "retain_baseline")
+        candidate = result["comparisons"][0]
+        self.assertTrue(all(x >= 0.05 for x in candidate["paired_improvement_fractions"]))
+        self.assertEqual(candidate["status"], "hold")
+        self.assertIn("wall_improvement_not_separated_from_observed_spread", candidate["adoption_reasons"])
+        spread = candidate["wall_spreads"][0]
+        self.assertEqual(spread["observations_per_configuration"], 8)
+        self.assertEqual((spread["baseline_min"], spread["baseline_max"]), (8, 10))
+        self.assertLess(spread["worst_case_improvement_fraction"], 0)
+
+    def test_one_block_or_weakened_policy_cannot_authorize_adoption(self):
+        for change in (lambda p: p.update(blocks=1),
+                       lambda p: p["adoption_policy"].update(minimum_blocks=1),
+                       lambda p: p["adoption_policy"].update(iid_null_familywise_bound=0.5)):
+            plan = example_run()["plan"]
+            change(plan)
+            with self.assertRaises(ArtifactError):
+                validate_field_plan(plan)
+
+    def test_synthetic_latency_and_throughput_regressions_are_rejected(self):
+        for metric, direction, bad in (("ttft_seconds", "minimize", 5),
+                                       ("tool_roundtrip_seconds", "minimize", 5),
+                                       ("decode_tokens_per_second", "maximize", 1),
+                                       ("prefill_tokens_per_second", "maximize", 1)):
+            with self.subTest(metric=metric):
+                # 10% is a synthetic fixture tolerance, not a live-plan default.
+                run = example_run(metric_gates={metric: {"direction": direction, "max_regression_fraction": 0.1}})
+                for trial in run["trials"]:
+                    if trial["candidate_id"] == "threads":
+                        trial["metrics"][metric] = bad
+                result = compare_field_run(run)
+                self.assertEqual(result["status"], "retain_baseline")
+                self.assertEqual(result["comparisons"][0]["status"], "reject")
+                self.assertTrue(result["comparisons"][0]["metric_regressions"])
+                self.assertIn("metric_regression_limit", result["comparisons"][0]["adoption_reasons"])
+
+    def test_synthetic_metric_tolerance_boundary_and_missing_observation(self):
+        run = example_run(metric_gates={"ttft_seconds": {"direction": "minimize", "max_regression_fraction": 0.1}})
+        for trial in run["trials"]:
+            if trial["candidate_id"] == "threads":
+                trial["metrics"]["ttft_seconds"] = 0.55
+        self.assertEqual(compare_field_run(run)["status"], "adopt")
+        run["trials"][1]["metrics"]["ttft_seconds"] = None
+        result = compare_field_run(run)
+        self.assertEqual(result["status"], "incomplete")
+        self.assertIn("metric_ttft_seconds_missing", result["comparisons"][0]["trial_errors"]["1"])
+
+    def test_observed_performance_metric_cannot_be_silently_ignored(self):
+        run = example_run()
+        run["trials"][1]["metrics"]["ttft_seconds"] = 5
+        result = compare_field_run(run)
+        self.assertNotEqual(result["status"], "adopt")
+        self.assertIn("metric_ttft_seconds_undeclared", result["comparisons"][0]["trial_errors"]["1"])
+        self.assertIn("ttft_seconds", result["unassessed_performance_metrics"])
+        self.assertFalse(result["real_host_independence_verified"])
+
+    def test_metric_gate_direction_and_tolerance_are_explicit(self):
+        for gate in ({"direction": "maximize", "max_regression_fraction": 0.1},
+                     {"direction": "minimize"},
+                     {"direction": "minimize", "max_regression_fraction": None},
+                     {"direction": "minimize", "max_regression_fraction": True}):
+            with self.subTest(gate=gate), self.assertRaises(ArtifactError):
+                example_run(metric_gates={"ttft_seconds": gate})
+        with self.assertRaises(ArtifactError):
+            example_run(metric_gates={"draft_accepted": {"direction": "maximize", "max_regression_fraction": 0.1}})
+
+    def test_draft_counts_are_explicitly_diagnostic(self):
+        run = example_run()
+        run["trials"][1]["metrics"].update(draft_accepted=0, draft_proposed=100)
+        result = compare_field_run(run)
+        self.assertEqual(result["status"], "adopt")
+        self.assertNotIn("draft_accepted", result["gated_metrics"])
+
+    def test_legacy_inputs_are_refused_without_rewriting_them(self):
+        run = example_run()
+        run["version"] = run["plan"]["version"] = 1
+        run["plan"].pop("adoption_policy")
+        run["plan"].pop("metric_gates")
+        run["plan_sha256"] = digest(run["plan"])
+        before = copy.deepcopy(run)
+        with self.assertRaisesRegex(ArtifactError, "Legacy"):
+            compare_field_run(run)
+        with self.assertRaisesRegex(ArtifactError, "Legacy"):
+            validate_field_plan(run["plan"])
+        self.assertEqual(run, before)
+
+    def test_frozen_tolerances_and_policy_bind_plan_hash(self):
+        run = example_run(metric_gates={"ttft_seconds": {"direction": "minimize", "max_regression_fraction": 0.1}})
+        run["plan"]["metric_gates"]["ttft_seconds"]["max_regression_fraction"] = 0.2
+        with self.assertRaisesRegex(ArtifactError, "Frozen plan hash mismatch"):
+            compare_field_run(run)
+
+    def test_observed_terminal_reason_survives_in_decision(self):
+        run = example_run()
+        run["trials"][1]["status"] = "stopped"
+        run["trials"][1]["reason"] = "client_event_contract_failed"
+        run["trials"][1]["quality"] = None
+        result = compare_field_run(run)
+        self.assertEqual(result["status"], "incomplete")
+        self.assertEqual(result["comparisons"][0]["trial_reasons"]["1"], "client_event_contract_failed")
+        run["trials"].pop(1)
+        self.assertEqual(compare_field_run(run)["comparisons"][0]["trial_reasons"]["1"], "trial_missing")
+
     def test_frozen_abba_and_repeated_improvement(self):
         run = example_run()
         self.assertEqual([row["candidate_id"] for row in run["plan"]["schedule"][:4]],
@@ -67,7 +250,7 @@ class FieldEvidenceTests(unittest.TestCase):
         result = compare_field_run(run)
         self.assertEqual(result["status"], "adopt")
         self.assertEqual(result["selected_candidate_id"], "threads")
-        self.assertEqual(result["comparisons"][0]["paired_improvement_fractions"], [0.2] * 4)
+        self.assertEqual(result["comparisons"][0]["paired_improvement_fractions"], [0.2] * 16)
         self.assertFalse(result["deployment_verified"])
 
     def test_no_reproduced_improvement_retains_baseline(self):

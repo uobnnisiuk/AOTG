@@ -1,0 +1,160 @@
+{
+  "all_iid_cases_within_predeclared_cap": true,
+  "artifact": "aotg-adoption-null-simulation-result",
+  "decision_rule_tuned_after_results": false,
+  "evaluator_sha256": "284206aa9de1b69ddd189b6836eef9fafc2c012bbb3d539dfdbc7b19e8058a14",
+  "non_iid_excluded_from_calibrated_bound": true,
+  "parameters_sha256": "5df8b6973c56e7a580b3ac62e44ccc72a0de275b5c4dd4d017198ae06c20682e",
+  "python_version": "3.12.3",
+  "real_host_independence_verified": false,
+  "results": [
+    {
+      "analytic_exchangeable_union_bound": 0.0021645021645021645,
+      "case": {
+        "alternatives": 2,
+        "log_sigma": 0.05,
+        "seed": 20261116002401
+      },
+      "decision_counts": {
+        "retain_baseline": 4000
+      },
+      "false_adoption_fraction": 0.0,
+      "field_plan_sha256": "bd44b0c62beac41110a5cb0c32f6fddf712ee31fce56c2d4b813f5b4b42f3144",
+      "iid": true,
+      "iid_bound_passed": true,
+      "repetitions": 4000,
+      "trials_per_run": 24
+    },
+    {
+      "analytic_exchangeable_union_bound": 0.0021645021645021645,
+      "case": {
+        "alternatives": 2,
+        "log_sigma": 0.1,
+        "seed": 20261116002402
+      },
+      "decision_counts": {
+        "retain_baseline": 4000
+      },
+      "false_adoption_fraction": 0.0,
+      "field_plan_sha256": "bd44b0c62beac41110a5cb0c32f6fddf712ee31fce56c2d4b813f5b4b42f3144",
+      "iid": true,
+      "iid_bound_passed": true,
+      "repetitions": 4000,
+      "trials_per_run": 24
+    },
+    {
+      "analytic_exchangeable_union_bound": 0.0021645021645021645,
+      "case": {
+        "alternatives": 2,
+        "log_sigma": 0.2,
+        "seed": 20261116002403
+      },
+      "decision_counts": {
+        "adopt": 1,
+        "retain_baseline": 3999
+      },
+      "false_adoption_fraction": 0.00025,
+      "field_plan_sha256": "bd44b0c62beac41110a5cb0c32f6fddf712ee31fce56c2d4b813f5b4b42f3144",
+      "iid": true,
+      "iid_bound_passed": true,
+      "repetitions": 4000,
+      "trials_per_run": 24
+    },
+    {
+      "analytic_exchangeable_union_bound": 0.008658008658008658,
+      "case": {
+        "alternatives": 8,
+        "log_sigma": 0.05,
+        "seed": 20261116002404
+      },
+      "decision_counts": {
+        "retain_baseline": 4000
+      },
+      "false_adoption_fraction": 0.0,
+      "field_plan_sha256": "2ac39d9a60f563adf0e90a589afb999405af9cde2a315bd516a7fedbb4dcfc10",
+      "iid": true,
+      "iid_bound_passed": true,
+      "repetitions": 4000,
+      "trials_per_run": 96
+    },
+    {
+      "analytic_exchangeable_union_bound": 0.008658008658008658,
+      "case": {
+        "alternatives": 8,
+        "log_sigma": 0.1,
+        "seed": 20261116002405
+      },
+      "decision_counts": {
+        "adopt": 2,
+        "retain_baseline": 3998
+      },
+      "false_adoption_fraction": 0.0005,
+      "field_plan_sha256": "2ac39d9a60f563adf0e90a589afb999405af9cde2a315bd516a7fedbb4dcfc10",
+      "iid": true,
+      "iid_bound_passed": true,
+      "repetitions": 4000,
+      "trials_per_run": 96
+    },
+    {
+      "analytic_exchangeable_union_bound": 0.008658008658008658,
+      "case": {
+        "alternatives": 8,
+        "log_sigma": 0.2,
+        "seed": 20261116002406
+      },
+      "decision_counts": {
+        "adopt": 7,
+        "retain_baseline": 3993
+      },
+      "false_adoption_fraction": 0.00175,
+      "field_plan_sha256": "2ac39d9a60f563adf0e90a589afb999405af9cde2a315bd516a7fedbb4dcfc10",
+      "iid": true,
+      "iid_bound_passed": true,
+      "repetitions": 4000,
+      "trials_per_run": 96
+    },
+    {
+      "analytic_exchangeable_union_bound": null,
+      "case": {
+        "alternatives": 8,
+        "block_log_sigma": 0.2,
+        "model": "shared-block-drift",
+        "observation_log_sigma": 0.01,
+        "seed": 20261116002407
+      },
+      "decision_counts": {
+        "retain_baseline": 500
+      },
+      "false_adoption_fraction": 0.0,
+      "field_plan_sha256": "2ac39d9a60f563adf0e90a589afb999405af9cde2a315bd516a7fedbb4dcfc10",
+      "iid": false,
+      "iid_bound_passed": null,
+      "repetitions": 500,
+      "trials_per_run": 96
+    },
+    {
+      "analytic_exchangeable_union_bound": null,
+      "case": {
+        "alternatives": 8,
+        "baseline_log_offset": 0.1,
+        "candidate_log_offset": -0.1,
+        "model": "arm-position-confound",
+        "observation_log_sigma": 0.01,
+        "seed": 20261116002408
+      },
+      "decision_counts": {
+        "adopt": 500
+      },
+      "false_adoption_fraction": 1.0,
+      "field_plan_sha256": "2ac39d9a60f563adf0e90a589afb999405af9cde2a315bd516a7fedbb4dcfc10",
+      "iid": false,
+      "iid_bound_passed": null,
+      "repetitions": 500,
+      "trials_per_run": 96
+    }
+  ],
+  "seconds": 51.86001539498102,
+  "simulator_sha256": "f967d27d4b0d647dce6ac7f063755e04407355fa4f6930941b3f0dd01f78c843",
+  "synthetic_only": true,
+  "version": 1
+}

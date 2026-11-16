@@ -36,7 +36,7 @@ class Fixture:
         self.catalog = json.loads((REPO / "tests/fixtures/benchmark/catalog.json").read_text())
         self.catalog_d = self.write("catalog.json", self.catalog)
         modules = {"aotg/" + name + ".py": a.sha((REPO / "aotg" / (name + ".py")).read_bytes())
-                   for name in ("__init__", "artifacts", "field_evidence", "field_client", "quality", "field_sandbox", "field_selftest")}
+                   for name in ("__init__", "artifacts", "field_evidence", "field_client", "quality", "field_sandbox", "field_selftest", "field_proxy")}
         self.guide = (REPO / "tests/fixtures/assessment/native-driver.md").read_bytes()
         self.driver = re.findall(r"```python\n(.*?)\n```", self.guide.decode().replace("\r\n", "\n"), re.S)[0] + "\n"
         self.base_config = {"user_args": ["--prefill", "512"], "args": ["--expert-profile", "/fixture/profile"],
@@ -55,12 +55,13 @@ class Fixture:
                     "public_files": [{"name": n, "path": "/fixture/input/" + n, "sha256": a.sha(v)} for n, v in self.public.items()]}
         self.profiles = [{"id": n, "profile_sha256": a.sha(n.encode()), "prefill": p}
                          for n, p in (("baseline", 512), ("prefill256", 256), ("prefill1024", 1024))]
-        self.field = self.api.evidence.freeze_plan(identity_sha256=a.digest(self.identity), verifier_sha256=modules["aotg/quality.py"],
+        self.field = self.api.evidence.freeze_plan(metric_gates={}, identity_sha256=a.digest(self.identity), verifier_sha256=modules["aotg/quality.py"],
                    candidates=[{k: p[k] for k in ("id", "profile_sha256")} for p in self.profiles],
                    workloads=[{"id": CASE, "input_sha256": a.digest(workload), "tests_sha256": self.catalog_d["sha256"],
                                "cache_cohort": "fresh-engine-fixed-short-primer"}],
                    limits={"trial_seconds": 180, "total_seconds": 2040, "max_temperature_c": 80,
                            "min_mem_available_bytes": 48 * 1024**3, "max_swapout_bytes": 0})
+        self.failure_index = next(row["index"] for row in self.field["schedule"] if row["candidate_id"] == "prefill1024")
         self.field_d = self.write("field.json", self.field)
         self.worker = {"run_id": "synthetic-fixture-only", "task_root": "/fixture/evo/work", "schedule": self.field["schedule"], "field_plan": self.field_d,
                        "profiles": self.profiles, "engine": self.identity["engine"],
@@ -72,7 +73,7 @@ class Fixture:
         transport.update(linux_root="/fixture/jobs", windows_root="C:\\fixture\\jobs")
         self.client = {"run_id": self.worker["run_id"], "schedule": self.field["schedule"], "worker_plan_sha256": self.worker_d["sha256"],
                        "runner_sha256": self.identity["measurement_transport"]["k8_runner_sha256"], "workloads": {CASE: workload},
-                       "output_root": str(self.k), "task_seconds": 130, "max_steps": 8, "max_requests": 9,
+                       "proxy_capture_version": 2, "output_root": str(self.k), "task_seconds": 130, "max_steps": 8, "max_requests": 9,
                        "namespace_tools": {"python": "/usr/bin/python3.12"},
                        "windows_transport": transport, "ssh": ["/fixture/ssh", "-T", "fixture-host"]}
         self.client_d = self.write("client.json", self.client)
@@ -82,7 +83,7 @@ class Fixture:
                           "reviewer": "synthetic-fixture-reviewer", "arms": {}, "toolchains": {}, "complete_job_inventory": True,
                           "worker_source_sha256": self.identity["worker_sha256"], "client_source_sha256": self.client["runner_sha256"],
                           "execution_record": self.trusted("execution.txt", b"SYNTHETIC fixture; no run occurred"), "jobs": []}
-        self.spec = {"artifact": "aotg-field-assessment-inputs", "version": 1, "source_root": str(REPO),
+        self.spec = {"artifact": "aotg-field-assessment-inputs", "version": 2, "source_root": str(REPO),
                      "field_plan": self.field_d, "client_plan": self.client_d, "worker_plan": self.worker_d,
                      "identity": self.write("identity.json", self.identity), "catalog": self.catalog_d,
                      "baseline_config": base_d,
@@ -95,15 +96,16 @@ class Fixture:
         self.kr, self.er = [], []
         for row in self.field["schedule"]:
             self.arm(row)
+        self.end = len(self.field["schedule"]) * 2 + 4
         self.esummary = {"artifact": "aotg-evo-worker-result", "version": 1, "run_id": self.worker["run_id"],
                          "plan_sha256": self.worker_d["sha256"], "status": a.COMPLETE, "arms": self.er,
-                         "started_at": self.utc(0), "finished_at": self.utc(20), "wall_seconds": 20}
+                         "started_at": self.utc(0), "finished_at": self.utc(self.end), "wall_seconds": self.end}
         self.ksummary = {"artifact": "aotg-k8-field-run", "version": 1, "plan_sha256": a.digest(self.client),
                          "status": a.COMPLETE, "arms": self.kr, "cleanup_errors": [], "total_deadline_exceeded": False}
         self.refresh_summaries()
-        self.samples = [self.sample(i / 5) for i in range(101)]
+        self.samples = [self.sample(i / 5) for i in range(self.end * 5 + 1)]
         self.write_samples()
-        kernel = {"status": "clear", "errors": [], "since": self.worker["kernel_since"], "scanned_at": self.utc(19),
+        kernel = {"status": "clear", "errors": [], "since": self.worker["kernel_since"], "scanned_at": self.utc(self.end - 1),
                   "output_sha256": a.sha(b"synthetic kernel clear")}
         self.put(self.e / "kernel-final.json", kernel)
         self.authority["kernel_review"] = {"record": self.trusted("kernel-review.txt", b"SYNTHETIC kernel check"),
@@ -126,14 +128,14 @@ class Fixture:
         before = {"artifact": "aotg-owned-job-snapshot", "version": 1, "phase": "before-launch",
                   "run_id": self.client["run_id"], "client_plan_sha256": a.digest(self.client),
                   "jobs_root": transport["linux_root"], "observed_utc": self.utc(-1), "files": []}
-        after = {**before, "phase": "after-exit", "observed_utc": self.utc(22),
+        after = {**before, "phase": "after-exit", "observed_utc": self.utc(self.end + 2),
                  "files": [{"name": Path(d["path"]).name, "sha256": d["sha256"]} for j in self.authority["jobs"] for d in j.values()]}
         launch = {"artifact": "aotg-field-client-launch", "version": 1, "run_id": self.client["run_id"],
                   "client_plan_sha256": a.digest(self.client), "pid": 123, "pid_start_ticks": "12345", "observed_utc": self.utc(0),
                   "runner_sha256": self.client["runner_sha256"], "argv": ["/usr/bin/python3.12", "-I", "-B", self.spec["client_runner"]["path"],
                           "--plan", self.client_d["path"], "--execute-approved-plan-sha256", a.digest(self.client)]}
         completion = {"artifact": "aotg-field-client-exit", "version": 1, "run_id": self.client["run_id"],
-                  "client_plan_sha256": a.digest(self.client), "pid": 123, "pid_start_ticks": "12345", "observed_utc": self.utc(21),
+                  "client_plan_sha256": a.digest(self.client), "pid": 123, "pid_start_ticks": "12345", "observed_utc": self.utc(self.end + 1),
                   "exit_code": 0, "summary_sha256": self.authority["client_summary_sha256"]}
         self.authority["job_inventory"] = {"before": self.trusted("jobs-before.json", before), "after": self.trusted("jobs-after.json", after),
                "launch": self.trusted("launch.json", launch), "completion": self.trusted("exit.json", completion)}
@@ -242,6 +244,12 @@ class Fixture:
                      "fixed_sampling": {"temperature": 0, "top_p": 1, "top_k": 20, "min_p": 0, "seed": 4242,
                           "presence_penalty": 0, "frequency_penalty": 0, "repeat_penalty": 1, "cache_prompt": False, "max_tokens": 1024},
                      "request_sha256": a.sha(b"synthetic request"), "response_sha256": a.sha(b"synthetic response"), "ttft_seconds": .1}]
+        requests[0]["event_sequence"] = 1
+        requests = [{"kind": "aotg-proxy-capture-v2", "phase": "opened", "event_sequence": 0,
+                     "request_limit": self.client["max_requests"], "rejection_record_limit": 128}, *requests,
+                    {"kind": "aotg-proxy-capture-v2", "phase": "closed", "event_sequence": 2,
+                     "status": "complete", "active_handlers": 0, "record_error": False,
+                     "request_records": 1, "rejected_total": 0, "rejections_by_reason": {}, "rejection_events_dropped": 0}]
         self.put(ka / "requests.jsonl", b"".join(a.canonical(r) + b"\n" for r in requests))
         kr = {**row, "status": a.COMPLETE, "client_result_sha256": a.digest(coding), "short_result_sha256": a.digest(short),
               "seconds": coding["seconds"], "requests_complete": True, "requests": requests, "cleanup_errors": []}
@@ -277,6 +285,28 @@ class Fixture:
                                 "module_sha256": self.identity["aotg_modules"]["aotg/field_selftest.py"],
                                 "driver_sha256": public["driver_sha256"]}}
 
+    def rebind_arm(self, index, coding=None, requests=None):
+        ka, ea = self.k / ("arm-%02d" % index), self.e / ("arm-%03d" % index)
+        kr, er = self.kr[index], self.er[index]
+        if coding is not None:
+            self.put(ka / "coding/result.json", coding)
+            kr.update(client_result_sha256=a.digest(coding), seconds=coding["seconds"], status=coding["status"])
+        if requests is not None:
+            self.put(ka / "requests.jsonl", b"".join(a.canonical(r) + b"\n" for r in requests))
+            kr["requests"] = requests
+        self.put(ka / "result.json", kr)
+        er["k8_evidence_sha256"] = a.digest(kr)
+        self.put(ea / "result.json", er)
+        done_path = self.e / ("done-%d.json" % index)
+        done = json.loads(done_path.read_text())
+        done["evidence_sha256"] = a.digest(kr)
+        self.put(done_path, done)
+        self.refresh_summaries()
+        completion = json.loads(Path(self.authority["job_inventory"]["completion"]["path"]).read_text())
+        completion["summary_sha256"] = self.authority["client_summary_sha256"]
+        self.authority["job_inventory"]["completion"] = self.trusted("exit.json", completion)
+        self.refresh_capture()
+
     def run(self, authority=True):
         return a.assemble(self.spec, a.Reader(), self.authority if authority else None)
 
@@ -291,12 +321,101 @@ class AssemblyTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.f = Fixture(Path(self.temp.name))
 
+    def startup_failure(self):
+        f = self.f
+        # Exact producer shape: config and stopped result exist; no ready file,
+        # native identity, client invocation, source, resources or kernel scan.
+        index = 0
+        er = f.er[index]
+        for key in ("native_exe_sha256", "native_pid", "server_pid", "k8_evidence_sha256"):
+            er.pop(key)
+        er.update(status="stopped", stop_reason="Strata server exited during load")
+        f.esummary.update(status="stopped", stop_reason=er["stop_reason"], arms=[er])
+        for root in (f.k, f.e):
+            for path in root.rglob("*"):
+                if path.is_file():
+                    path.unlink()
+        profile = f.profiles[0]
+        config = a.expected_arm_config(f.base_config, f.worker, f.field["schedule"][index], profile)
+        config_d = f.put(f.e / "arm-000/config.json", config)
+        er["config_sha256"] = config_d["sha256"]
+        f.put(f.e / "arm-000/result.json", er)
+        f.authority["worker_summary_sha256"] = f.put(f.e / "summary.json", f.esummary)["sha256"]
+        f.refresh_capture()
+        return er
+
+    def test_startup_failure_without_source_or_client_is_counted_without_a_trial(self):
+        self.startup_failure()
+        result = self.f.run()
+        self.assertEqual(result["run"]["trials"], [])
+        self.assertEqual(result["decision"]["status"], "incomplete")
+        self.assertEqual(result["observation_counts"]["verified_runtime_failure"], 1)
+        observation = result["observation_decision"]
+        self.assertEqual(observation["scheduled_arms"], len(self.f.field["schedule"]))
+        self.assertEqual(observation["verified_failure_arms"], 1)
+        self.assertEqual(observation["failures"][0]["worker_recorded_reason"], "Strata server exited during load")
+        self.assertEqual(observation["failures"][0]["reasons"], ["worker_stopped"])
+        self.assertFalse(observation["failures"][0]["normalized"])
+        self.assertIsNone(observation["selected_candidate_id"])
+        self.assertEqual(observation["comparison_sha256"], a.digest(result["decision"]))
+        self.assertNotIn("source_sha256", result["ledger"][0])
+        self.assertEqual(self.f.run(authority=False)["observation_counts"]["verified_runtime_failure"], 0)
+
+    def test_startup_failure_duplicate_profile_config_and_hash_conflicts_are_not_verified(self):
+        er = self.startup_failure()
+        for mode in ("duplicate", "profile", "config", "tamper"):
+            with self.subTest(mode=mode):
+                original_er, original_summary = deepcopy(er), deepcopy(self.f.esummary)
+                if mode == "duplicate":
+                    self.f.esummary["arms"].append(deepcopy(er))
+                elif mode == "profile":
+                    er["profile_sha256"] = "0" * 64
+                elif mode == "config":
+                    er["config_sha256"] = "0" * 64
+                self.f.put(self.f.e / "arm-000/result.json", er)
+                self.f.authority["worker_summary_sha256"] = self.f.put(self.f.e / "summary.json", self.f.esummary)["sha256"]
+                self.f.refresh_capture()
+                if mode == "tamper":
+                    self.f.put(self.f.e / "arm-000/result.json", {**er, "stop_reason": "changed after capture"})
+                result = self.f.run()
+                self.assertEqual(result["observation_counts"]["verified_runtime_failure"], 0)
+                self.assertEqual(result["decision"]["status"], "incomplete")
+                er.clear()
+                er.update(original_er)
+                self.f.esummary.clear()
+                self.f.esummary.update(original_summary)
+                self.f.esummary["arms"] = [er]
+
+    def test_pre_sampling_failed_request_is_known_even_without_source(self):
+        index = self.f.failure_index
+        requests = deepcopy(self.f.kr[index]["requests"])
+        request = requests[1]
+        request.pop("fixed_sampling")
+        request.update(status="failed", sse_done=False, request_sha256=None, response_sha256=a.sha(b""),
+                       response_bytes=0, wall_seconds=.01, error="JSONDecodeError")
+        self.f.rebind_arm(index, requests=requests)
+        source = self.f.k / ("arm-%02d/coding/work/intervals.cpp" % index)
+        source.unlink()
+        self.f.refresh_capture()
+        result = self.f.run()
+        entry = result["ledger"][index]
+        self.assertEqual(entry["observation_class"], "verified_runtime_failure")
+        self.assertFalse(entry["normalized"])
+        self.assertIn("request_failed_before_fixed_sampling", entry["runtime_failures"])
+        self.assertEqual(result["observation_decision"]["verified_failure_arms"], 1)
+        self.assertEqual(result["decision"]["status"], "incomplete")
+        request["status"] = "completed"
+        self.f.rebind_arm(index, requests=requests)
+        result = self.f.run()
+        self.assertEqual(result["observation_counts"]["verified_runtime_failure"], 0)
+        self.assertEqual(result["decision"]["status"], "incomplete")
+
     def test_complete_synthetic_join_uses_real_wall_only(self):
         result = self.f.run()
         self.assertEqual(result["global_errors"], [])
         self.assertTrue(all(not row["missing_or_conflicting"] for row in result["ledger"]), result["ledger"])
         self.assertEqual(result["decision"]["status"], "adopt")
-        self.assertEqual(len(result["run"]["trials"]), 8)
+        self.assertEqual(len(result["run"]["trials"]), len(self.f.field["schedule"]))
         self.assertEqual(set(result["run"]["trials"][0]["metrics"]), {"wall_seconds"})
         self.assertFalse(result["goal_complete"])
 
@@ -430,6 +549,152 @@ class AssemblyTests(unittest.TestCase):
             a.public_selftest(events, assessment, a.sha(self.f.source), self.f.client["workloads"][CASE],
                 self.f.identity["aotg_modules"]["aotg/field_selftest.py"], self.f.api.public_driver_sha256)
 
+
+    def test_hash_bound_client_failure_is_observed_not_missing(self):
+        i = self.f.failure_index
+        ka = self.f.k / ("arm-%02d" % self.f.failure_index)
+        events = [json.loads(line) for line in (ka / "coding/private/events.jsonl").read_bytes().splitlines()]
+        events = [e for e in events if e["type"] != "text"]
+        raw = b"".join(a.canonical(e) + b"\n" for e in events)
+        self.f.put(ka / "coding/private/events.jsonl", raw)
+        coding = json.loads((ka / "coding/result.json").read_text())
+        coding.update(self.f.api.client.summarize_events(raw, ka / "coding/work", "intervals.cpp", ["intervals.cpp", *self.f.public]))
+        coding.update(private_events_sha256=a.sha(raw), status="incomplete")
+        self.f.rebind_arm(i, coding=coding)
+        result = self.f.run()
+        self.assertEqual(result["decision"]["status"], "incomplete")
+        entry = result["ledger"][i]
+        self.assertTrue(entry["normalized"], entry)
+        self.assertEqual(entry["observation_class"], "verified_runtime_failure")
+        self.assertIn("client_event_contract_failed", entry["runtime_failures"])
+        trial = next(t for t in result["run"]["trials"] if t["index"] == i)
+        self.assertEqual(trial["reason"], "client_event_contract_failed")
+        self.assertEqual(result["decision"]["comparisons"][1]["trial_reasons"][str(i)], "client_event_contract_failed")
+        self.assertNotEqual(trial["status"], "passed")
+        self.assertNotIn("trial_missing", str(result["decision"]["comparisons"][1]["trial_errors"][str(i)]))
+        self.assertEqual(result["observation_counts"]["verified_runtime_failure"], 1)
+
+    def test_resource_stop_is_normalized_and_blocks_other_candidate_adoption(self):
+        for mode in ("swap", "nvme", "gpu"):
+            with self.subTest(mode=mode):
+                original = deepcopy(self.f.samples)
+                for sample in self.f.samples[self.f.failure_index * 10:(self.f.failure_index + 1) * 10 + 1]:
+                    if mode == "swap":
+                        sample["pswpout"] += 1
+                    if mode == "nvme":
+                        sample["temperatures_c"]["nvme:Composite"] = 80
+                    if mode == "gpu":
+                        sample["temperatures_c"]["amdgpu:edge"] = 95
+                self.f.write_samples()
+                self.f.refresh_capture()
+                result = self.f.run()
+                entry = result["ledger"][self.f.failure_index]
+                self.assertTrue(entry["normalized"], entry)
+                self.assertEqual(entry["observation_class"], "verified_runtime_failure")
+                self.assertEqual(result["decision"]["status"], "incomplete")
+                self.assertIsNone(result["decision"]["selected_candidate_id"])
+                if mode == "swap":
+                    self.assertIn("swapout_change_or_reset", entry["runtime_failures"])
+                    trial = next(t for t in result["run"]["trials"] if t["index"] == self.f.failure_index)
+                    self.assertIsNone(trial["resources"]["swapout_delta_bytes"])
+                self.f.samples = original
+                self.f.write_samples()
+                self.f.refresh_capture()
+
+    def test_refusal_is_bound_failure_and_missing_or_tampered_capture_is_unknown(self):
+        original = deepcopy(self.f.kr[self.f.failure_index]["requests"])
+        rows = deepcopy(original)
+        rows.insert(2, {"kind": "aotg-proxy-rejection-v2", "status": "rejected", "http_status": 409,
+                        "reason": "concurrent_request_rejected", "method": "POST", "event_sequence": 2})
+        rows[-1].update(event_sequence=3, rejected_total=1, rejections_by_reason={"concurrent_request_rejected": 1})
+        self.f.rebind_arm(self.f.failure_index, requests=rows)
+        result = self.f.run()
+        entry = result["ledger"][self.f.failure_index]
+        self.assertTrue(entry["normalized"], entry)
+        self.assertIn("proxy_requests_rejected", entry["runtime_failures"])
+        self.assertEqual(result["decision"]["status"], "incomplete")
+        for malformed in (rows[:-1], [rows[0], rows[1], {**rows[-1], "event_sequence": 2}],
+                          [{**r, "event_sequence": 999} if n == 1 else r for n, r in enumerate(rows)]):
+            self.f.rebind_arm(self.f.failure_index, requests=malformed)
+            result = self.f.run()
+            self.assertFalse(result["ledger"][self.f.failure_index]["normalized"])
+            self.assertEqual(result["ledger"][self.f.failure_index]["observation_class"], "missing_or_conflicting")
+            self.assertEqual(result["decision"]["status"], "incomplete")
+        self.f.rebind_arm(self.f.failure_index, requests=original)
+
+    def test_legacy_spec_and_request_only_records_cannot_silently_pass(self):
+        self.f.spec["version"] = 1
+        with self.assertRaisesRegex(a.EvidenceError, "assembly_v2_required"):
+            self.f.run()
+        self.f.spec["version"] = 2
+        records = [r for r in self.f.kr[self.f.failure_index]["requests"] if r["kind"] == "aotg-proxy-request-v1"]
+        self.f.rebind_arm(self.f.failure_index, requests=records)
+        result = self.f.run()
+        self.assertEqual(result["decision"]["status"], "incomplete")
+        self.assertFalse(result["ledger"][self.f.failure_index]["normalized"])
+
+    def test_unbound_failure_is_not_promoted_to_verified_failure(self):
+        rows = deepcopy(self.f.kr[self.f.failure_index]["requests"])
+        rows.insert(2, {"kind": "aotg-proxy-rejection-v2", "status": "rejected", "http_status": 429,
+                        "reason": "request_limit_rejected", "method": "POST", "event_sequence": 2})
+        rows[-1].update(event_sequence=3, rejected_total=1, rejections_by_reason={"request_limit_rejected": 1})
+        self.f.rebind_arm(self.f.failure_index, requests=rows)
+        result = self.f.run(False)
+        self.assertFalse(result["ledger"][self.f.failure_index]["normalized"])
+        self.assertNotEqual(result["ledger"][self.f.failure_index]["observation_class"], "verified_runtime_failure")
+        self.assertEqual(result["decision"]["status"], "incomplete")
+
+
+
+    def test_bound_timeout_is_normalized_but_invalid_measurement_is_missing(self):
+        ka = self.f.k / ("arm-%02d" % self.f.failure_index)
+        original = json.loads((ka / "coding/result.json").read_text())
+        timed = {**original, "status": "timed_out", "seconds": 131, "exit_code": None}
+        self.f.esummary["wall_seconds"] = 200
+        self.f.rebind_arm(self.f.failure_index, coding=timed)
+        result = self.f.run()
+        trial = next(t for t in result["run"]["trials"] if t["index"] == self.f.failure_index)
+        self.assertEqual(trial["status"], "timed_out")
+        self.assertEqual(trial["reason"], "client_bounds_failed")
+        self.assertEqual(result["decision"]["status"], "incomplete")
+        self.f.rebind_arm(self.f.failure_index, coding={**original, "seconds": None})
+        result = self.f.run()
+        self.assertFalse(result["ledger"][self.f.failure_index]["normalized"])
+        self.assertEqual(result["ledger"][self.f.failure_index]["observation_class"], "missing_or_conflicting")
+        self.assertEqual(result["decision"]["status"], "incomplete")
+
+    def test_new_capture_requires_explicit_frozen_plan_and_exact_proxy_source(self):
+        del self.f.client["proxy_capture_version"]
+        self.f.spec["client_plan"] = self.f.write("client.json", self.f.client)
+        with self.assertRaisesRegex(a.EvidenceError, "frozen_proxy_capture_v2_not_requested"):
+            self.f.run()
+
+    def test_boolean_sequence_and_invented_zero_rejections_are_rejected(self):
+        rows = deepcopy(self.f.kr[self.f.failure_index]["requests"])
+        rows[0]["event_sequence"] = False
+        with self.assertRaisesRegex(a.EvidenceError, "request_capture_sequence_invalid"):
+            a.request_capture(rows, self.f.client["max_requests"])
+        rows = deepcopy(self.f.kr[self.f.failure_index]["requests"])
+        rows[-1]["rejections_by_reason"] = {"concurrent_request_rejected": 1}
+        with self.assertRaisesRegex(a.EvidenceError, "proxy_rejection_counts_mismatch"):
+            a.request_capture(rows, self.f.client["max_requests"])
+
+
+
+    def test_refusal_only_capture_is_failure_not_an_empty_success(self):
+        original = self.f.kr[self.f.failure_index]["requests"]
+        records = [deepcopy(original[0]),
+                   {"kind": "aotg-proxy-rejection-v2", "status": "rejected", "http_status": 401,
+                    "reason": "authorization_rejected", "method": "POST", "event_sequence": 1},
+                   {**original[-1], "event_sequence": 2, "request_records": 0, "rejected_total": 1,
+                    "rejections_by_reason": {"authorization_rejected": 1}}]
+        self.f.rebind_arm(self.f.failure_index, requests=records)
+        result = self.f.run()
+        entry = result["ledger"][self.f.failure_index]
+        self.assertTrue(entry["normalized"], entry)
+        self.assertEqual(entry["observation_class"], "verified_runtime_failure")
+        self.assertIn("no_inference_requests_observed", entry["runtime_failures"])
+        self.assertEqual(result["decision"]["status"], "incomplete")
 
 if __name__ == "__main__":
     unittest.main()
