@@ -201,10 +201,12 @@ class NativeCppTests(unittest.TestCase):
         self.assertEqual(len(report["source_sha256"]), 64)
         self.assertEqual(len(report["executable_sha256"]), 64)
         self.assertIn("g++", report["toolchain"]["version_probe"]["stdout"])
-        self.assertEqual(report["toolchain"]["compiler_flags"],
-                         ["-std=c++17", "-O2", "-fsanitize=undefined",
-                          "-fno-sanitize-recover=all"])
-        self.assertTrue(report["toolchain"]["sanitizer_check"]["active"])
+        detector = report["toolchain"]["overflow_detection"]
+        self.assertTrue(detector["active"])
+        self.assertIn(detector["mode"], ("ubsan", "signed-overflow-trap"))
+        flags = (quality_module.CXX_GRADING_FLAGS if detector["mode"] == "ubsan"
+                 else quality_module.CXX_TRAP_FLAGS)
+        self.assertEqual(report["toolchain"]["compiler_flags"], list(flags))
         self.assertNotIn(tempfile.gettempdir() + os.sep + "aotg-quality-", json.dumps(report))
 
     def test_correct_but_unreviewed_source_is_not_quality_accepted(self):
@@ -251,26 +253,29 @@ class NativeCppTests(unittest.TestCase):
                 self.assertEqual(report["behavioral_status"], "runtime-error")
                 self.assertEqual(report["status"], "runtime-error")
                 self.assertFalse(report["quality_accepted"])
-                self.assertTrue(report["toolchain"]["sanitizer_check"]["active"])
+                detector = report["toolchain"]["overflow_detection"]
+                self.assertTrue(detector["active"])
                 self.assertIsNone(report["grading"])
-                self.assertIn("signed integer overflow", report["execution"]["stderr"])
+                self.assertNotEqual(report["execution"]["exit_code"], 0)
+                if detector["mode"] == "ubsan":
+                    self.assertIn("signed integer overflow", report["execution"]["stderr"])
 
-    def test_unavailable_sanitizer_fails_closed_before_candidate_compile(self):
+    def test_unavailable_overflow_detection_fails_closed_before_candidate_compile(self):
         real_run = quality_module._run
 
         def fake_disabled(argv, directory, timeout_seconds, phase, tool_directories=(), *, dotnet=False):
-            if phase == "sanitizer-run":
+            if phase in ("ubsan-run", "trap-run"):
                 return {"status": "ok", "exit_code": 0, "seconds": 0.001,
                         "stdout": "", "stderr": "", "output_truncated": False}
             return real_run(argv, directory, timeout_seconds, phase, tool_directories, dotnet=dotnet)
 
         with patch("aotg.quality._run", side_effect=fake_disabled):
             report = self.evaluate(GOOD_CPP, source_review=synthetic_review(GOOD_CPP))
-        self.assertEqual(report["behavioral_status"], "sanitizer-unavailable")
-        self.assertEqual(report["status"], "sanitizer-unavailable")
+        self.assertEqual(report["behavioral_status"], "overflow-detector-unavailable")
+        self.assertEqual(report["status"], "overflow-detector-unavailable")
         self.assertIsNone(report["compile"])
         self.assertIsNone(report["execution"])
-        self.assertFalse(report["toolchain"]["sanitizer_check"]["active"])
+        self.assertFalse(report["toolchain"]["overflow_detection"]["active"])
         self.assertFalse(report["quality_accepted"])
 
     def test_public_cli_rejects_overflow_without_source_review(self):
@@ -302,7 +307,7 @@ class NativeCppTests(unittest.TestCase):
                     self.assertEqual(result.returncode, 1, result.stderr)
                     report = json.loads(report_path.read_text(encoding="utf-8"))
                     self.assertEqual(report["behavioral_status"], status)
-                    self.assertTrue(report["toolchain"]["sanitizer_check"]["active"])
+                    self.assertTrue(report["toolchain"]["overflow_detection"]["active"])
                     self.assertFalse(report["quality_accepted"])
 
     def test_original_buggy_fixture_is_rejected(self):
