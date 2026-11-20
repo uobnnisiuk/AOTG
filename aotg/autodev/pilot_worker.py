@@ -123,6 +123,27 @@ def check(case, request, expected_status, code=0):
 def encoded(value):
     return json.dumps(value).encode("utf-8")
 
+def value_changes(value):
+    # One scalar at a time: preserve JSON types, container shape and order.
+    # Walk every existing position, including nested C# operations, so checking
+    # only the first result or only one case cannot satisfy this contract.
+    if type(value) is bool:
+        yield not value
+    elif type(value) is int:
+        yield value ^ 1  # Keep signed 32-bit fixture arguments in range.
+    elif type(value) is str:
+        yield value + "-changed"
+    elif type(value) is list:
+        for index, item in enumerate(value):
+            for changed in value_changes(item):
+                yield value[:index] + [changed] + value[index + 1:]
+    elif type(value) is dict:
+        for key, item in value.items():
+            for changed in value_changes(item):
+                yield {**value, key: changed}
+    else:
+        raise SystemExit("Unexpected pilot fixture value type")
+
 for case, key in (("cpp-half-open-interval", "assertions"),
                   ("csharp-atomic-batch", "assertion_sequences")):
     observations = cases[case][key]
@@ -138,6 +159,8 @@ for case, key in (("cpp-half-open-interval", "assertions"),
     reordered = copy.deepcopy(observations)
     reordered[0], reordered[1] = reordered[1], reordered[0]
     check(case, encoded({"observations": reordered}), "assertion_mismatch")
+    for changed in value_changes(observations):
+        check(case, encoded({"observations": changed}), "assertion_mismatch")
 """
 
 
