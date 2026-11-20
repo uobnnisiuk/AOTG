@@ -33,6 +33,79 @@ SHA = sha256(PROMPT.encode("utf-8")).hexdigest()
 CONTRACT = "assert 2 + 2 == 4\n"
 
 
+def pilot_grader(*, ignored_case=None, ignored_field=None):
+    """A separate CLI fixture; mutants keep validation but omit one value field."""
+    return f"ignored_case = {ignored_case!r}\nignored_field = {ignored_field!r}\n" + """
+import json
+import sys
+from pathlib import Path
+
+case = sys.argv[2]
+catalog = json.loads(Path(sys.argv[4]).read_bytes())
+spec = next(item for item in catalog["cases"] if item["id"] == case)
+expected = spec["assertions"] if case == "cpp-half-open-interval" else spec["assertion_sequences"]
+
+def valid(observations):
+    if type(observations) is not list:
+        return False
+    if case == "cpp-half-open-interval":
+        return all(
+            type(item) is dict and set(item) == {"arguments", "result"}
+            and type(item["result"]) is bool and type(item["arguments"]) is list
+            and len(item["arguments"]) == 4
+            and all(type(value) is int for value in item["arguments"])
+            for item in observations
+        )
+    for group in observations:
+        if (type(group) is not dict or set(group) != {"name", "operations"}
+                or type(group["name"]) is not str or type(group["operations"]) is not list):
+            return False
+        for operation in group["operations"]:
+            if type(operation) is not dict or type(operation.get("result")) is not bool:
+                return False
+            if set(operation) == {"try_register", "result"}:
+                values = operation["try_register"]
+                if type(values) is not list or not all(type(value) is str for value in values):
+                    return False
+            elif set(operation) == {"contains", "result"}:
+                if type(operation["contains"]) is not str:
+                    return False
+            else:
+                return False
+    return True
+
+def compared(value):
+    if type(value) is list:
+        return [compared(item) for item in value]
+    if type(value) is dict:
+        return {key: compared(item) for key, item in value.items()
+                if not (case == ignored_case and key == ignored_field)}
+    return value
+
+try:
+    request = json.load(sys.stdin)
+except (ValueError, RecursionError):
+    status = "malformed"
+else:
+    if type(request) is not dict:
+        status = "malformed"
+    elif type(request.get("timeout")) is bool and request["timeout"]:
+        status = "timeout"
+    elif "observations" not in request:
+        status = "missing_observations"
+    elif not valid(request["observations"]):
+        status = "malformed"
+    elif len(request["observations"]) < len(expected):
+        status = "missing_observations"
+    elif compared(request["observations"]) == compared(expected):
+        status = "pass"
+    else:
+        status = "assertion_mismatch"
+print(json.dumps({"version": 1, "case": case, "status": status}))
+raise SystemExit(2 if status == "malformed" else 0)
+"""
+
+
 def authorization(**changes):
     return replace(ModelAuthorization(
         model="approved-model",
@@ -473,6 +546,15 @@ class CodexHomeTests(TestCase):
 
 @skipUnless(sys.platform == "linux" and os.geteuid() != 0, "requires non-root Linux")
 class VerifierProcessTests(TestCase):
+    @staticmethod
+    def prepare_pilot(root, grader):
+        (root / "aotg").mkdir()
+        (root / "aotg" / "offline_bench.py").write_text(grader, encoding="utf-8")
+        relative = Path("tests/fixtures/benchmark/catalog.json")
+        catalog = root / relative
+        catalog.parent.mkdir(parents=True)
+        shutil.copyfile(Path(__file__).resolve().parents[1] / relative, catalog)
+
     def run_verifier(self, root, script, *, hashed_script=None):
         receipt = root / "verdict"
         nonce = "f" * 64
@@ -494,6 +576,12 @@ class VerifierProcessTests(TestCase):
                 code, evidence = self.run_verifier(Path(temporary), script)
                 self.assertEqual(code, exit_code)
                 self.assertEqual(evidence, b"f" * 64 + b" " + verdict + b"\n" if verdict else None)
+
+    def test_pilot_contract_accepts_a_value_comparing_cli_with_a_receipt(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.prepare_pilot(root, pilot_grader())
+            self.assertEqual(self.run_verifier(root, PILOT_CONTRACT), (0, b"f" * 64 + b" pass\n"))
 
     def test_pilot_contract_rejects_completed_cli_violations_with_a_receipt(self):
         grader_with_wrong_malformed_exit = """
@@ -525,13 +613,22 @@ print(json.dumps({"version": 1, "case": case, "status": status}))
         ):
             with self.subTest(exit_code=exit_code, grader=grader), TemporaryDirectory() as temporary:
                 root = Path(temporary)
-                (root / "aotg").mkdir()
-                (root / "aotg" / "offline_bench.py").write_text(grader, encoding="utf-8")
-                relative = Path("tests/fixtures/benchmark/catalog.json")
-                catalog = root / relative
-                catalog.parent.mkdir(parents=True)
-                shutil.copyfile(Path(__file__).resolve().parents[1] / relative, catalog)
+                self.prepare_pilot(root, grader)
                 self.assertEqual(self.run_verifier(root, PILOT_CONTRACT), (exit_code, verdict))
+
+        for case, field in (
+            ("cpp-half-open-interval", "result"),
+            ("csharp-atomic-batch", "result"),
+            ("cpp-half-open-interval", "arguments"),
+            ("csharp-atomic-batch", "try_register"),
+            ("csharp-atomic-batch", "contains"),
+            ("csharp-atomic-batch", "name"),
+        ):
+            with self.subTest(case=case, ignored_field=field), TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                self.prepare_pilot(root, pilot_grader(ignored_case=case, ignored_field=field))
+                self.assertEqual(self.run_verifier(root, PILOT_CONTRACT),
+                                 (_REJECTED_EXIT, b"f" * 64 + b" reject\n"))
 
     def test_modified_checker_input_produces_no_receipt(self):
         with TemporaryDirectory() as temporary:

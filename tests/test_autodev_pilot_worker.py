@@ -54,17 +54,44 @@ class PilotContractTests(TestCase):
             patch("os.read", side_effect=reads),
         ):
             exec(PILOT_CONTRACT, {"RejectCandidate": ContractRejection})
+        return [process.__enter__.return_value.stdin.write.call_args.args[0] for process in processes]
 
     def test_complete_valid_fixture_outputs_pass(self):
         statuses = (
             ("pass", 0), ("missing_observations", 0), ("timeout", 0),
             ("malformed", 2), ("malformed", 2), ("malformed", 2), ("assertion_mismatch", 0),
         )
-        self.run_contract([
-            (json.dumps({"version": 1, "case": case, "status": status}).encode("utf-8"), code)
-            for case in ("cpp-half-open-interval", "csharp-atomic-batch")
-            for status, code in statuses
-        ])
+        catalog = json.loads((Path(__file__).parent / "fixtures/benchmark/catalog.json").read_bytes())
+        responses = []
+        expected_result_changes = []
+        for case, key in (("cpp-half-open-interval", "assertions"),
+                          ("csharp-atomic-batch", "assertion_sequences")):
+            observations = next(item[key] for item in catalog["cases"] if item["id"] == case)
+            pending = [observations]
+            scalar_count = 0
+            while pending:
+                item = pending.pop()
+                if type(item) is dict:
+                    pending.extend(item.values())
+                elif type(item) is list:
+                    pending.extend(item)
+                else:
+                    scalar_count += 1
+            responses.extend(
+                (json.dumps({"version": 1, "case": case, "status": status}).encode("utf-8"), code)
+                for status, code in statuses + (("assertion_mismatch", 0),) * scalar_count
+            )
+            for index, item in enumerate(observations):
+                positions = [None] if key == "assertions" else range(len(item["operations"]))
+                for position in positions:
+                    changed = json.loads(json.dumps(observations))
+                    result = changed[index] if position is None else changed[index]["operations"][position]
+                    result["result"] = not result["result"]
+                    expected_result_changes.append({"observations": changed})
+        requests = self.run_contract(responses)
+        decoded = [json.loads(request) for request in requests if request != b"broken-json"]
+        for changed in expected_result_changes:
+            self.assertIn(changed, decoded)
 
     def test_complete_wrong_result_is_definitively_rejected(self):
         expected = {"version": 1, "case": "cpp-half-open-interval", "status": "pass"}
