@@ -23,6 +23,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from .artifacts import ArtifactError, digest, publish_artifact, read_artifact
@@ -275,6 +276,31 @@ def _run(argv, directory, timeout_seconds, phase, tool_directories=(), *, dotnet
     return result
 
 
+@contextmanager
+def _evaluation_directory():
+    temporary = tempfile.TemporaryDirectory(prefix="aotg-quality-")
+    try:
+        yield Path(temporary.name)
+    finally:
+        # Windows can briefly retain a compiler file handle after process exit.
+        # Retry only that sharing violation, never suppress failed cleanup or
+        # rerun compilation. This does not add process-tree isolation.
+        deadline = time.monotonic() + 1.0
+        while True:
+            try:
+                temporary.cleanup()
+                break
+            except PermissionError as error:
+                if sys.platform != "win32" or getattr(error, "winerror", None) != 32:
+                    raise
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise
+                time.sleep(min(0.01, remaining))
+                if time.monotonic() >= deadline:
+                    raise
+
+
 def grade_source(case_id, source_path, *, compiler, compiler_kind, runtime_argv=(),
                  execution_authorized=False, isolation_evidence=None,
                  compile_timeout_seconds=30, timeout_seconds=10, catalog_path=CATALOG,
@@ -356,8 +382,7 @@ def grade_source(case_id, source_path, *, compiler, compiler_kind, runtime_argv=
         "compile": None, "execution": None, "grading": None,
     }
     report["source_review"] = _review_gate(source_review, report)
-    with tempfile.TemporaryDirectory(prefix="aotg-quality-") as temporary:
-        directory = Path(temporary)
+    with _evaluation_directory() as directory:
         candidate = directory / ("candidate" + suffix)
         harness = directory / ("trusted_harness" + suffix)
         output = directory / ("candidate.exe" if suffix == ".cs" or os.name == "nt" else "candidate")
