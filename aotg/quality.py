@@ -32,6 +32,43 @@ CATALOG = Path(__file__).resolve().parents[1] / "tests/fixtures/benchmark/catalo
 MAX_SOURCE_BYTES = 1024 * 1024
 MAX_OUTPUT_BYTES = 64 * 1024
 CASES = ("cpp-half-open-interval", "csharp-atomic-batch")
+# GCC -O2 can fold invalid overflow arithmetic into correct-looking comparisons.
+# Prefer UBSan, and when its runtime is unavailable, permit only an independently
+# verified -ftrapv fallback for signed +, -, * overflow. Neither mode proves that
+# arbitrary undefined behavior or a semantically wrong answer is impossible.
+CXX_GRADING_FLAGS = ("-std=c++17", "-O2", "-fsanitize=undefined",
+                     "-fno-sanitize-recover=all")
+CXX_TRAP_FLAGS = ("-std=c++17", "-O2", "-ftrapv")
+CXX_SANITIZER_PROBE = (
+    "int main() {\n"
+    "  volatile int limit = 2147483647;\n"
+    "  volatile int increment = 1;\n"
+    "  volatile int overflow = limit + increment;\n"
+    "  (void)overflow;\n"
+    "  return 0;\n"
+    "}\n"
+)
+# Some GCC -O2 builds omit the trap for the interval task's signed
+# subtraction even when a simple overflow addition probe aborts.
+CXX_TRAP_SUBTRACTION_PROBE = (
+    "#include <algorithm>\n"
+    "#include <climits>\n"
+    "int main() {\n"
+    "  volatile int a = INT_MIN, b = INT_MAX;\n"
+    "  volatile int c = INT_MIN, d = INT_MAX;\n"
+    "  volatile bool observed = std::min(b, d) - std::max(a, c) > 0;\n"
+    "  (void)observed;\n"
+    "  return 0;\n"
+    "}\n"
+)
+CXX_TRAP_CONTROL = (
+    "int main() {\n"
+    "  volatile int limit = 2147483646;\n"
+    "  volatile int increment = 1;\n"
+    "  volatile int result = limit + increment;\n"
+    "  return result == 2147483647 ? 0 : 1;\n"
+    "}\n"
+)
 
 
 def _sha(data):
@@ -381,6 +418,8 @@ def grade_source(case_id, source_path, *, compiler, compiler_kind, runtime_argv=
                    "captured_output_bytes": MAX_OUTPUT_BYTES},
         "compile": None, "execution": None, "grading": None,
     }
+    if compiler_kind == "g++":
+        report["toolchain"]["compiler_flags"] = None
     report["source_review"] = _review_gate(source_review, report)
     with _evaluation_directory() as directory:
         candidate = directory / ("candidate" + suffix)
@@ -402,7 +441,101 @@ def grade_source(case_id, source_path, *, compiler, compiler_kind, runtime_argv=
                        dotnet=compiler_kind == "dotnet-csc")
         report["toolchain"]["version_probe"] = version
         if compiler_kind == "g++":
-            argv = [str(executable), "-std=c++17", "-O2", str(candidate), str(harness), "-o", str(output)]
+            # Confirm overflow detection in this very execution environment.
+            # Use a separate fixed timeout: a candidate's millisecond execution
+            # budget must not spuriously disable the compiler preflight on Windows.
+            probe_timeout_seconds = 5.0
+            # UBSan is the primary mechanism; some MinGW distributions omit
+            # libubsan, so -ftrapv is a narrower opt-in fallback. It is only
+            # accepted when a trusted overflowing test fails and a non-overflow
+            # control succeeds, both under the exact same compiler flags.
+            probe_source = directory / "overflow_probe.cpp"
+            probe_source.write_text(CXX_SANITIZER_PROBE, encoding="utf-8")
+            probe_extension = ".exe" if os.name == "nt" else ""
+            probe_binary = directory / ("overflow_probe" + probe_extension)
+
+            ubsan_compile = _run(
+                [str(executable), *CXX_GRADING_FLAGS, str(probe_source), "-o", str(probe_binary)],
+                directory, compile_timeout_seconds, "ubsan-compile", tool_directories)
+            ubsan_run = None
+            if ubsan_compile["status"] == "ok" and ubsan_compile["exit_code"] == 0 and probe_binary.is_file():
+                ubsan_run = _run([str(probe_binary)], directory, probe_timeout_seconds,
+                                 "ubsan-run", tool_directories)
+            ubsan_active = (ubsan_run is not None and ubsan_run["status"] == "ok"
+                            and ubsan_run["exit_code"] != 0
+                            and "runtime error: signed integer overflow:" in ubsan_run["stderr"])
+            attempts = {"ubsan": {"compile": ubsan_compile, "execution": ubsan_run}}
+            detector_mode = "ubsan" if ubsan_active else None
+            grading_flags = CXX_GRADING_FLAGS if ubsan_active else None
+            if not ubsan_active:
+                trap_compile = _run(
+                    [str(executable), *CXX_TRAP_FLAGS, str(probe_source), "-o", str(probe_binary)],
+                    directory, compile_timeout_seconds, "trap-compile", tool_directories)
+                trap_run = None
+                if trap_compile["status"] == "ok" and trap_compile["exit_code"] == 0 and probe_binary.is_file():
+                    trap_run = _run([str(probe_binary)], directory, probe_timeout_seconds,
+                                    "trap-run", tool_directories)
+                # Probe the optimized subtraction used by the known wrong
+                # interval implementations, not just a simple addition.
+                subtract_source = directory / "overflow_subtraction_probe.cpp"
+                subtract_source.write_text(CXX_TRAP_SUBTRACTION_PROBE, encoding="utf-8")
+                subtract_binary = directory / ("overflow_subtraction_probe" + probe_extension)
+                subtract_compile = _run(
+                    [str(executable), *CXX_TRAP_FLAGS, str(subtract_source), "-o", str(subtract_binary)],
+                    directory, compile_timeout_seconds, "trap-subtract-compile", tool_directories)
+                subtract_run = None
+                if (subtract_compile["status"] == "ok" and subtract_compile["exit_code"] == 0
+                        and subtract_binary.is_file()):
+                    subtract_run = _run([str(subtract_binary)], directory, probe_timeout_seconds,
+                                        "trap-subtract-run", tool_directories)
+                control_source = directory / "non_overflow_control.cpp"
+                control_source.write_text(CXX_TRAP_CONTROL, encoding="utf-8")
+                control_binary = directory / ("non_overflow_control" + probe_extension)
+                control_compile = _run(
+                    [str(executable), *CXX_TRAP_FLAGS, str(control_source), "-o", str(control_binary)],
+                    directory, compile_timeout_seconds, "trap-control-compile", tool_directories)
+                control_run = None
+                if (control_compile["status"] == "ok" and control_compile["exit_code"] == 0
+                        and control_binary.is_file()):
+                    control_run = _run([str(control_binary)], directory, probe_timeout_seconds,
+                                        "trap-control-run", tool_directories)
+                trap_active = (
+                    trap_run is not None and trap_run["status"] == "ok"
+                    and trap_run["exit_code"] != 0
+                    and subtract_run is not None and subtract_run["status"] == "ok"
+                    and subtract_run["exit_code"] != 0
+                    and control_run is not None and control_run["status"] == "ok"
+                    and control_run["exit_code"] == 0)
+                attempts["signed-overflow-trap"] = {
+                    "compile": trap_compile, "execution": trap_run,
+                    "subtract_compile": subtract_compile, "subtract_execution": subtract_run,
+                    "control_compile": control_compile, "control_execution": control_run,
+                }
+                if trap_active:
+                    detector_mode, grading_flags = "signed-overflow-trap", CXX_TRAP_FLAGS
+            # Keep variable-duration process diagnostics outside the stable
+            # toolchain identity compared by the multi-arm field assembler.
+            report["overflow_preflight"] = {"attempts": attempts}
+            report["toolchain"]["overflow_detection"] = {
+                "active": grading_flags is not None,
+                "mode": detector_mode,
+                "overflow_probe_sha256": _sha(CXX_SANITIZER_PROBE.encode("utf-8")),
+                "control_probe_sha256": _sha(CXX_TRAP_CONTROL.encode("utf-8")),
+                "subtraction_probe_sha256": _sha(CXX_TRAP_SUBTRACTION_PROBE.encode("utf-8")),
+                "attempts": {
+                    mode: {
+                        phase: (None if outcome is None else
+                                {"status": outcome["status"], "exit_code": outcome["exit_code"]})
+                        for phase, outcome in stages.items()
+                    }
+                    for mode, stages in attempts.items()
+                },
+            }
+            if grading_flags is None:
+                report["status"] = report["behavioral_status"] = "overflow-detector-unavailable"
+                return report
+            report["toolchain"]["compiler_flags"] = list(grading_flags)
+            argv = [str(executable), *grading_flags, str(candidate), str(harness), "-o", str(output)]
         elif compiler_kind in ("csc", "dotnet-csc"):
             prefix = [*dotnet_prefix, str(csc_dll)] if dotnet_inputs else [str(executable)]
             refs = ["/nostdlib+", *("/reference:" + str(p) for p in references)] if dotnet_inputs else []

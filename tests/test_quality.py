@@ -85,12 +85,33 @@ class ObservationTests(unittest.TestCase):
         self.assertEqual(grade_observations("AOTG:0:false", [True])["mismatches"], [0])
 
     def test_trusted_catalog_builds_both_harnesses(self):
-        for case_id, extension, count in ((CASES[0], ".cpp", 9), (CASES[1], ".cs", 16)):
+        for case_id, extension, count in ((CASES[0], ".cpp", 15), (CASES[1], ".cs", 16)):
             harness, expected, suffix = _harness(_catalog_case(case_id, CATALOG))
             self.assertEqual(suffix, extension)
             self.assertEqual(len(expected), count)
             self.assertEqual(harness.count("AOTG:"), count)
             self.assertTrue(all(type(value) is bool for value in expected))
+
+    def test_cpp_catalog_matches_task_spec_and_boundary_cases(self):
+        prompt = (CATALOG.parent / "cpp-interval-task.txt").read_text(encoding="utf-8")
+        self.assertIn("half-open", prompt)
+        self.assertIn("empty or reversed", prompt)
+        self.assertIn("all int values", prompt)
+        assertions = _catalog_case(CASES[0], CATALOG)["assertions"]
+        self.assertEqual(len(assertions), 15)
+        vectors = [item["arguments"] for item in assertions]
+        for values in (
+            [-2147483648, 0, -2147483648, 0],
+            [-2147483648, 2147483647, -2147483648, 2147483647],
+            [-2147483648, 2147483647, 0, 1],
+            [0, 1, -2147483648, 2147483647],
+            [-2147483648, -2147483647, 2147483646, 2147483647],
+            [2147483646, 2147483647, -2147483648, -2147483647],
+        ):
+            self.assertIn(values, vectors)
+        for item in assertions:
+            a, b, c, d = item["arguments"]
+            self.assertIs(item["result"], a < b and c < d and a < d and c < b)
 
     def test_invalid_catalog_never_generates_code(self):
         with self.assertRaises(ArtifactError):
@@ -256,11 +277,38 @@ class NativeCppTests(unittest.TestCase):
         report = self.evaluate(GOOD_CPP, source_review=synthetic_review(GOOD_CPP))
         self.assertEqual(report["status"], "pass", report)
         self.assertTrue(report["quality_accepted"])
-        self.assertEqual(report["grading"]["observed"], 9)
+        self.assertEqual(report["grading"]["observed"], 15)
         self.assertEqual(len(report["source_sha256"]), 64)
         self.assertEqual(len(report["executable_sha256"]), 64)
         self.assertIn("g++", report["toolchain"]["version_probe"]["stdout"])
+        detector = report["toolchain"]["overflow_detection"]
+        self.assertTrue(detector["active"])
+        self.assertIn(detector["mode"], ("ubsan", "signed-overflow-trap"))
+        flags = (quality_module.CXX_GRADING_FLAGS if detector["mode"] == "ubsan"
+                 else quality_module.CXX_TRAP_FLAGS)
+        self.assertEqual(report["toolchain"]["compiler_flags"], list(flags))
         self.assertNotIn(tempfile.gettempdir() + os.sep + "aotg-quality-", json.dumps(report))
+
+    def test_overflow_preflight_timing_does_not_change_toolchain_identity(self):
+        # Independent field assessment compares a stable toolchain identity,
+        # not wall-clock timings from separate compile/runtime probes.
+        toolchains = []
+        for _ in range(2):
+            report = self.evaluate(GOOD_CPP, source_review=synthetic_review(GOOD_CPP))
+            self.assertEqual(report["status"], "pass")
+            attempts = report["overflow_preflight"]["attempts"]
+            self.assertIn("seconds", attempts["ubsan"]["compile"])
+            toolchain = {key: value for key, value in report["toolchain"].items()
+                         if key != "version_probe"}
+            self.assertNotIn('"seconds"', json.dumps(toolchain))
+            self.assertNotIn('"stdout"', json.dumps(toolchain))
+            self.assertNotIn('"stderr"', json.dumps(toolchain))
+            for stages in toolchain["overflow_detection"]["attempts"].values():
+                for phase in stages.values():
+                    if phase is not None:
+                        self.assertEqual(set(phase), {"status", "exit_code"})
+            toolchains.append(toolchain)
+        self.assertEqual(toolchains[0], toolchains[1])
 
     def test_correct_but_unreviewed_source_is_not_quality_accepted(self):
         report = self.evaluate(GOOD_CPP)
@@ -280,9 +328,158 @@ class NativeCppTests(unittest.TestCase):
                                (synthetic_review(source, "rejected"), "source-review-rejected")):
             report = self.evaluate(source, source_review=review)
             self.assertEqual(report["behavioral_status"], "pass")
-            self.assertEqual(report["grading"]["observed"], 9)
+            self.assertEqual(report["grading"]["observed"], 15)
             self.assertEqual(report["status"], status)
             self.assertFalse(report["quality_accepted"])
+
+    def test_signed_overflow_implementations_fail_independent_grading(self):
+        # Each would incorrectly pass at -O2 without UBSan. Review receipts in
+        # this test are synthetic; they are never real independent acceptance.
+        candidates = (
+            "#include <algorithm>\n"
+            "bool overlaps(int a,int b,int c,int d) {"
+            " return std::min(b,d)-std::max(a,c)>0; }",
+            "#include <algorithm>\n"
+            "bool overlaps(int a,int b,int c,int d) {"
+            " return b-a>0 && d-c>0 && std::min(b,d)-std::max(a,c)>0; }",
+            "bool overlaps(int a,int b,int c,int d) {"
+            " return b-a>0 && d-c>0 && a<d && c<b; }",
+            "#include <algorithm>\n"
+            "bool overlaps(int a,int b,int c,int d) {"
+            " return a<d && c<b && b-a>0 && d-c>0; }",
+        )
+        for source in candidates:
+            with self.subTest(source=source):
+                report = self.evaluate(source, source_review=synthetic_review(source))
+                self.assertEqual(report["behavioral_status"], "runtime-error")
+                self.assertEqual(report["status"], "runtime-error")
+                self.assertFalse(report["quality_accepted"])
+                detector = report["toolchain"]["overflow_detection"]
+                self.assertTrue(detector["active"])
+                self.assertIsNone(report["grading"])
+                self.assertNotEqual(report["execution"]["exit_code"], 0)
+                if detector["mode"] == "ubsan":
+                    self.assertIn("signed integer overflow", report["execution"]["stderr"])
+
+    def test_unavailable_overflow_detection_fails_closed_before_candidate_compile(self):
+        real_run = quality_module._run
+
+        def fake_disabled(argv, directory, timeout_seconds, phase, tool_directories=(), *, dotnet=False):
+            if phase in ("ubsan-run", "trap-run"):
+                return {"status": "ok", "exit_code": 0, "seconds": 0.001,
+                        "stdout": "", "stderr": "", "output_truncated": False}
+            return real_run(argv, directory, timeout_seconds, phase, tool_directories, dotnet=dotnet)
+
+        with patch("aotg.quality._run", side_effect=fake_disabled):
+            report = self.evaluate(GOOD_CPP, source_review=synthetic_review(GOOD_CPP))
+        self.assertEqual(report["behavioral_status"], "overflow-detector-unavailable")
+        self.assertEqual(report["status"], "overflow-detector-unavailable")
+        self.assertIsNone(report["compile"])
+        self.assertIsNone(report["execution"])
+        self.assertFalse(report["toolchain"]["overflow_detection"]["active"])
+        self.assertFalse(report["quality_accepted"])
+
+    def test_trap_fallback_rejects_ignored_optimized_subtraction(self):
+        # Reproduce independent P1: addition traps, optimized subtraction does not.
+        # A synthetic review cannot override the missing detector.
+        real_run = quality_module._run
+
+        def ignored_subtraction(argv, directory, timeout_seconds, phase,
+                                tool_directories=(), *, dotnet=False):
+            if phase in ("ubsan-run", "trap-subtract-run", "trap-run"):
+                return {"status": "ok", "exit_code": 1 if phase == "trap-run" else 0,
+                        "seconds": 0.001, "stdout": "", "stderr": "",
+                        "output_truncated": False}
+            return real_run(argv, directory, timeout_seconds, phase,
+                            tool_directories, dotnet=dotnet)
+
+        with patch("aotg.quality._run", side_effect=ignored_subtraction):
+            report = self.evaluate(GOOD_CPP, source_review=synthetic_review(GOOD_CPP))
+        self.assertEqual(report["status"], "overflow-detector-unavailable")
+        self.assertEqual(report["behavioral_status"], "overflow-detector-unavailable")
+        self.assertIsNone(report["compile"])
+        self.assertIsNone(report["execution"])
+        self.assertFalse(report["quality_accepted"])
+        preflight = report["overflow_preflight"]["attempts"]["signed-overflow-trap"]
+        self.assertEqual(preflight["execution"]["exit_code"], 1)
+        self.assertEqual(preflight["subtract_execution"]["exit_code"], 0)
+        self.assertEqual(preflight["control_execution"]["exit_code"], 0)
+        detector = report["toolchain"]["overflow_detection"]
+        self.assertFalse(detector["active"])
+        self.assertEqual(
+            detector["subtraction_probe_sha256"],
+            hashlib.sha256(quality_module.CXX_TRAP_SUBTRACTION_PROBE.encode("utf-8")).hexdigest())
+        for phase in detector["attempts"]["signed-overflow-trap"].values():
+            if phase is not None:
+                self.assertEqual(set(phase), {"status", "exit_code"})
+
+    def test_trap_fallback_only_passes_when_both_native_probes_abort(self):
+        # On systems without UBSan, use actual compiler/run for the trap probes.
+        # If optimized subtraction does not trap, fail closed rather than skip.
+        real_run = quality_module._run
+
+        def no_ubsan(argv, directory, timeout_seconds, phase,
+                     tool_directories=(), *, dotnet=False):
+            if phase == "ubsan-run":
+                return {"status": "ok", "exit_code": 0, "seconds": 0.001,
+                        "stdout": "", "stderr": "", "output_truncated": False}
+            return real_run(argv, directory, timeout_seconds, phase,
+                            tool_directories, dotnet=dotnet)
+
+        with patch("aotg.quality._run", side_effect=no_ubsan):
+            report = self.evaluate(GOOD_CPP, source_review=synthetic_review(GOOD_CPP))
+        trap = report["overflow_preflight"]["attempts"]["signed-overflow-trap"]
+        self.assertEqual(trap["subtract_compile"]["exit_code"], 0, trap)
+        detector = report["toolchain"]["overflow_detection"]
+        both_detected = (
+            trap["execution"] is not None and trap["execution"]["status"] == "ok"
+            and trap["execution"]["exit_code"] != 0
+            and trap["subtract_execution"] is not None
+            and trap["subtract_execution"]["status"] == "ok"
+            and trap["subtract_execution"]["exit_code"] != 0
+            and trap["control_execution"] is not None
+            and trap["control_execution"]["status"] == "ok"
+            and trap["control_execution"]["exit_code"] == 0
+        )
+        if both_detected:
+            self.assertEqual(detector["mode"], "signed-overflow-trap")
+            self.assertEqual(report["status"], "pass")
+        else:
+            self.assertEqual(report["status"], "overflow-detector-unavailable")
+            self.assertIsNone(report["compile"])
+        self.assertEqual(detector["active"], both_detected)
+
+    def test_public_cli_rejects_overflow_without_source_review(self):
+        import subprocess
+        import sys
+
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            for name, source, status in (
+                ("reference", GOOD_CPP, "pass"),
+                ("overflow", "#include <algorithm>\n"
+                 "bool overlaps(int a,int b,int c,int d) {"
+                 " return std::min(b,d)-std::max(a,c)>0; }", "runtime-error"),
+            ):
+                with self.subTest(name=name):
+                    source_path = directory / (name + ".cpp")
+                    report_path = directory / (name + ".json")
+                    source_path.write_text(source, encoding="utf-8")
+                    result = subprocess.run(
+                        [sys.executable, "-m", "aotg.quality", "--case", CASES[0],
+                         "--source", str(source_path),
+                         "--compiler", str(Path(shutil.which("g++")).resolve()),
+                         "--compiler-kind", "g++", "--allow-execute",
+                         "--isolation-evidence", "synthetic-public-cli-regression",
+                         "--output", str(report_path)],
+                        cwd=Path(__file__).resolve().parents[1], capture_output=True,
+                        text=True, timeout=60, check=False,
+                    )
+                    self.assertEqual(result.returncode, 1, result.stderr)
+                    report = json.loads(report_path.read_text(encoding="utf-8"))
+                    self.assertEqual(report["behavioral_status"], status)
+                    self.assertTrue(report["toolchain"]["overflow_detection"]["active"])
+                    self.assertFalse(report["quality_accepted"])
 
     def test_original_buggy_fixture_is_rejected(self):
         source = (CATALOG.parent / "intervals.cpp").read_text(encoding="utf-8")

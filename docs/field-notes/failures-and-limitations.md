@@ -103,3 +103,17 @@ K8 WSLではuser/mount/PID namespaceを利用できたが、Linux CIのポリシ
 同じprivate logには主agentのHTTP 409が3件、title agentのLLM処理開始が2件ある。409の宛先・空応答は測定proxyと一致し、固定proxyコードで409を返すのは同時要求を拒否する分岐だけである。したがって、この409はローカルproxyの同時要求拒否と判断する。タイトル処理との競合に整合するが、個々のproxy記録にはagent識別がなく、成功した各応答とtitle処理との一対一の対応は未確認である。409以降の最終glob文字列が発生した原因まで確定したわけではない。
 
 次の修正候補は、タイトル用agentの無効化と、許可ファイル・操作を明示するprimary agentのpromptである。OpenCode 1.1.53では、セッション名とメッセージ要約名に別のタイトル生成経路があるため、固定の `--title` だけでは後者は止まらない。[メッセージ要約の実装](https://github.com/anomalyco/opencode/blob/v1.1.53/packages/opencode/src/session/summary.ts#L113-L158)、[agent無効化の実装](https://github.com/anomalyco/opencode/blob/v1.1.53/packages/opencode/src/agent/agent.ts#L197-L200)。モデル、provider変換、サーバーtool parserの全体としての改善効果は未検証。自由なコマンド権限を与えたり、tool-call文字列を実行したり、自己申告の合格を採用したりしない。
+
+## F-015: C++ の最適化は符号付きオーバーフローの不正解を隠し得る
+
+AOTG-ADV-4 の追試では、C++17 の半開区間課題（全 `int` 値に対応）について、判定器の `g++ -O2` が候補内の符号付きオーバーフローを未定義動作として最適化し、不正な差分計算を合格させることが分かった。既存の9件だけでなく、極値を使った追加ベクトルがあっても `-O2` のみでは検出できない。これは「採点の再現性」とは別の、採点の妥当性の問題である。
+
+修正では、C++採点においてGCC UBSan（`-std=c++17 -O2 -fsanitize=undefined -fno-sanitize-recover=all`）を優先する。UBSanのコンパイル・実行ライブラリが使えない場合だけ、より狭い `-std=c++17 -O2 -ftrapv` の採点へフォールバックできる。後者は符号付き加算・減算・乗算のオーバーフローに対応するが、UBSanの全検査を代替しない。方式は実行時に自動で決め打ちせず、両方式とも既知のオーバーフローを起こす信頼済みのプログラムを同じ条件でビルドして非正常終了することを確認する。特に `-ftrapv` は単純加算だけで有効と認定せず、最適化した `std::min(b,d)-std::max(a,c)>0` の符号付き減算probeも同じフラグで独立に実行し、双方の異常終了を要する。`-ftrapv`ではさらに非オーバーフローの対照実装が正常終了することを必要とする。条件を満たす方式がなければ `overflow-detector-unavailable` として拒否し、品質合格を主張しない。選択モード・フラグ・事前検査は `toolchain` に残す。
+
+catalogは`INT_MIN`・`INT_MAX`を含む6件を追加して15件にした。正例、4種類の誤実装、starterと課題文・catalogの整合、公開CLIおよび両方式無効時の拒否を回帰テストに含める。C# のコンパイル条件は変更しない。grader/catalog のハッシュが変わるため、以前の独立レビュー受領証は流用できない。
+
+これは実際に選択された検出方式が観測した範囲の保証であり、すべてのC++未定義動作や仕様違反の検出を意味しない。特に `-ftrapv` の使用結果を「UBSanで検証済み」とは記載しない。K8/EVOの実機コンパイラ、clang・MSVC、実モデルでの誤答頻度は未検証。判定器は引き続き外部の隔離環境でのみ実行し、ソースの独立レビューと採点ベクトルの秘匿を維持する。
+
+### ADV-12：事前検査の実測時間と比較用toolchainの分離
+
+符号付きオーバーフローの事前検査は各実行で `seconds` が変わる。これを `toolchain.overflow_detection.attempts` へそのまま入れると、既存のfield assemblerが複数C++アームのtoolchainを照合できず、正しい合成評価でも `native_toolchain_drift` として中断する。完全な事前検査ログは `overflow_preflight.attempts` に保管し、比較用toolchainにはmode、flags、probeのSHAと各段階のstatus/exit_codeを残す。外側の証拠と採点値の一致条件を緩めず、compilerのSHA、mode、flags、probeのSHAが異なる場合は引き続きdriftとする。旧graderのreceipt/hashは流用しない。
