@@ -300,6 +300,60 @@ class AssemblyTests(unittest.TestCase):
         self.assertEqual(set(result["run"]["trials"][0]["metrics"]), {"wall_seconds"})
         self.assertFalse(result["goal_complete"])
 
+    def test_overflow_preflight_timing_does_not_cause_drift_but_identity_changes_do(self):
+        # These are synthetic quality/outer-isolation receipts, not a real
+        # field run. Per-arm preflight durations differ just as real runs do.
+        stable = deepcopy(self.f.authority["toolchains"][CASE])
+        stable["compiler_flags"] = ["-std=c++17", "-O2", "-fsanitize=undefined",
+                                    "-fno-sanitize-recover=all"]
+        stable["overflow_detection"] = {
+            "active": True, "mode": "ubsan",
+            "overflow_probe_sha256": a.sha(b"synthetic-overflow-probe"),
+            "control_probe_sha256": a.sha(b"synthetic-control-probe"),
+            "attempts": {"ubsan": {
+                "compile": {"status": "ok", "exit_code": 0},
+                "execution": {"status": "ok", "exit_code": 1}}},
+        }
+        self.f.authority["toolchains"][CASE] = stable
+
+        def set_arm(index, mutation=None):
+            assessment = self.f.authority["arms"][str(index)]
+            report = json.loads(Path(assessment["quality"]["path"]).read_text())
+            report["toolchain"] = deepcopy(stable)
+            report["toolchain"]["version_probe"] = {"seconds": index / 10}
+            report["overflow_preflight"] = {"attempts": {"ubsan": {
+                "compile": {"status": "ok", "exit_code": 0, "seconds": index / 10},
+                "execution": {"status": "ok", "exit_code": 1, "seconds": index / 20},
+            }}}
+            if mutation:
+                field, value = mutation
+                if field == "compiler_sha256":
+                    report["toolchain"][field] = value
+                elif field == "compiler_flags":
+                    report["toolchain"][field] = value
+                else:
+                    report["toolchain"]["overflow_detection"][field] = value
+            assessment["quality"] = self.f.trusted(f"arm-{index}/quality.json", report)
+            isolated = json.loads(Path(assessment["isolation"]["path"]).read_text())
+            isolated["stdout"] = base64.b64encode(zlib.compress(a.canonical(report))).decode()
+            assessment["isolation"] = self.f.trusted(f"arm-{index}/isolation.json", isolated)
+
+        for index in range(len(self.f.field["schedule"])):
+            set_arm(index)
+        self.assertEqual(self.f.run()["decision"]["status"], "adopt")
+        for change in (
+            ("compiler_sha256", a.sha(b"other-compiler")),
+            ("compiler_flags", ["-std=c++17", "-O0"]),
+            ("mode", "signed-overflow-trap"),
+            ("overflow_probe_sha256", a.sha(b"other-probe")),
+        ):
+            with self.subTest(change=change[0]):
+                set_arm(1, change)
+                result = self.f.run()
+                self.assertEqual(result["decision"]["status"], "incomplete")
+                self.assertIn("native_toolchain_drift", str(result["ledger"]))
+                set_arm(1)
+
     def test_missing_source_keeps_ledger_without_dummy_hash(self):
         (self.f.k / "arm-00/coding/work/intervals.cpp").unlink()
         result = self.f.run()

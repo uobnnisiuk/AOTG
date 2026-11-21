@@ -113,3 +113,7 @@ AOTG-ADV-4 の追試では、C++17 の半開区間課題（全 `int` 値に対�
 catalogは`INT_MIN`・`INT_MAX`を含む6件を追加して15件にした。正例、4種類の誤実装、starterと課題文・catalogの整合、公開CLIおよび両方式無効時の拒否を回帰テストに含める。C# のコンパイル条件は変更しない。grader/catalog のハッシュが変わるため、以前の独立レビュー受領証は流用できない。
 
 これは実際に選択された検出方式が観測した範囲の保証であり、すべてのC++未定義動作や仕様違反の検出を意味しない。特に `-ftrapv` の使用結果を「UBSanで検証済み」とは記載しない。K8/EVOの実機コンパイラ、clang・MSVC、実モデルでの誤答頻度は未検証。判定器は引き続き外部の隔離環境でのみ実行し、ソースの独立レビューと採点ベクトルの秘匿を維持する。
+
+### ADV-12：事前検査の実測時間と比較用toolchainの分離
+
+符号付きオーバーフローの事前検査は各実行で `seconds` が変わる。これを `toolchain.overflow_detection.attempts` へそのまま入れると、既存のfield assemblerが複数C++アームのtoolchainを照合できず、正しい合成評価でも `native_toolchain_drift` として中断する。完全な事前検査ログは `overflow_preflight.attempts` に保管し、比較用toolchainにはmode、flags、probeのSHAと各段階のstatus/exit_codeを残す。外側の証拠と採点値の一致条件を緩めず、compilerのSHA、mode、flags、probeのSHAが異なる場合は引き続きdriftとする。旧graderのreceipt/hashは流用しない。

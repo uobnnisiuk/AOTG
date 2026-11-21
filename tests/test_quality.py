@@ -182,6 +182,86 @@ class ObservationTests(unittest.TestCase):
             self.assertEqual(report["grading"]["observed"], 16)
 
 
+class TemporaryCleanupTests(unittest.TestCase):
+    def test_transient_windows_sharing_violation_cleans_up_without_hiding_body_error(self):
+        temporary = tempfile.TemporaryDirectory()
+        directory = Path(temporary.name)
+        original_cleanup = temporary.cleanup
+        sharing_error = PermissionError("file is still shared")
+        sharing_error.winerror = 32
+        attempts = 0
+
+        def cleanup():
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise sharing_error
+            original_cleanup()
+
+        try:
+            with (patch("aotg.quality.tempfile.TemporaryDirectory", return_value=temporary),
+                  patch.object(temporary, "cleanup", side_effect=cleanup),
+                  patch("aotg.quality.sys.platform", "win32"),
+                  patch("aotg.quality.time.monotonic", side_effect=[100, 100.1, 100.11]),
+                  patch("aotg.quality.time.sleep") as sleep):
+                with self.assertRaisesRegex(RuntimeError, "original evaluation failure"):
+                    with quality_module._evaluation_directory() as work:
+                        self.assertEqual(work, directory)
+                        (work / "compiler.s").write_text("temporary assembly", encoding="utf-8")
+                        raise RuntimeError("original evaluation failure")
+            self.assertEqual(attempts, 2)
+            sleep.assert_called_once_with(0.01)
+            self.assertFalse(directory.exists())
+        finally:
+            original_cleanup()
+
+    def test_persistent_windows_sharing_violation_propagates_at_deadline(self):
+        temporary = tempfile.TemporaryDirectory()
+        directory = Path(temporary.name)
+        original_cleanup = temporary.cleanup
+        sharing_error = PermissionError("file remains shared")
+        sharing_error.winerror = 32
+        try:
+            with (patch("aotg.quality.tempfile.TemporaryDirectory", return_value=temporary),
+                  patch.object(temporary, "cleanup", side_effect=sharing_error) as cleanup,
+                  patch("aotg.quality.sys.platform", "win32"),
+                  patch("aotg.quality.time.monotonic", side_effect=[100, 100.25, 100.26, 101.0]),
+                  patch("aotg.quality.time.sleep") as sleep):
+                with self.assertRaises(PermissionError) as raised:
+                    with quality_module._evaluation_directory() as work:
+                        (work / "compiler.s").write_text("still locked", encoding="utf-8")
+            self.assertIs(raised.exception, sharing_error)
+            self.assertEqual(cleanup.call_count, 2)
+            sleep.assert_called_once_with(0.01)
+            self.assertTrue(directory.exists())
+        finally:
+            original_cleanup()
+
+    def test_unrelated_cleanup_errors_propagate_without_retry(self):
+        denied = PermissionError("access denied")
+        denied.winerror = 5
+        non_windows = PermissionError("sharing error on a different OS")
+        non_windows.winerror = 32
+        for platform, error in (("win32", denied), ("linux", PermissionError("permission denied")),
+                                ("win32", OSError("I/O failure")), ("linux", non_windows)):
+            with self.subTest(platform=platform, error=error):
+                temporary = tempfile.TemporaryDirectory()
+                original_cleanup = temporary.cleanup
+                try:
+                    with (patch("aotg.quality.tempfile.TemporaryDirectory", return_value=temporary),
+                          patch.object(temporary, "cleanup", side_effect=error) as cleanup,
+                          patch("aotg.quality.sys.platform", platform),
+                          patch("aotg.quality.time.sleep") as sleep):
+                        with self.assertRaises(type(error)) as raised:
+                            with quality_module._evaluation_directory():
+                                pass
+                    self.assertIs(raised.exception, error)
+                    cleanup.assert_called_once_with()
+                    sleep.assert_not_called()
+                finally:
+                    original_cleanup()
+
+
 @unittest.skipUnless(shutil.which("g++"), "Existing g++ is required; no download")
 class NativeCppTests(unittest.TestCase):
     def evaluate(self, source, **kwargs):
@@ -208,6 +288,27 @@ class NativeCppTests(unittest.TestCase):
                  else quality_module.CXX_TRAP_FLAGS)
         self.assertEqual(report["toolchain"]["compiler_flags"], list(flags))
         self.assertNotIn(tempfile.gettempdir() + os.sep + "aotg-quality-", json.dumps(report))
+
+    def test_overflow_preflight_timing_does_not_change_toolchain_identity(self):
+        # Independent field assessment compares a stable toolchain identity,
+        # not wall-clock timings from separate compile/runtime probes.
+        toolchains = []
+        for _ in range(2):
+            report = self.evaluate(GOOD_CPP, source_review=synthetic_review(GOOD_CPP))
+            self.assertEqual(report["status"], "pass")
+            attempts = report["overflow_preflight"]["attempts"]
+            self.assertIn("seconds", attempts["ubsan"]["compile"])
+            toolchain = {key: value for key, value in report["toolchain"].items()
+                         if key != "version_probe"}
+            self.assertNotIn('"seconds"', json.dumps(toolchain))
+            self.assertNotIn('"stdout"', json.dumps(toolchain))
+            self.assertNotIn('"stderr"', json.dumps(toolchain))
+            for stages in toolchain["overflow_detection"]["attempts"].values():
+                for phase in stages.values():
+                    if phase is not None:
+                        self.assertEqual(set(phase), {"status", "exit_code"})
+            toolchains.append(toolchain)
+        self.assertEqual(toolchains[0], toolchains[1])
 
     def test_correct_but_unreviewed_source_is_not_quality_accepted(self):
         report = self.evaluate(GOOD_CPP)
