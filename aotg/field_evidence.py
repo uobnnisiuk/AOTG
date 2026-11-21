@@ -22,6 +22,16 @@ METRICS = (
     "tool_roundtrip_seconds",
 )
 CHECKS = ("correctness", "tool_compatibility", "completed", "stability")
+METRIC_DIRECTIONS = {
+    "ttft_seconds": "minimize", "tool_roundtrip_seconds": "minimize",
+    "prefill_tokens_per_second": "maximize", "decode_tokens_per_second": "maximize",
+}
+ADOPTION_POLICY = {
+    "rule": "balanced-paired-and-complete-separation-v1", "minimum_blocks": 4,
+    "block_order": ["abba", "baab", "baab", "abba"],
+    "maximum_alternatives": 8, "iid_null_familywise_bound": 0.01,
+    "null_assumption": "independent-exchangeable-continuous-observations",
+}
 RESOURCES = (
     "peak_temperature_c", "min_mem_available_bytes", "swapout_delta_bytes",
     "gpu_errors", "io_errors",
@@ -60,7 +70,10 @@ def _schedule(candidates, workloads, baseline_id, blocks):
             if candidate["id"] == baseline_id:
                 continue
             for block in range(blocks):
-                for arm in (baseline_id, candidate["id"], candidate["id"], baseline_id):
+                arms = ((baseline_id, candidate["id"], candidate["id"], baseline_id)
+                        if ADOPTION_POLICY["block_order"][block] == "abba"
+                        else (candidate["id"], baseline_id, baseline_id, candidate["id"]))
+                for arm in arms:
                     rows.append({
                         "index": len(rows), "candidate_id": arm,
                         "comparison_id": candidate["id"],
@@ -70,18 +83,23 @@ def _schedule(candidates, workloads, baseline_id, blocks):
 
 
 def freeze_plan(*, identity_sha256, verifier_sha256, candidates, workloads, baseline_id="baseline",
-                blocks=1, limits, minimum_improvement=0.05,
-                required_metrics=("wall_seconds",)):
+                blocks=4, limits, metric_gates, minimum_improvement=0.05,
+                required_metrics=None):
     """Freeze an ABBA plan. Identity binds model, quantization and sampling.
 
     Workload input hashes must include the complete task and initial workspace;
     tests_sha256 is the exact independently held grader catalog hash. Freeze the
     expected verifier code hash before execution. Cache cohorts remain explicit.
-    At least two alternative profiles and two observations per arm are required.
+    Four balanced ABBA/BAAB blocks give eight observations per configuration.
+    Non-wall performance metrics require explicit regression tolerances. An empty
+    gate mapping explicitly assesses wall time only; undeclared performance
+    observations cannot pass. Raw draft counters remain diagnostic only.
     No configuration values or local paths are needed in this public structure.
     """
     # Bound allocation before constructing the derived schedule.
-    _require(type(blocks) is int and 1 <= blocks <= 3, "Invalid block count")
+    _require(type(blocks) is int and blocks == 4, "Adoption requires four balanced ABBA/BAAB blocks")
+    _require(isinstance(metric_gates, dict), "Explicit metric gates are required")
+    _require(set(metric_gates) <= set(METRIC_DIRECTIONS), "Unknown performance metric gate")
     _require(isinstance(candidates, list) and 3 <= len(candidates) <= 9,
              "Require baseline and two to eight alternatives")
     _require(isinstance(workloads, list) and 1 <= len(workloads) <= 16,
@@ -91,12 +109,14 @@ def freeze_plan(*, identity_sha256, verifier_sha256, candidates, workloads, base
     for workload in workloads:
         _exact(workload, ("id", "input_sha256", "tests_sha256", "cache_cohort"), "workload")
     plan = {
-        "artifact": "aotg-field-plan", "version": 1,
+        "artifact": "aotg-field-plan", "version": 2,
         "identity_sha256": identity_sha256, "verifier_sha256": verifier_sha256,
         "baseline_id": baseline_id,
         "candidates": candidates, "workloads": workloads, "blocks": blocks,
         "limits": limits, "minimum_improvement": minimum_improvement,
-        "required_metrics": list(required_metrics),
+        "required_metrics": (["wall_seconds", *sorted(metric_gates)]
+                             if required_metrics is None else list(required_metrics)),
+        "adoption_policy": dict(ADOPTION_POLICY), "metric_gates": metric_gates,
         "schedule": _schedule(candidates, workloads, baseline_id, blocks),
     }
     validate_field_plan(plan)
@@ -105,16 +125,20 @@ def freeze_plan(*, identity_sha256, verifier_sha256, candidates, workloads, base
 
 
 def validate_field_plan(plan):
+    _require(isinstance(plan, dict), "Invalid plan")
+    _require(plan.get("version") != 1,
+             "Legacy field plan v1 cannot authorize new adoption; retain its frozen evaluator and freeze v2")
     _exact(plan, ("artifact", "version", "identity_sha256", "verifier_sha256", "baseline_id",
                   "candidates", "workloads", "blocks", "limits",
-                  "minimum_improvement", "required_metrics", "schedule"), "plan")
+                  "minimum_improvement", "required_metrics", "schedule", "adoption_policy", "metric_gates"), "plan")
     _require(plan["artifact"] == "aotg-field-plan" and type(plan["version"]) is int
-             and plan["version"] == 1, "Unsupported field plan")
+             and plan["version"] == 2, "Unsupported field plan")
     _sha(plan["identity_sha256"], "identity hash")
     _sha(plan["verifier_sha256"], "frozen verifier hash")
     _id(plan["baseline_id"])
-    _require(type(plan["blocks"]) is int and 1 <= plan["blocks"] <= 3,
-             "Blocks must be between one and three")
+    _require(type(plan["blocks"]) is int and plan["blocks"] == 4,
+             "Adoption requires four balanced ABBA/BAAB blocks")
+    _require(plan["adoption_policy"] == ADOPTION_POLICY, "Unsupported frozen adoption policy")
     _require(isinstance(plan["candidates"], list) and 3 <= len(plan["candidates"]) <= 9,
              "Require baseline and two to eight alternatives")
     ids, profiles = [], []
@@ -152,6 +176,15 @@ def validate_field_plan(plan):
     _require(isinstance(required, list) and "wall_seconds" in required
              and all(item in METRICS for item in required)
              and len(set(required)) == len(required), "Invalid required metrics")
+    gates = plan["metric_gates"]
+    _require(isinstance(gates, dict) and set(gates) <= set(METRIC_DIRECTIONS),
+             "Invalid metric gates; raw draft counts are diagnostic only")
+    for name, gate in gates.items():
+        _exact(gate, ("direction", "max_regression_fraction"), "metric gate")
+        _require(gate["direction"] == METRIC_DIRECTIONS[name], "Metric direction contradicts its meaning")
+        _number(gate["max_regression_fraction"], "metric regression tolerance", 0, 0.9)
+    _require(set(required) == {"wall_seconds", *gates},
+             "Required metrics must be wall time and every explicitly gated metric")
     _require(plan["schedule"] == _schedule(plan["candidates"], plan["workloads"],
                                           plan["baseline_id"], plan["blocks"]),
              "Schedule differs from the frozen ABBA order")
@@ -263,6 +296,8 @@ def _trial_errors(trial, row, plan, workload, profile):
             _number(value, key, 0.000000001 if key == "wall_seconds" else 0)
     errors.extend(f"metric_{key}_missing" for key in plan["required_metrics"]
                   if metrics.get(key) is None)
+    errors.extend(f"metric_{key}_undeclared" for key in METRIC_DIRECTIONS
+                  if key in metrics and key not in plan["metric_gates"])
     if metrics.get("wall_seconds", 0) is not None and metrics.get("wall_seconds", 0) > plan["limits"]["trial_seconds"]:
         errors.append("trial_time_limit_exceeded")
     accepted, proposed = metrics.get("draft_accepted"), metrics.get("draft_proposed")
@@ -292,14 +327,17 @@ def _trial_errors(trial, row, plan, workload, profile):
 def compare_field_run(run):
     """Return adopt, retain_baseline, or incomplete without inventing trials.
 
-    Every workload and ABBA block must meet the declared wall-time threshold in
-    both adjacent A/B pairs. A faster median alone is not reproduction evidence.
+    Every workload must meet the wall threshold in every adjacent A/B pair and
+    in the worst-candidate versus best-baseline comparison. The finite-sample
+    IID null bound does not verify independence or coverage on actual hosts.
     Absent evidence differs from a completed, failed or slower candidate.
     """
     _exact(run, ("artifact", "version", "plan", "plan_sha256", "elapsed_seconds",
                  "trials"), "run")
+    _require(run["version"] != 1,
+             "Legacy measured run v1 requires its frozen evaluator; new adoption requires a v2 plan and run")
     _require(run["artifact"] == "aotg-field-run" and type(run["version"]) is int
-             and run["version"] == 1, "Unsupported measured run")
+             and run["version"] == 2, "Unsupported measured run")
     plan = validate_field_plan(run["plan"])
     _require(run["plan_sha256"] == digest(plan), "Frozen plan hash mismatch")
     _number(run["elapsed_seconds"], "elapsed time")
@@ -323,6 +361,9 @@ def compare_field_run(run):
     _require(run["elapsed_seconds"] + 0.000001 >= measured_seconds,
              "Elapsed time is shorter than sequential measured trials")
     total_violation = run["elapsed_seconds"] > plan["limits"]["total_seconds"]
+    resource_stop_indices = sorted(index for index, item in rows.items()
+                                   if any(reason.startswith("resource_") and reason.endswith("_limit")
+                                          for reason in item["errors"]))
     baseline_rows = [row for row in plan["schedule"] if row["candidate_id"] == plan["baseline_id"]]
     baseline_valid = all(row["index"] in rows and not rows[row["index"]]["errors"]
                          for row in baseline_rows)
@@ -337,30 +378,77 @@ def compare_field_run(run):
                           or reason.endswith("not_independent") for reason in reasons)
                       for reasons in errors.values())
         failed = any(errors.values()) or total_violation
-        pairs = []
+        pairs, metric_failures = [], []
         for offset in range(0, len(selected), 4):
             block = selected[offset:offset + 4]
             if all(row["index"] in rows and not rows[row["index"]]["errors"] for row in block):
-                values = [rows[row["index"]]["trial"]["metrics"]["wall_seconds"] for row in block]
-                pairs.extend(((values[0] - values[1]) / values[0],
-                              (values[3] - values[2]) / values[3]))
+                paired_rows = (((block[0], block[1]), (block[3], block[2]))
+                               if block[0]["candidate_id"] == plan["baseline_id"]
+                               else ((block[1], block[0]), (block[2], block[3])))
+                for baseline, alternative in paired_rows:
+                    base = rows[baseline["index"]]["trial"]["metrics"]["wall_seconds"]
+                    alt = rows[alternative["index"]]["trial"]["metrics"]["wall_seconds"]
+                    pairs.append((base - alt) / base)
+                for name, gate in plan["metric_gates"].items():
+                    for baseline, alternative in paired_rows:
+                        base = rows[baseline["index"]]["trial"]["metrics"][name]
+                        alt = rows[alternative["index"]]["trial"]["metrics"][name]
+                        limit = base * (1 + gate["max_regression_fraction"] if gate["direction"] == "minimize"
+                                        else 1 - gate["max_regression_fraction"])
+                        allowed = alt <= limit if gate["direction"] == "minimize" else alt >= limit
+                        if not allowed:
+                            metric_failures.append({"metric": name, "baseline_index": baseline["index"],
+                                                    "candidate_index": alternative["index"],
+                                                    "baseline_value": base, "candidate_value": alt})
+        spreads = []
+        for workload in plan["workloads"]:
+            cohort = [row for row in selected if row["workload_id"] == workload["id"]]
+            if all(row["index"] in rows and not rows[row["index"]]["errors"] for row in cohort):
+                baseline = [rows[row["index"]]["trial"]["metrics"]["wall_seconds"] for row in cohort
+                            if row["candidate_id"] == plan["baseline_id"]]
+                alternative = [rows[row["index"]]["trial"]["metrics"]["wall_seconds"] for row in cohort
+                               if row["candidate_id"] != plan["baseline_id"]]
+                separation = (min(baseline) - max(alternative)) / min(baseline)
+                spreads.append({"workload_id": workload["id"], "observations_per_configuration": len(baseline),
+                                "baseline_min": min(baseline), "baseline_max": max(baseline),
+                                "candidate_min": min(alternative), "candidate_max": max(alternative),
+                                "baseline_relative_range": (max(baseline) - min(baseline)) / min(baseline),
+                                "candidate_relative_range": (max(alternative) - min(alternative)) / min(alternative),
+                                "worst_case_improvement_fraction": separation})
         repeated_win = bool(pairs) and all(value >= plan["minimum_improvement"] for value in pairs)
-        status = "incomplete" if missing else "reject" if failed else "pass" if repeated_win else "hold"
+        separated = len(spreads) == len(plan["workloads"]) and all(
+            item["worst_case_improvement_fraction"] >= plan["minimum_improvement"] for item in spreads)
+        status = ("incomplete" if missing else "reject" if failed or metric_failures
+                  else "pass" if repeated_win and separated else "hold")
         comparisons.append({
             "candidate_id": candidate["id"], "status": status,
             "trial_indices": [row["index"] for row in selected],
             "trial_errors": errors, "paired_improvement_fractions": pairs,
+            "trial_reasons": {str(row["index"]): rows[row["index"]]["trial"]["reason"]
+                              if row["index"] in rows else "trial_missing" for row in selected},
             "median_paired_improvement_fraction": median(pairs) if pairs else None,
+            "wall_spreads": spreads, "metric_regressions": metric_failures,
+            "adoption_reasons": ([] if missing or failed else
+                                 (["paired_improvement_not_reproduced"] if not repeated_win else [])
+                                 + (["wall_improvement_not_separated_from_observed_spread"] if not separated else [])
+                                 + (["metric_regression_limit"] if metric_failures else [])),
         })
-    complete = baseline_valid and not total_violation and all(item["status"] != "incomplete" for item in comparisons)
+    complete = (baseline_valid and not total_violation and not resource_stop_indices
+                and all(item["status"] != "incomplete" for item in comparisons))
     passing = [item for item in comparisons if item["status"] == "pass"] if complete else []
     best = max(passing, key=lambda item: item["median_paired_improvement_fraction"], default=None)
     return {
-        "artifact": "aotg-field-decision", "version": 1, "run_sha256": digest(run),
+        "artifact": "aotg-field-decision", "version": 2, "run_sha256": digest(run),
         "plan_sha256": digest(plan), "status": "incomplete" if not complete else "adopt" if best else "retain_baseline",
         "selected_candidate_id": best["candidate_id"] if best else plan["baseline_id"] if complete else None,
         "baseline_valid": baseline_valid, "total_time_limit_exceeded": total_violation,
+        "global_resource_stop": bool(resource_stop_indices),
+        "resource_stop_trial_indices": resource_stop_indices,
         "comparisons": comparisons,
+        "adoption_policy": dict(plan["adoption_policy"]),
+        "gated_metrics": ["wall_seconds", *sorted(plan["metric_gates"])],
+        "unassessed_performance_metrics": sorted(set(METRIC_DIRECTIONS) - set(plan["metric_gates"])),
+        "real_host_independence_verified": False,
         "deployment_verified": False, "rollback_demonstrated": False,
     }
 
@@ -403,7 +491,7 @@ def build_field_kit(run, *, root, paths, operations, private_configuration_sha25
     _require(all(isinstance(path, str) and path in paths for path in operations.values()),
              "Operations must reference bundled files")
     return {
-        "artifact": "aotg-field-kit", "version": 1, "default_dry_run": True,
+        "artifact": "aotg-field-kit", "version": 2, "default_dry_run": True,
         "selected_candidate_id": decision["selected_candidate_id"],
         "selected_profile_sha256": next(item["profile_sha256"] for item in run["plan"]["candidates"]
                                         if item["id"] == decision["selected_candidate_id"]),
@@ -422,7 +510,7 @@ def verify_field_kit(kit, run, *, root):
         run, root=root, paths=[item["path"] for item in kit["files"]],
         operations=kit["operations"], private_configuration_sha256=kit["private_configuration_sha256"])
     _require(canonical_json(kit) == canonical_json(expected), "Kit integrity mismatch")
-    return {"artifact": "aotg-field-kit-integrity", "version": 1,
+    return {"artifact": "aotg-field-kit-integrity", "version": 2,
             "integrity_verified": True, "kit_sha256": digest(kit),
             "independent_rebuild_verified": False, "deployment_verified": False,
             "rollback_demonstrated": False}

@@ -1,0 +1,29 @@
+{
+  "artifact": "aotg-adoption-null-simulation-plan",
+  "version": 1,
+  "preregistered_before_execution": true,
+  "purpose": "Synthetic false-adoption check of v2; no real-machine independence claim",
+  "blocks": 3,
+  "workloads": 1,
+  "minimum_improvement": 0.05,
+  "metric_gates": {},
+  "iid_max_false_adoption_fraction": 0.01,
+  "iid_repetitions_per_case": 4000,
+  "wall_median_seconds": 10.0,
+  "iid_cases": [
+    {"alternatives": 2, "log_sigma": 0.05, "seed": 20261116002401},
+    {"alternatives": 2, "log_sigma": 0.1, "seed": 20261116002402},
+    {"alternatives": 2, "log_sigma": 0.2, "seed": 20261116002403},
+    {"alternatives": 8, "log_sigma": 0.05, "seed": 20261116002404},
+    {"alternatives": 8, "log_sigma": 0.1, "seed": 20261116002405},
+    {"alternatives": 8, "log_sigma": 0.2, "seed": 20261116002406}
+  ],
+  "non_iid_repetitions_per_case": 500,
+  "non_iid_cases": [
+    {"model": "shared-block-drift", "alternatives": 8, "block_log_sigma": 0.2, "observation_log_sigma": 0.01, "seed": 20261116002407},
+    {"model": "arm-position-confound", "alternatives": 8, "baseline_log_offset": 0.1, "candidate_log_offset": -0.1, "observation_log_sigma": 0.01, "seed": 20261116002408}
+  ],
+  "non_iid_excluded_from_calibrated_bound": true,
+  "decision_rule_tuning_after_results": false,
+  "hardware_execution": false
+}

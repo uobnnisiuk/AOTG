@@ -280,7 +280,16 @@ def quality_gate(api, authority, assessment, source_sha, case, verifier_sha, cat
                                      "reviewer_identity_verified_by_assembler": False}
 
 
-def resource_window(samples, start, end, worker):
+def resource_window(samples, start, end, worker, failures=None):
+    # Only complete, well-formed observations can establish runtime failure.
+    # Invalid/missing fields still raise and cannot become a failed trial.
+    def observed(condition, reason):
+        if not condition:
+            if failures is None:
+                raise EvidenceError(reason)
+            if reason not in failures:
+                failures.append(reason)
+
     need(samples and start < end, "resource_window_missing")
     times = [utc(row["utc"]) for row in samples]
     need(all(a < b for a, b in zip(times, times[1:])), "resource_timestamps_nonmonotonic")
@@ -300,16 +309,22 @@ def resource_window(samples, start, end, worker):
         temperatures.extend(number(value["edge"]) for value in row["per_gpu_temperatures_c"].values())
         memory.append(number(row["host_mem_available_bytes"]))
         swap.append(number(row["pswpout"]))
-        need(number(row["temperatures_c"]["nvme:Composite"]) < 74.85
-             and number(row["temperatures_c"]["nvme:Sensor 2"]) < 85, "nvme_temperature_failed")
+        composite = number(row["temperatures_c"]["nvme:Composite"])
+        sensor = number(row["temperatures_c"]["nvme:Sensor 2"])
+        observed(composite < 74.85 and sensor < 85, "nvme_temperature_failed")
         need(all(key in row["alarms"] for key in worker["required_alarm_keys"])
-             and all(type(v) is int and v == 0 for v in row["alarms"].values()), "hardware_alarm_or_missing_sensor")
+             and all(type(v) is int and v >= 0 for v in row["alarms"].values()), "hardware_alarm_measurement_missing_or_invalid")
+        observed(all(v == 0 for v in row["alarms"].values()), "hardware_alarm_triggered")
         gpu = row["gpu"]
-        need(number(gpu["mem_info_vram_total"]) - number(gpu["mem_info_vram_used"]) >= 8 * 1024**3
-             and number(gpu["mem_info_gtt_used"]) - initial_gtt <= 1024**3, "gpu_resource_limit")
+        total, used, gtt = (number(gpu[key]) for key in ("mem_info_vram_total", "mem_info_vram_used", "mem_info_gtt_used"))
+        observed(total - used >= 8 * 1024**3 and gtt - initial_gtt <= 1024**3, "gpu_resource_limit")
         used = number(row["swap_bytes"]["SwapTotal"]) - number(row["swap_bytes"]["SwapFree"])
-        need(0 <= used < 16 * MIB and number(row["disk_free_bytes"]) >= 150 * 1024**3, "swap_or_disk_limit")
-    need(all(value == swap[0] for value in swap), "swapout_change_or_reset")
+        need(used >= 0, "invalid_swap_measurement")
+        free = number(row["disk_free_bytes"])
+        observed(used < 16 * MIB and free >= 150 * 1024**3, "swap_or_disk_limit")
+    initial_swap = number(samples[0]["pswpout"])
+    unchanged_swap = all(value == initial_swap for value in swap)
+    observed(unchanged_swap, "swapout_change_or_reset")
     utc_gap = max(b - a for a, b in zip(times[first:last + 1], times[first + 1:last + 1]))
     elapsed_gap = max(b - a for a, b in zip(elapsed[first:last + 1], elapsed[first + 1:last + 1]))
     coverage = {"scope": "bracketed_actual_samples", "first_index": first, "last_index": last,
@@ -317,9 +332,63 @@ def resource_window(samples, start, end, worker):
                 "arm_start_epoch": start, "arm_end_epoch": end, "samples": len(selected),
                 "max_gap_seconds": max(utc_gap, elapsed_gap), "max_utc_gap_seconds": utc_gap,
                 "max_monotonic_gap_seconds": elapsed_gap,
-                "continuous_observation_claimed": False}
+                "continuous_observation_claimed": False,
+                "pswpout_first_saved_anchor": initial_swap, "pswpout_observed_min": min(swap), "pswpout_observed_max": max(swap)}
     return {"peak_temperature_c": max(temperatures), "min_mem_available_bytes": min(memory),
-            "swapout_delta_bytes": 0, "gpu_errors": None, "io_errors": None}, coverage
+            "swapout_delta_bytes": 0 if unchanged_swap else None, "gpu_errors": None, "io_errors": None}, coverage
+
+
+def request_capture(records, request_limit):
+    """Validate an entire v2 capture. Legacy request-only logs prove no absence of refusals."""
+    need(type(request_limit) is int and 1 <= request_limit <= 128, "invalid_proxy_request_limit")
+    need(isinstance(records, list) and 2 <= len(records) <= request_limit + 131, "request_capture_missing_or_oversized")
+    need(all(type(r.get("event_sequence")) is int for r in records)
+         and [r.get("event_sequence") for r in records] == list(range(len(records))), "request_capture_sequence_invalid")
+    opened, closed = records[0], records[-1]
+    need(type(opened.get("request_limit")) is int and opened == {"kind": "aotg-proxy-capture-v2", "phase": "opened", "event_sequence": 0,
+                    "request_limit": request_limit, "rejection_record_limit": 128}, "request_capture_protocol_mismatch")
+    need(set(closed) == {"kind", "phase", "event_sequence", "status", "active_handlers", "record_error",
+                        "request_records", "rejected_total", "rejections_by_reason", "rejection_events_dropped"}
+         and closed["kind"] == "aotg-proxy-capture-v2" and closed["phase"] == "closed", "request_capture_closure_missing")
+    need(closed["status"] == "complete" and type(closed["active_handlers"]) is int and closed["active_handlers"] == 0
+         and closed["record_error"] is False, "request_capture_or_cleanup_incomplete")
+    allowed = {"authorization_rejected": {401}, "route_or_protocol_rejected": {403},
+               "concurrent_request_rejected": {409}, "request_limit_rejected": {429},
+               "deadline_rejected": {429}, "http_protocol_rejected": {400, 414, 431, 501, 505}}
+    counts, requests, overflow = {}, [], 0
+    for row in records[1:-1]:
+        if row.get("kind") == "aotg-proxy-request-v1":
+            requests.append(row)
+        elif row.get("kind") == "aotg-proxy-rejection-v2":
+            need(set(row) == {"kind", "status", "http_status", "reason", "method", "event_sequence"}
+                 and row["status"] == "rejected" and row["reason"] in allowed
+                 and type(row["http_status"]) is int and row["http_status"] in allowed[row["reason"]]
+                 and row["method"] in ("GET", "POST", "OTHER"), "proxy_rejection_record_invalid")
+            counts[row["reason"]] = counts.get(row["reason"], 0) + 1
+            need(sum(counts.values()) <= 128 and overflow == 0, "proxy_rejection_bound_or_order_invalid")
+        elif row.get("kind") == "aotg-proxy-rejection-overflow-v2":
+            need(row == {"kind": "aotg-proxy-rejection-overflow-v2", "status": "rejected",
+                         "reason": "rejection_event_limit", "event_sequence": row["event_sequence"]}
+                 and sum(counts.values()) == 128 and overflow == 0, "proxy_rejection_overflow_invalid")
+            overflow += 1
+        else:
+            raise EvidenceError("request_capture_unknown_event")
+    final_counts = closed["rejections_by_reason"]
+    need(isinstance(final_counts, dict) and set(final_counts) <= set(allowed)
+         and all(type(v) is int and v > 0 for v in final_counts.values()), "proxy_rejection_counts_invalid")
+    total = sum(final_counts.values())
+    need(type(closed["rejected_total"]) is int and closed["rejected_total"] == total
+         and type(closed["rejection_events_dropped"]) is int
+         and closed["rejection_events_dropped"] == max(0, total - 128)
+         and overflow == int(total > 128)
+         and all(final_counts.get(k, 0) >= v for k, v in counts.items())
+         and (total > 128 or final_counts == counts), "proxy_rejection_counts_mismatch")
+    need(type(closed["request_records"]) is int and closed["request_records"] == len(requests)
+         and 0 <= len(requests) <= request_limit
+         and all(type(r.get("index")) is int for r in requests)
+         and [r.get("index") for r in requests] == list(range(len(requests))), "request_sequence_missing")
+    return requests, {"rejected_total": total, "rejections_by_reason": final_counts,
+                      "rejection_events_dropped": closed["rejection_events_dropped"]}
 
 
 def public_selftest(events, assessment, source_sha, workload, module_sha, driver_sha):
@@ -455,8 +524,54 @@ def io_diagnostics(reader, descriptor, start, end, max_gap):
             "causal_bottleneck_claimed": False, "rates_computed": False}
 
 
+def expected_arm_config(base_config, worker, row, profile):
+    config = json.loads(json.dumps(base_config))
+    arm = Path(worker["task_root"]) / ("arm-%03d" % row["index"])
+    config["user_args"][config["user_args"].index("--prefill") + 1] = str(profile["prefill"])
+    for key in ("args", "args_written"):
+        config[key][config[key].index("--expert-profile") + 1] = str(arm / "expert-profile.bin")
+    config.update(log=str(arm / "logs/engine-private.log"), host="127.0.0.1", port=19480, parallel=1, open_browser=False)
+    return config
+
+
+def arm_context(result, summary, row, profile, config, config_sha256, expected_config):
+    need(isinstance(result, dict) and all(type(result.get(key)) is type(value) and result[key] == value
+         for key, value in row.items()), "arm_schedule_swap_or_mismatch")
+    need(isinstance(summary.get("arms"), list)
+         and [arm for arm in summary["arms"] if arm.get("index") == row["index"]] == [result], "summary_arm_mismatch")
+    need(result["profile_sha256"] == profile["profile_sha256"] and result["prefill"] == profile["prefill"],
+         "observed_profile_or_identity_mismatch")
+    need(result["config_sha256"] == config_sha256 and config == expected_config,
+         "actual_engine_config_differs_from_frozen_candidate")
+    need(utc(summary["started_at"]) <= utc(result["started_at"]) <= utc(result["finished_at"])
+         <= utc(summary["finished_at"]), "arm_timestamps_outside_worker_summary")
+
+
+def request_outcomes(records):
+    failures = []
+    for request in records:
+        need(request["status"] in ("completed", "failed", "timeout") and type(request["sse_done"]) is bool,
+             "request_result_invalid")
+        if request["request_sha256"] is None:
+            need(request["status"] in ("failed", "timeout") and request["sse_done"] is False
+                 and "fixed_sampling" not in request and request["response_bytes"] == 0
+                 and request["response_sha256"] == sha(b"") and isinstance(request["error"], str)
+                 and 0 < len(request["error"]) <= 128, "invalid_pre_sampling_failure")
+            number(request["wall_seconds"])
+            failures.append("request_failed_before_fixed_sampling")
+        else:
+            need(request["fixed_sampling"] == {"temperature": 0, "top_p": 1, "top_k": 20, "min_p": 0,
+                 "seed": 4242, "presence_penalty": 0, "frequency_penalty": 0, "repeat_penalty": 1,
+                 "cache_prompt": False, "max_tokens": 1024}, "request_sampling_mismatch")
+            hash_value(request["request_sha256"])
+            hash_value(request["response_sha256"])
+        if request["status"] != "completed" or request["sse_done"] is not True:
+            failures.append("request_failed_or_incomplete")
+    return list(dict.fromkeys(failures))
+
+
 def assemble(spec, reader, authority_value=None):
-    need(spec["artifact"] == "aotg-field-assessment-inputs" and spec["version"] == 1, "wrong_assembly_spec")
+    need(spec["artifact"] == "aotg-field-assessment-inputs" and spec["version"] == 2, "assembly_v2_required_legacy_inputs_need_original_evaluator")
     field = reader.pinned(spec["field_plan"])
     client = reader.pinned(spec["client_plan"])
     worker = reader.pinned(spec["worker_plan"])
@@ -464,6 +579,9 @@ def assemble(spec, reader, authority_value=None):
     catalog = reader.pinned(spec["catalog"])
     base_config = reader.pinned(spec["baseline_config"])
     reader.pinned(spec["client_runner"], False)
+    need(client.get("proxy_capture_version") == 2, "frozen_proxy_capture_v2_not_requested")
+    proxy_raw = reader.raw(Path(spec["source_root"]) / "aotg/field_proxy.py", 2 * MIB)
+    need(sha(proxy_raw) == identity["aotg_modules"]["aotg/field_proxy.py"], "proxy_source_hash_mismatch")
     need(spec["client_runner"]["sha256"] == client["runner_sha256"], "client_runner_source_mismatch")
     policy = reader.pinned(spec["assessment_policy"])
     need(policy == {"artifact": "aotg-supplemental-assessment-policy", "version": 1,
@@ -521,20 +639,38 @@ def assemble(spec, reader, authority_value=None):
     ksummary = optional(kroot / "summary.json", global_errors)
     samples = optional(eroot / "resources.jsonl", global_errors, "jsonl")
     kernel = optional(eroot / "kernel-final.json", global_errors)
-    global_ok = False
+    global_ok = capture_bound = worker_capture_bound = client_capture_bound = False
+    try:
+        need(esummary is not None and esummary["artifact"] == "aotg-evo-worker-result" and esummary["version"] == 1
+             and esummary["run_id"] == worker["run_id"] and esummary["plan_sha256"] == spec["worker_plan"]["sha256"],
+             "worker_summary_binding_mismatch")
+        need(authority is not None and authority_value["worker_summary_sha256"] == reader.files[str(eroot / "summary.json")]["sha256"]
+             and authority_value["worker_source_sha256"] == identity["worker_sha256"], "worker_capture_not_independently_bound")
+        worker_capture_bound = True
+    except (ValueError, KeyError, TypeError) as error:
+        global_errors.append({"reason": str(error) if isinstance(error, EvidenceError) else type(error).__name__, "stage": "worker_capture"})
+    try:
+        need(ksummary is not None and ksummary["artifact"] == "aotg-k8-field-run" and ksummary["version"] == 1
+             and ksummary["plan_sha256"] == digest(client), "client_summary_binding_mismatch")
+        need(authority is not None and authority_value["client_summary_sha256"] == reader.files[str(kroot / "summary.json")]["sha256"]
+             and authority_value["client_source_sha256"] == client["runner_sha256"], "client_capture_not_independently_bound")
+        client_capture_bound = True
+    except (ValueError, KeyError, TypeError) as error:
+        global_errors.append({"reason": str(error) if isinstance(error, EvidenceError) else type(error).__name__, "stage": "client_capture"})
     try:
         need(esummary is not None and ksummary is not None and samples is not None and kernel is not None, "run_completion_evidence_missing")
         need(esummary["artifact"] == "aotg-evo-worker-result" and esummary["version"] == 1
              and esummary["run_id"] == worker["run_id"] and esummary["plan_sha256"] == spec["worker_plan"]["sha256"]
              and ksummary["artifact"] == "aotg-k8-field-run" and ksummary["version"] == 1
              and ksummary["plan_sha256"] == digest(client), "run_summary_binding_mismatch")
-        need(esummary["status"] == ksummary["status"] == COMPLETE and ksummary["cleanup_errors"] == []
-             and ksummary["total_deadline_exceeded"] is False and "final_kernel_scan_error" not in esummary, "run_completion_failed")
         need(authority is not None, "external_run_assessment_missing")
         need(authority_value["worker_summary_sha256"] == reader.files[str(eroot / "summary.json")]["sha256"]
              and authority_value["client_summary_sha256"] == reader.files[str(kroot / "summary.json")]["sha256"]
              and authority_value["worker_source_sha256"] == identity["worker_sha256"]
              and authority_value["client_source_sha256"] == client["runner_sha256"], "external_execution_binding_mismatch")
+        capture_bound = True
+        need(esummary["status"] == ksummary["status"] == COMPLETE and ksummary["cleanup_errors"] == []
+             and ksummary["total_deadline_exceeded"] is False and "final_kernel_scan_error" not in esummary, "run_completion_failed")
         jobs_gate(reader, authority, client, spec)
         authority.record(authority_value["kernel_review"]["record"])
         need(authority_value["kernel_review"]["scan_sha256"] == reader.files[str(eroot / "kernel-final.json")]["sha256"]
@@ -552,9 +688,15 @@ def assemble(spec, reader, authority_value=None):
     for row in field["schedule"]:
         index = row["index"]
         entry = {"index": index, "candidate_id": row["candidate_id"], "workload_id": row["workload_id"],
-                 "missing_or_conflicting": [], "observed_terminal_status": {}, "normalized": False, "provenance": {}}
+                 "missing_or_conflicting": [], "observed_terminal_status": {}, "normalized": False,
+                 "observation_class": "missing_or_conflicting", "runtime_failures": [], "provenance": {}}
         ledger.append(entry)
         errors, provenance = entry["missing_or_conflicting"], entry["provenance"]
+        runtime_failures = []
+
+        def observed(condition, reason):
+            if not condition and reason not in runtime_failures:
+                runtime_failures.append(reason)
         ka, ea = kroot / ("arm-%02d" % index), eroot / ("arm-%03d" % index)
         paths = {"kresult": ka / "result.json", "kready": ka / "ready.json", "coding": ka / "coding/result.json",
                  "short": ka / "short-answer.json", "ack": ka / "done-receipt.json", "eresult": ea / "result.json",
@@ -570,6 +712,45 @@ def assemble(spec, reader, authority_value=None):
         for which in ("kresult", "eresult", "coding"):
             if values[which] is not None:
                 entry["observed_terminal_status"][which] = values[which].get("status")
+        # Observe a bound terminal failure before requiring artifacts which a
+        # stopped startup or rejected request could never have produced.
+        profile = profiles[row["candidate_id"]]
+        expected_config = expected_arm_config(base_config, worker, row, profile)
+        try:
+            need(worker_capture_bound, "worker_capture_not_independently_bound")
+            er = values["eresult"]
+            arm_context(er, esummary, row, profile, values["config"],
+                        reader.files[str(paths["config"])]["sha256"], expected_config)
+            if er["status"] in ("stopped", "cleanup-failed"):
+                need(esummary["status"] == "stopped" and isinstance(er.get("stop_reason"), str)
+                     and 0 < len(er["stop_reason"]) <= 1024, "worker_failure_reason_missing")
+                runtime_failures.append("worker_" + er["status"].replace("-", "_"))
+                provenance["worker_failure"] = {"recorded_reason": er["stop_reason"],
+                    "summary_sha256": reader.files[str(eroot / "summary.json")]["sha256"],
+                    "arm_result_sha256": reader.files[str(paths["eresult"])]["sha256"],
+                    "config_sha256": reader.files[str(paths["config"])]["sha256"],
+                    "worker_sha256": identity["worker_sha256"], "profile_sha256": profile["profile_sha256"]}
+            if client_capture_bound and values["kresult"] is not None and requests is not None:
+                kr = values["kresult"]
+                need(all(type(kr.get(key)) is type(value) and kr[key] == value for key, value in row.items())
+                     and [arm for arm in ksummary["arms"] if arm.get("index") == index] == [kr], "client_arm_binding_mismatch")
+                need(kr["requests_complete"] is True and kr["requests"] == requests, "request_capture_incomplete")
+                attempts, rejections = request_capture(requests, client["max_requests"])
+                request_failures = request_outcomes(attempts)
+                if rejections["rejected_total"]:
+                    request_failures.append("proxy_requests_rejected")
+                if not attempts:
+                    request_failures.append("no_inference_requests_observed")
+                if request_failures:
+                    runtime_failures.extend(reason for reason in request_failures if reason not in runtime_failures)
+                    provenance["request_failure_capture"] = {"capture_sha256": reader.files[str(ka / "requests.jsonl")]["sha256"],
+                        "client_result_sha256": reader.files[str(paths["kresult"])]["sha256"],
+                        "request_records": len(attempts), "rejections": rejections}
+        except (OSError, ValueError, KeyError, TypeError, IndexError) as error:
+            errors.append({"reason": str(error) if isinstance(error, EvidenceError) else type(error).__name__, "stage": "failure_observation"})
+        if runtime_failures:
+            entry["observation_class"] = "verified_runtime_failure"
+            entry["runtime_failures"] = list(runtime_failures)
         try:
             need(raw_source is not None, "source_artifact_missing_omit_unrepresentable_row")
             need(all(value is not None for value in values.values()) and requests is not None and raw_events is not None,
@@ -587,12 +768,6 @@ def assemble(spec, reader, authority_value=None):
                  and values["server"]["api_state"] == "ready" and values["server"]["bound_host"] == "127.0.0.1"
                  and values["server"]["bound_port"] == 19480, "observed_engine_identity_missing")
             need(er["config_sha256"] == reader.files[str(paths["config"])]["sha256"], "actual_engine_config_hash_mismatch")
-            expected_config = json.loads(json.dumps(base_config))
-            remote_arm = Path(worker["task_root"]) / ("arm-%03d" % index)
-            expected_config["user_args"][expected_config["user_args"].index("--prefill") + 1] = str(profile["prefill"])
-            for key in ("args", "args_written"):
-                expected_config[key][expected_config[key].index("--expert-profile") + 1] = str(remote_arm / "expert-profile.bin")
-            expected_config.update(log=str(remote_arm / "logs/engine-private.log"), host="127.0.0.1", port=19480, parallel=1, open_browser=False)
             need(values["config"] == expected_config, "actual_engine_config_differs_from_frozen_candidate")
             need(kr in ksummary["arms"] and er in esummary["arms"], "summary_arm_mismatch")
             need(er["k8_evidence_sha256"] == digest(kr) == values["done"]["evidence_sha256"]
@@ -615,30 +790,33 @@ def assemble(spec, reader, authority_value=None):
             summary = api.client.summarize_events(raw_events, Path(client["output_root"]) / ("arm-%02d/coding/work" % index),
                                                   coding["source_name"], [coding["source_name"], *protected])
             need(all(coding[key] == value for key, value in summary.items()), "client_event_summary_mismatch")
-            need(summary["invalid_event_lines"] == summary["client_errors"] == 0 and summary["tool_policy_violations"] == []
+            observed(summary["invalid_event_lines"] == summary["client_errors"] == 0 and summary["tool_policy_violations"] == []
                  and summary["final_response_present"] is True and summary["selftest_pass_reported"] is True
                  and summary["selftest_after_last_edit"] is True and summary["step_limit_summary"] is False,
                  "client_event_contract_failed")
-            need(coding["exit_code"] == 0 and coding["output_truncated"] is False and coding["limits"]["seconds"] == client["task_seconds"]
-                 and coding["limits"]["steps"] == client["max_steps"] and summary["steps"] <= client["max_steps"]
-                 and 0 < number(coding["seconds"]) <= client["task_seconds"] and coding["seconds"] == kr["seconds"], "client_bounds_failed")
+            need(coding["limits"]["seconds"] == client["task_seconds"] and coding["limits"]["steps"] == client["max_steps"]
+                 and type(coding["output_truncated"]) is bool and (coding["exit_code"] is None or type(coding["exit_code"]) is int)
+                 and number(coding["seconds"]) == number(kr["seconds"]), "client_execution_limits_or_timing_mismatch")
+            observed(coding["exit_code"] == 0 and not coding["output_truncated"] and summary["steps"] <= client["max_steps"]
+                     and 0 < coding["seconds"] <= client["task_seconds"], "client_bounds_failed")
             namespace = coding["isolation"]["namespace"]
             need(coding["isolation"]["pid_namespace_verified"] is True and coding["isolation"]["cleanup_scope"] == "dedicated-pid-namespace"
                  and namespace["protocol"] == "aotg-pid-namespace-v1" and namespace["pid"] == 1
                  and namespace["no_new_privs"] is True and namespace["capabilities_dropped"] is True, "client_namespace_unverified")
-            need(values["short"]["status"] == "completed" and values["short"]["content"].strip() == "42", "fixed_primer_failed")
-            need(1 <= len(requests) <= client["max_requests"] and [r["index"] for r in requests] == list(range(len(requests))), "request_sequence_missing")
-            for request in requests:
-                need(request["kind"] == "aotg-proxy-request-v1" and request["status"] == "completed" and request["sse_done"] is True,
-                     "request_failed_or_incomplete")
-                need(request["fixed_sampling"] == {"temperature": 0, "top_p": 1, "top_k": 20, "min_p": 0,
-                     "seed": 4242, "presence_penalty": 0, "frequency_penalty": 0, "repeat_penalty": 1,
-                     "cache_prompt": False, "max_tokens": 1024}, "request_sampling_mismatch")
-                hash_value(request["request_sha256"]); hash_value(request["response_sha256"])
+            need(isinstance(values["short"]["content"], str), "primer_result_invalid")
+            observed(values["short"]["status"] == "completed" and values["short"]["content"].strip() == "42", "fixed_primer_failed")
+            requests, rejection_summary = request_capture(requests, client["max_requests"])
+            provenance["proxy_rejections"] = rejection_summary
+            observed(rejection_summary["rejected_total"] == 0, "proxy_requests_rejected")
+            observed(bool(requests), "no_inference_requests_observed")
+            for reason in request_outcomes(requests):
+                observed(False, reason)
             provenance["requests"] = requests
             provenance["metric_semantics"] = "Only client invocation wall time is a task metric; request TTFT/usage/timings remain separate"
             start, end = utc(values["eready"]["ready_at"]), utc(er["finished_at"])
-            resources, coverage = resource_window(samples, start, end, worker)
+            resources, coverage = resource_window(samples, start, end, worker, runtime_failures)
+            observed(resources["peak_temperature_c"] <= field["limits"]["max_temperature_c"], "resource_temperature_limit")
+            observed(resources["min_mem_available_bytes"] >= field["limits"]["min_mem_available_bytes"], "resource_memory_limit")
             coverage["scope"] = "evo_ready_through_finished_task_and_cleanup_conservative"
             provenance["resource_coverage"] = coverage
             provenance["resource_coverage_sha256"] = digest(coverage)
@@ -663,7 +841,7 @@ def assemble(spec, reader, authority_value=None):
             except (OSError, ValueError, KeyError, TypeError, IndexError, StopIteration) as error:
                 errors.append({"reason": str(error) if isinstance(error, EvidenceError) else type(error).__name__, "stage": "independent_quality"})
             stable = None
-            if global_ok:
+            if global_ok and not runtime_failures:
                 try:
                     need(coverage["max_gap_seconds"] <= policy["resource_max_gap_seconds"], "resource_sampling_gap_exceeds_frozen_policy")
                     resources.update(gpu_errors=0, io_errors=0)
@@ -677,11 +855,26 @@ def assemble(spec, reader, authority_value=None):
             quality = api.evidence.quality_record(input_sha256=frozen_workload["input_sha256"], tests_sha256=frozen_workload["tests_sha256"],
                       verifier_sha256=field["verifier_sha256"], source_sha256=source_sha, independent=receipt is not None,
                       checks=checks, source_review=receipt) if receipt is not None else None
-            passed = global_ok and not errors and all(v is True for v in checks.values())
+            observed(complete, "execution_terminal_failure")
+            if runtime_failures:
+                need(capture_bound, "runtime_failure_not_bound_to_independent_capture")
+                entry["runtime_failures"] = runtime_failures
+                entry["observation_class"] = "verified_runtime_failure"
+                # A bound failure is known, but the fixed run stop policy has
+                # not certified a continued experiment. Keep adoption incomplete.
+                checks["stability"] = None
+                quality = api.evidence.quality_record(input_sha256=frozen_workload["input_sha256"], tests_sha256=frozen_workload["tests_sha256"],
+                          verifier_sha256=field["verifier_sha256"], source_sha256=source_sha, independent=receipt is not None,
+                          checks=checks, source_review=receipt) if receipt is not None else None
+            else:
+                entry["observation_class"] = "verified_trial" if global_ok and not errors else "assessment_incomplete"
+            passed = global_ok and not errors and not runtime_failures and all(v is True for v in checks.values())
             trial = {"index": index, "candidate_id": row["candidate_id"], "workload_id": row["workload_id"],
                      "identity_sha256": field["identity_sha256"], "profile_sha256": er["profile_sha256"], "source_sha256": source_sha,
-                     "cache_cohort": frozen_workload["cache_cohort"], "status": "passed" if passed else "failed" if correctness is False else "stopped",
-                     "reason": "verified_observations" if passed else "independent_quality_failed" if correctness is False else "assessment_incomplete",
+                     "cache_cohort": frozen_workload["cache_cohort"],
+                      "status": "passed" if passed else "timed_out" if runtime_failures and coding["seconds"] > client["task_seconds"]
+                                else "failed" if correctness is False or "client_event_contract_failed" in runtime_failures else "stopped",
+                     "reason": runtime_failures[0] if runtime_failures else "verified_observations" if passed else "independent_quality_failed" if correctness is False else "assessment_incomplete",
                      "metrics": {"wall_seconds": coding["seconds"]}, "resources": resources, "quality": quality}
             trials.append(trial)
             entry["normalized"] = True
@@ -692,15 +885,28 @@ def assemble(spec, reader, authority_value=None):
         need(esummary is not None and esummary.get("run_id") == worker["run_id"]
              and esummary.get("plan_sha256") == spec["worker_plan"]["sha256"], "observed_total_elapsed_missing")
         elapsed = number(esummary["wall_seconds"])
-        run = {"artifact": "aotg-field-run", "version": 1, "plan": field, "plan_sha256": digest(field),
+        run = {"artifact": "aotg-field-run", "version": field["version"], "plan": field, "plan_sha256": digest(field),
                "elapsed_seconds": elapsed, "trials": trials}
         decision = api.evidence.compare_field_run(run)
     except (ValueError, KeyError, TypeError) as error:
         global_errors.append({"reason": str(error) if isinstance(error, EvidenceError) else type(error).__name__, "stage": "comparison"})
-    return {"artifact": "aotg-private-field-assessment", "version": 1, "run_id": worker["run_id"],
+    failures = [{"index": entry["index"], "candidate_id": entry["candidate_id"], "workload_id": entry["workload_id"],
+                 "normalized": entry["normalized"], "reasons": entry["runtime_failures"],
+                 "worker_recorded_reason": entry["provenance"].get("worker_failure", {}).get("recorded_reason")}
+                for entry in ledger if entry["observation_class"] == "verified_runtime_failure"]
+    observation_decision = {"artifact": "aotg-observation-decision", "version": 2,
+        "scheduled_arms": len(field["schedule"]), "normalized_trials": len(trials),
+        "verified_failure_arms": len(failures), "failures": failures,
+        "status": "incomplete" if failures or decision is None else decision["status"],
+        "selected_candidate_id": None if failures or decision is None else decision["selected_candidate_id"],
+        "comparison_sha256": digest(decision) if decision is not None else None,
+        "ledger_sha256": digest(ledger), "stop_policy": "any_verified_runtime_failure_prevents_adoption"}
+    return {"artifact": "aotg-private-field-assessment", "version": 2, "run_id": worker["run_id"],
             "inputs_sha256": digest(spec), "authority_sha256": digest(authority_value) if authority_value is not None else None,
             "authority_identity_authenticated_by_program": False, "global_errors": global_errors, "ledger": ledger,
-            "run": run, "decision": decision, "raw_files": reader.files,
+            "observation_counts": {name: sum(e["observation_class"] == name for e in ledger) for name in
+                                   ("verified_trial", "verified_runtime_failure", "assessment_incomplete", "missing_or_conflicting")},
+            "run": run, "decision": decision, "observation_decision": observation_decision, "raw_files": reader.files,
             "measurement_generated": False, "deployment_verified": False, "goal_complete": False}
 
 
