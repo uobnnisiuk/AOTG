@@ -1,0 +1,21 @@
+{
+  "artifact": "synthetic-comparison-integration-source-pins",
+  "files": {
+    "field-worker-v2.py": "96b2c3f77aeb11c131551e158f2eeab319a3293746a4d652395a2df19280d986",
+    "k8-field-runner-v2.py": "094caf28e7c8fd652474b7100e86a1a58f799b915940cf6ed15e2c4b9e71e80a",
+    "runtime/aotg/__init__.py": "46c9e007176286ab74415bfc6c2e55b9452e710b42880b6af8d61d5901c2a4e9",
+    "runtime/aotg/artifacts.py": "4b3def66e8d3fe1a65326930adfdbba970c40c70e5ead99c9330cd85562f60bc",
+    "runtime/aotg/field_bench.py": "2ac42f3907ed467e6407f15daf6be719ec14a9173ed93cb3f22d70a6e9cc4f9b",
+    "runtime/aotg/field_client.py": "d5b9ad960478449a5d442e15f65569209f3a572ff9315e94cc83c93b7f0068ee",
+    "runtime/aotg/field_evidence.py": "3965ae8ead3e8c11fa513ba84a83105e1f5811d8a51b65c046b75b0ed6a888ac",
+    "runtime/aotg/field_maintenance.py": "c846d690d71b0e1854bf4af8b26645195f77c4a36d5b29a090c162da69323967",
+    "runtime/aotg/field_proxy.py": "41ed09f04e168b96a24906fbf63e250ab553ea0d4cfee90cc592dc4606bc1657",
+    "runtime/aotg/field_sandbox.py": "bf72d199ae664628fcaaf65ada554f8310e36c4e840cfc42726df8f62a6098a3",
+    "runtime/aotg/field_selftest.py": "b46b07ea740449d41d580218dcdff58703e4ceb960fac963b945c34328f582f6",
+    "runtime/aotg/quality.py": "f8797a3a6ab7bad05995572e7bed306f372eb5cd8a356396bc8f0f4ac8f42e9c",
+    "runtime/tests/fixtures/benchmark/catalog.json": "277abb01f995890be289b2c3d2e679f8a3283a12040b54218991fc005c19c268",
+    "tests/test_comparison_runtime.py": "36bab61b711b1e76e372bf3afa4c92afe3b3a5426dc8cc0f3217c12fc21ae958"
+  },
+  "real_run_authority": false,
+  "version": 1
+}

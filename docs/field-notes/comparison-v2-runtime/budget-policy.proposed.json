@@ -1,0 +1,29 @@
+{
+  "approval_exists": false,
+  "artifact": "aotg-unapproved-comparison-budget-proposal",
+  "live_plan_created": false,
+  "policy": {
+    "alternatives": 2,
+    "artifact": "aotg-comparison-runtime-budget",
+    "blocks": 4,
+    "client_cleanup_seconds": 60,
+    "client_total_seconds": 5400,
+    "coordinator_work_seconds": 5400,
+    "field_total_seconds": 5340,
+    "max_requests": 9,
+    "max_steps": 8,
+    "primer_seconds": 20,
+    "recovery_seconds": 600,
+    "request_seconds": 35,
+    "schedule_rows": 64,
+    "task_seconds": 130,
+    "trial_seconds": 180,
+    "version": 2,
+    "worker_total_seconds": 5340,
+    "workloads": 2
+  },
+  "policy_sha256": "96f81bfa1ea1c90e4988a0a25560156ea402493b9549ac7f17d408c53f3bf277",
+  "rationale": "64 independent starts/tasks; empirical startup11.63s plus prior coding about35.4s gives about50min before primers/control/cleanup.90min is finite headroom, not a guarantee of64 completions. Existing6min and35min approvals cannot authorize this proposal.",
+  "status": "UNAPPROVED-SOURCE-PROPOSAL-NOT-AUTHORITY",
+  "version": 1
+}
