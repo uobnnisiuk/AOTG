@@ -379,6 +379,76 @@ class NativeCppTests(unittest.TestCase):
         self.assertFalse(report["toolchain"]["overflow_detection"]["active"])
         self.assertFalse(report["quality_accepted"])
 
+    def test_trap_fallback_rejects_ignored_optimized_subtraction(self):
+        # Reproduce independent P1: addition traps, optimized subtraction does not.
+        # A synthetic review cannot override the missing detector.
+        real_run = quality_module._run
+
+        def ignored_subtraction(argv, directory, timeout_seconds, phase,
+                                tool_directories=(), *, dotnet=False):
+            if phase in ("ubsan-run", "trap-subtract-run", "trap-run"):
+                return {"status": "ok", "exit_code": 1 if phase == "trap-run" else 0,
+                        "seconds": 0.001, "stdout": "", "stderr": "",
+                        "output_truncated": False}
+            return real_run(argv, directory, timeout_seconds, phase,
+                            tool_directories, dotnet=dotnet)
+
+        with patch("aotg.quality._run", side_effect=ignored_subtraction):
+            report = self.evaluate(GOOD_CPP, source_review=synthetic_review(GOOD_CPP))
+        self.assertEqual(report["status"], "overflow-detector-unavailable")
+        self.assertEqual(report["behavioral_status"], "overflow-detector-unavailable")
+        self.assertIsNone(report["compile"])
+        self.assertIsNone(report["execution"])
+        self.assertFalse(report["quality_accepted"])
+        preflight = report["overflow_preflight"]["attempts"]["signed-overflow-trap"]
+        self.assertEqual(preflight["execution"]["exit_code"], 1)
+        self.assertEqual(preflight["subtract_execution"]["exit_code"], 0)
+        self.assertEqual(preflight["control_execution"]["exit_code"], 0)
+        detector = report["toolchain"]["overflow_detection"]
+        self.assertFalse(detector["active"])
+        self.assertEqual(
+            detector["subtraction_probe_sha256"],
+            hashlib.sha256(quality_module.CXX_TRAP_SUBTRACTION_PROBE.encode("utf-8")).hexdigest())
+        for phase in detector["attempts"]["signed-overflow-trap"].values():
+            if phase is not None:
+                self.assertEqual(set(phase), {"status", "exit_code"})
+
+    def test_trap_fallback_only_passes_when_both_native_probes_abort(self):
+        # On systems without UBSan, use actual compiler/run for the trap probes.
+        # If optimized subtraction does not trap, fail closed rather than skip.
+        real_run = quality_module._run
+
+        def no_ubsan(argv, directory, timeout_seconds, phase,
+                     tool_directories=(), *, dotnet=False):
+            if phase == "ubsan-run":
+                return {"status": "ok", "exit_code": 0, "seconds": 0.001,
+                        "stdout": "", "stderr": "", "output_truncated": False}
+            return real_run(argv, directory, timeout_seconds, phase,
+                            tool_directories, dotnet=dotnet)
+
+        with patch("aotg.quality._run", side_effect=no_ubsan):
+            report = self.evaluate(GOOD_CPP, source_review=synthetic_review(GOOD_CPP))
+        trap = report["overflow_preflight"]["attempts"]["signed-overflow-trap"]
+        self.assertEqual(trap["subtract_compile"]["exit_code"], 0, trap)
+        detector = report["toolchain"]["overflow_detection"]
+        both_detected = (
+            trap["execution"] is not None and trap["execution"]["status"] == "ok"
+            and trap["execution"]["exit_code"] != 0
+            and trap["subtract_execution"] is not None
+            and trap["subtract_execution"]["status"] == "ok"
+            and trap["subtract_execution"]["exit_code"] != 0
+            and trap["control_execution"] is not None
+            and trap["control_execution"]["status"] == "ok"
+            and trap["control_execution"]["exit_code"] == 0
+        )
+        if both_detected:
+            self.assertEqual(detector["mode"], "signed-overflow-trap")
+            self.assertEqual(report["status"], "pass")
+        else:
+            self.assertEqual(report["status"], "overflow-detector-unavailable")
+            self.assertIsNone(report["compile"])
+        self.assertEqual(detector["active"], both_detected)
+
     def test_public_cli_rejects_overflow_without_source_review(self):
         import subprocess
         import sys

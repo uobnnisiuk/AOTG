@@ -48,6 +48,19 @@ CXX_SANITIZER_PROBE = (
     "  return 0;\n"
     "}\n"
 )
+# Some GCC -O2 builds omit the trap for the interval task's signed
+# subtraction even when a simple overflow addition probe aborts.
+CXX_TRAP_SUBTRACTION_PROBE = (
+    "#include <algorithm>\n"
+    "#include <climits>\n"
+    "int main() {\n"
+    "  volatile int a = INT_MIN, b = INT_MAX;\n"
+    "  volatile int c = INT_MIN, d = INT_MAX;\n"
+    "  volatile bool observed = std::min(b, d) - std::max(a, c) > 0;\n"
+    "  (void)observed;\n"
+    "  return 0;\n"
+    "}\n"
+)
 CXX_TRAP_CONTROL = (
     "int main() {\n"
     "  volatile int limit = 2147483646;\n"
@@ -462,6 +475,19 @@ def grade_source(case_id, source_path, *, compiler, compiler_kind, runtime_argv=
                 if trap_compile["status"] == "ok" and trap_compile["exit_code"] == 0 and probe_binary.is_file():
                     trap_run = _run([str(probe_binary)], directory, probe_timeout_seconds,
                                     "trap-run", tool_directories)
+                # Probe the optimized subtraction used by the known wrong
+                # interval implementations, not just a simple addition.
+                subtract_source = directory / "overflow_subtraction_probe.cpp"
+                subtract_source.write_text(CXX_TRAP_SUBTRACTION_PROBE, encoding="utf-8")
+                subtract_binary = directory / ("overflow_subtraction_probe" + probe_extension)
+                subtract_compile = _run(
+                    [str(executable), *CXX_TRAP_FLAGS, str(subtract_source), "-o", str(subtract_binary)],
+                    directory, compile_timeout_seconds, "trap-subtract-compile", tool_directories)
+                subtract_run = None
+                if (subtract_compile["status"] == "ok" and subtract_compile["exit_code"] == 0
+                        and subtract_binary.is_file()):
+                    subtract_run = _run([str(subtract_binary)], directory, probe_timeout_seconds,
+                                        "trap-subtract-run", tool_directories)
                 control_source = directory / "non_overflow_control.cpp"
                 control_source.write_text(CXX_TRAP_CONTROL, encoding="utf-8")
                 control_binary = directory / ("non_overflow_control" + probe_extension)
@@ -476,10 +502,13 @@ def grade_source(case_id, source_path, *, compiler, compiler_kind, runtime_argv=
                 trap_active = (
                     trap_run is not None and trap_run["status"] == "ok"
                     and trap_run["exit_code"] != 0
+                    and subtract_run is not None and subtract_run["status"] == "ok"
+                    and subtract_run["exit_code"] != 0
                     and control_run is not None and control_run["status"] == "ok"
                     and control_run["exit_code"] == 0)
                 attempts["signed-overflow-trap"] = {
                     "compile": trap_compile, "execution": trap_run,
+                    "subtract_compile": subtract_compile, "subtract_execution": subtract_run,
                     "control_compile": control_compile, "control_execution": control_run,
                 }
                 if trap_active:
@@ -492,6 +521,7 @@ def grade_source(case_id, source_path, *, compiler, compiler_kind, runtime_argv=
                 "mode": detector_mode,
                 "overflow_probe_sha256": _sha(CXX_SANITIZER_PROBE.encode("utf-8")),
                 "control_probe_sha256": _sha(CXX_TRAP_CONTROL.encode("utf-8")),
+                "subtraction_probe_sha256": _sha(CXX_TRAP_SUBTRACTION_PROBE.encode("utf-8")),
                 "attempts": {
                     mode: {
                         phase: (None if outcome is None else
