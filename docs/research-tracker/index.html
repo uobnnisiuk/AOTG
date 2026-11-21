@@ -1,0 +1,1344 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0c1423">
+<title>AOTG | 高速化技術リサーチ・トラッカー</title>
+<style>
+:root{--bg:#0b1020;--surface:#10192b;--surface2:#152039;--surface3:#1a2942;--line:#263450;--text:#edf2fc;--muted:#9cadc9;--dim:#687b9a;--cyan:#51ddda;--violet:#aa90ff;--lime:#b8f17f;--amber:#ffcb83;--rose:#ff9cac;--blue:#7caefa;--radius:17px;--shadow:0 18px 48px #02081755;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,system-ui,sans-serif;color:var(--text);background:radial-gradient(ellipse 72% 41% at 93% 0%,#24345a55,transparent),linear-gradient(145deg,#090f1c,#0b1220 47%,#10182c 100%);font-size:14px;line-height:1.65}
+a{color:#8be3ff;text-decoration:none}a:hover{text-decoration:underline}button,input,select,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}input,select,textarea{background:#0e172a;border:1px solid #344360;border-radius:10px;color:var(--text);padding:10px 12px;outline:none;min-width:0}input:focus,select:focus,textarea:focus{border-color:#64cbd5;box-shadow:0 0 0 2px #4de2dc22}textarea{resize:vertical}option{color:var(--text)}button:focus-visible,a:focus-visible{outline:2px solid #67dcd7;outline-offset:3px}
+.app{display:grid;grid-template-columns:226px minmax(0,1fr);max-width:1700px;min-height:100vh;margin:auto}.sidebar{padding:25px 17px 20px;border-right:1px solid var(--line);background:linear-gradient(180deg,#0d1525f0,#101a2be8);position:sticky;top:0;height:100vh;display:flex;flex-direction:column}.brand{display:flex;gap:11px;align-items:center;margin:3px 5px 30px}.brandmark{width:41px;height:41px;background:linear-gradient(135deg,var(--cyan),#707ff9);border-radius:12px;color:#0b1220;font-size:20px;font-weight:950;display:grid;place-items:center;box-shadow:0 5px 24px #3adee63b}.brand b{font-size:18px;letter-spacing:.11em}.brand small{display:block;margin-top:-4px;color:var(--muted);letter-spacing:.06em;font-size:10px}.sidenav{display:flex;flex-direction:column;gap:5px}.sidenav button{padding:12px 13px;border:0;background:transparent;color:#b8c7df;border-radius:11px;text-align:left;display:flex;align-items:center;gap:11px;font-weight:650;width:100%;transition:.15s}.sidenav button:hover,.sidenav button.active{background:#1b2c44;color:#e9fbff}.sidenav button.active{box-shadow:inset 3px 0 var(--cyan)}.navico{font-size:18px;width:22px;text-align:center}.sidelabel{margin:25px 13px 8px;color:var(--dim);font-size:10px;letter-spacing:.18em;font-weight:800}.sidefooter{margin-top:auto;border-radius:13px;padding:13px;background:#101e32;border:1px solid var(--line)}.sidefooter .signal{color:var(--lime);font-weight:800;font-size:11px}.sidefooter p{font-size:11px;line-height:1.7;color:var(--muted);margin:6px 0 0}
+.main{padding:27px 36px 68px;min-width:0}.topline{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:23px;flex-wrap:wrap}.crumb{color:var(--muted);font-size:12px;letter-spacing:.045em}.smallcaps{text-transform:uppercase;letter-spacing:.17em;color:var(--cyan);font-size:11px;font-weight:850}.muted{color:var(--muted)}.tiny{font-size:11px;color:var(--dim)}.topactions{display:flex;gap:8px;flex-wrap:wrap}.btn{border:1px solid #395170;color:#dce9fb;background:#17243c;border-radius:11px;padding:9px 13px;display:inline-flex;align-items:center;justify-content:center;gap:7px;line-height:1.2;font-weight:700;min-height:38px;transition:background .2s}.btn:hover{background:#223452;text-decoration:none}.btn.primary{border:0;color:#081724;background:linear-gradient(115deg,#57d9d6,#8bf7c4)}.btn.primary:hover{filter:brightness(1.09)}.btn.ghost{background:transparent}.btn.warn{border-color:#a07846;color:#ffd499}.btn.small{padding:7px 11px;min-height:32px;font-size:12px}
+.hero{position:relative;border:1px solid #34516a;border-radius:22px;padding:25px 27px;background:radial-gradient(ellipse at 88% 20%,#436c9c66,transparent 44%),linear-gradient(110deg,#153348,#172039 62%,#252343);overflow:hidden}.hero:after{content:"";position:absolute;width:250px;height:250px;right:-55px;top:-80px;opacity:.16;background:repeating-radial-gradient(circle at center,transparent 0 19px,#82caff 20px 21px);pointer-events:none}.hero h1{margin:3px 0 6px;font-size:clamp(23px,3vw,35px);line-height:1.28;letter-spacing:-.045em}.hero p{margin:0 0 17px;color:#cad9ec;max-width:800px;font-size:13px}.hero .sources{display:flex;gap:8px;flex-wrap:wrap;position:relative;z-index:1}.source-link{border:1px solid #6690ac5b;border-radius:100px;padding:6px 12px;background:#10293c91;color:#bcecff;font-size:11px;font-weight:750}.source-link:hover{background:#214761;text-decoration:none}.pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border:1px solid #4d637d;border-radius:50px;color:#afbfdb;font-size:10px;font-weight:750;white-space:nowrap;letter-spacing:.005em}.pill.primary{border-color:#1a797f;color:#89f4e3;background:#1344478a}.pill.warn{border-color:#80613a;color:#ffd292;background:#56432655}.pill.danger{border-color:#88495e;color:#ffadb9;background:#512b4059}.pill.gray{border-color:#48556b;color:#bac8d9;background:#242b3a}.pill.violet{border-color:#5c538a;color:#c7afff;background:#31294d88}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:16px 0 22px}.stat{border:1px solid var(--line);padding:15px 16px;border-radius:15px;background:linear-gradient(145deg,#172136aa,#101a2d)}.stat .name{color:var(--muted);font-size:12px}.stat .n{font-size:29px;line-height:1.5;font-weight:850;letter-spacing:-.06em}.stat .detail{font-size:10px;color:#8097b6}.stat:nth-child(1) .n{color:var(--cyan)}.stat:nth-child(2) .n{color:var(--violet)}.stat:nth-child(3) .n{color:var(--amber)}.stat:nth-child(4) .n{color:var(--lime)}
+.panel{border:1px solid var(--line);border-radius:18px;background:#111a2cbf;box-shadow:0 12px 25px #04071418;margin-bottom:16px;overflow:hidden}.panel-head{padding:19px 20px 0;display:flex;align-items:center;justify-content:space-between;gap:11px;flex-wrap:wrap}.panel-head h2{margin:0;font-size:17px;letter-spacing:-.025em}.panel-body{padding:17px 20px 20px}.panel-desc{font-size:12px;color:var(--muted);margin:4px 0 0}.section{display:none}.section.active{display:block}.toolrow{display:grid;grid-template-columns: minmax(160px,2.4fr) repeat(3,minmax(120px,1fr));gap:9px;margin-bottom:13px}.toolbar-bottom{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:11px 0 3px}.seg{display:inline-flex;border:1px solid var(--line);padding:3px;border-radius:12px;background:#10192b;gap:2px}.seg button{border:0;padding:6px 11px;border-radius:9px;background:transparent;color:var(--muted);font-size:12px}.seg button.sel{background:#284060;color:white}.table-wrap{overflow:auto}.record-table{width:100%;border-collapse:collapse;min-width:800px}.record-table th{position:sticky;top:0;color:#8ca1bd;text-align:left;font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:12px 14px;background:#142039}.record-table td{padding:13px 14px;vertical-align:middle;border-bottom:1px solid #23314b;color:#b8c7df;font-size:12px}.record-table tr:last-child td{border-bottom:0}.record-table tbody tr:hover td{background:#20304a6b}.record-table .recordtitle{font-weight:750;color:#ebf4ff;font-size:12px}.record-table .rid{font-size:10px;color:var(--cyan);font-family:ui-monospace,monospace}.record-table td .minor{color:var(--dim);font-size:11px}.record-table td .short{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.check{accent-color:#64e5d9;width:16px;height:16px;cursor:pointer}.rowlink{border:0;background:transparent;color:#8ce8ed;text-decoration:underline;padding:0;font-weight:750}.tilegrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.tile{border:1px solid #2c3d58;background:#17233a;border-radius:14px;padding:14px;cursor:pointer;transition:.2s}.tile:hover{transform:translateY(-2px);border-color:#5e859e}.tile h3{font-size:14px;margin:8px 0 5px;line-height:1.4}.tile p{font-size:11px;color:#b6c6df;margin:0;line-height:1.65}.tile .tilefoot{border-top:1px solid var(--line);margin-top:12px;padding-top:10px;color:var(--muted);font-size:10px}.data-viz{display:flex;flex-wrap:wrap;gap:8px;margin-top:9px}.metricchip{background:#12263a;border:1px solid #34516a;color:#c7e7f2;padding:6px 8px;border-radius:9px;font-size:11px}.metricchip b{color:#8df6de}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:15px}.three{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}.callout{background:#17233a;border:1px solid var(--line);border-radius:14px;padding:16px}.callout h3{margin:0 0 9px;font-size:14px}.callout p{margin:0;color:#bdcce0;font-size:12px}.callout ul{margin:10px 0 0;padding-left:19px;font-size:12px;color:#b8cae2}.comparecard{background:#17243b;border:1px solid #31435d;border-radius:14px;padding:15px;min-height:120px}.comparecard h3{margin:4px 0 8px;font-size:17px}.kv{display:grid;grid-template-columns:115px minmax(0,1fr);gap:10px;border-bottom:1px solid #2a3955;padding:10px 0;font-size:12px}.kv:last-child{border:0}.kv .k{color:var(--dim);font-size:11px}.kv .v{color:#cdd9eb;white-space:pre-wrap;overflow-wrap:anywhere}.barentry{margin:13px 0}.barline{display:flex;justify-content:space-between;font-size:11px;color:#aebeda;gap:8px}.barbase{background:#233149;height:10px;border-radius:100px;margin-top:6px;overflow:hidden}.barfill{height:100%;border-radius:100px;background:linear-gradient(90deg,#41c5cb,#a79af2)}.step{display:grid;grid-template-columns:36px 1fr;gap:14px;padding:16px 0;border-bottom:1px solid var(--line)}.step:last-child{border:0}.stepnum{background:#263b54;border:1px solid #51738c;color:#87eeef;border-radius:11px;width:34px;height:34px;display:grid;place-items:center;font-weight:900}.step b{font-size:13px}.step p{font-size:12px;color:var(--muted);margin:2px 0 0}.statusrow{border:1px solid #334460;border-radius:13px;padding:13px 15px;margin-bottom:9px;background:#16223a}.statusrow .head{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}.statusrow h3{font-size:13px;margin:0}.statusrow p{color:#b2c3d9;font-size:12px;margin:7px 0 0}.placeholder{color:var(--muted);padding:22px;text-align:center;border:1px dashed var(--line);border-radius:13px}.rule{height:1px;background:var(--line);margin:17px 0}.footer{font-size:11px;color:var(--dim);text-align:center;margin:28px 0 0}
+.overlay{position:fixed;inset:0;background:#030710c9;backdrop-filter:blur(6px);z-index:80;display:none;align-items:flex-start;justify-content:center;overflow:auto;padding:28px 12px}.overlay.open{display:flex}.modal{background:#111b2d;border:1px solid #405475;box-shadow:0 20px 80px #000b;width:min(780px,100%);border-radius:19px;overflow:hidden}.modal-header{padding:17px 21px;display:flex;align-items:start;justify-content:space-between;border-bottom:1px solid var(--line);gap:15px}.modal-header h2{font-size:20px;margin:3px 0}.modal-content{padding:18px 21px 23px;max-height:76vh;overflow:auto}.modal-footer{padding:12px 21px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:9px;flex-wrap:wrap}.iconbtn{border:0;background:#26344b;border-radius:8px;color:#e4edf7;font-size:22px;line-height:1;width:31px;height:31px;flex:none}.edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.edit-field{display:flex;flex-direction:column;gap:5px}.edit-field.wide{grid-column:1/-1}.edit-field label{font-size:11px;color:#a9bed7;font-weight:750}.edit-field textarea{min-height:77px}.edit-field .fieldhint{font-size:10px;color:var(--dim)}.linkline{font-size:12px;overflow-wrap:anywhere}.toast{position:fixed;z-index:100;right:20px;bottom:18px;background:#23505a;color:#e9fffc;border:1px solid #5bb8b9;border-radius:12px;padding:12px 16px;display:none;box-shadow:var(--shadow);font-size:13px;max-width:350px}.toast.show{display:block}.no-print{}
+@media(max-width:1150px){.tilegrid{grid-template-columns:repeat(2,1fr)}.main{padding:24px}.sidebar{width:205px}.app{grid-template-columns:205px 1fr}.toolrow{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:730px){.app{display:block}.sidebar{height:auto;position:relative;padding:11px 14px;border:0;border-bottom:1px solid var(--line)}.brand{margin:2px 0 9px}.sidenav{flex-direction:row;overflow:auto;scrollbar-width:none}.sidenav button{white-space:nowrap;width:auto;padding:7px 11px;font-size:12px}.sidenav button.active{box-shadow:inset 0 -2px var(--cyan)}.sidefooter,.sidelabel{display:none}.main{padding:17px 13px 42px}.topline{margin-bottom:12px}.crumb{font-size:10px}.hero{padding:21px 17px}.hero h1{font-size:24px}.hero p{font-size:12px}.stats{grid-template-columns:repeat(2,1fr);gap:8px}.stat{padding:12px}.stat .n{font-size:26px}.panel-head,.panel-body{padding-left:13px;padding-right:13px}.toolrow{grid-template-columns:1fr 1fr}.toolrow input{grid-column:span 2}.tilegrid,.two,.three{grid-template-columns:1fr}.modal-content{max-height:70vh}.edit-grid{grid-template-columns:1fr}.edit-field.wide{grid-column:auto}.kv{grid-template-columns:88px 1fr}.topactions{width:100%}.topactions .btn{flex:1}.sources{gap:6px}}
+@media print{.sidebar,.topactions,.toolrow,.btn,.overlay,.no-print{display:none!important}.app{display:block}.main{padding:0}.section{display:block}.panel{break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+ <div class="brand"><div class="brandmark">A</div><div><b>AOTG</b><small>RESEARCH OS / LAB</small></div></div>
+ <div class="sidelabel">WORKSPACE</div>
+ <nav class="sidenav" aria-label="トラッカーナビ">
+  <button data-tab="catalog" class="active"><span class="navico">▦</span> 技術カタログ</button>
+  <button data-tab="compare"><span class="navico">◫</span> 比較・検証</button>
+  <button data-tab="workflow"><span class="navico">⟳</span> 調査ワークフロー</button>
+  <button data-tab="approvals"><span class="navico">◇</span> 承認待ち</button>
+  <button data-tab="sources"><span class="navico">⌁</span> 参照・データ</button>
+ </nav>
+ <div class="sidefooter"><div class="signal">● READ-ONLY / LOCAL</div><p>GitHub・Linear・EVO-X3・K8 Plusとは未接続。画面内での記録・編集はローカル保存のみ。</p></div>
+</aside>
+<main class="main">
+ <div class="topline"><div class="crumb">AOTG / INTELLIGENCE / <span id="breadcrumb">TECHNOLOGY CATALOG</span></div><div class="topactions"><button class="btn ghost small" id="exportTop">↓ JSONエクスポート</button><button class="btn primary small" id="addTop">＋ 技術を追加</button></div></div>
+ <div class="hero"><div class="smallcaps">TECHNOLOGY INTELLIGENCE · VERIFIED SOURCES FIRST</div><h1>高速化技術 <span style="color:#80e7e9">リサーチ・トラッカー</span></h1><p>「何を省き、どの詰まりを解消したか」を、出典・検証条件・品質・資源コストと一緒に追跡。公表値と既存実測メモを混同せず、AOTGへの採用を別の判断として管理します。</p><div class="sources"><a class="source-link" href="https://github.com/uobnnisiuk/AOTG" target="_blank" rel="noopener noreferrer">↗ AOTG GitHub</a><a class="source-link" href="https://linear.app/uobnnisiuk/issue/UOB-80" target="_blank" rel="noopener noreferrer">↗ Linear UOB-80 / 正本</a><a class="source-link" href="https://github.com/uobnnisiuk/AOTG/issues/34" target="_blank" rel="noopener noreferrer">↗ GitHub #34 / 蓄積先</a><span class="pill primary">外部への書込みなし</span></div></div>
+ <div id="stats" class="stats"></div>
+ <section class="section active" id="section-catalog">
+  <div class="panel"><div class="panel-head"><div><h2>技術・資料カタログ</h2><p class="panel-desc">SPD IDは原本を引き継ぎ、モデルやGPUの既存結果は別区分の評価メモとして登録。重複IDはインポート時に統合します。表のチェックで2件を選択すると「比較・検証」に引き継ぎます。</p></div><button class="btn small" id="clearFilters">フィルター解除</button></div><div class="panel-body">
+  <div class="toolrow"><input id="search" type="search" placeholder="技術名、GPU、原理、ボトルネック、IDを検索…" aria-label="技術を検索"><select id="catFilter" aria-label="カテゴリ"><option value="">すべての分類</option></select><select id="statusFilter" aria-label="根拠区分"><option value="">根拠：すべて</option><option>一次資料</option><option>未確認</option><option>反証</option><option>保留</option></select><select id="envFilter" aria-label="対象環境"><option value="">環境：すべて</option><option value="8060S">8060S / gfx1151</option><option value="R9700">R9700 / gfx1201</option><option value="K8">K8 / Ryzen 8845HS</option><option value="CUDA">CUDA / NVIDIA</option><option value="その他">その他</option></select></div>
+  <div class="toolbar-bottom"><div id="countInfo" class="tiny"></div><div class="seg"><button class="sel" data-view="table">表で見る</button><button data-view="cards">カードで見る</button></div></div>
+  <div id="catalogView"></div></div></div>
+  <div class="two"><div class="panel"><div class="panel-head"><h2>原理の分布</h2></div><div class="panel-body" id="categoryBars"></div></div><div class="panel"><div class="panel-head"><h2>この台帳の読み方</h2></div><div class="panel-body"><div class="statusrow"><b style="color:#87f4dd">一次資料</b><p>公式コード、PR、開発者の技術資料。AOTG実機での再現を意味しません。</p></div><div class="statusrow"><b style="color:#c7afff">未確認</b><p>主張・メモ・二次情報の再照合が必要。数字は採用判断に使用しません。</p></div><div class="statusrow"><b style="color:#ffadbd">反証</b><p>条件次第で悪化、誤出力、E2E不一致など反例がある案件。</p></div><div class="statusrow"><b style="color:#ffcf91">保留</b><p>未マージ、未対応、性能未測定、高リスク。資料の価値と採用可否を分離。</p></div></div></div></div>
+ </section>
+ <section class="section" id="section-compare"><div class="panel"><div class="panel-head"><div><h2>構成を並べて比較</h2><p class="panel-desc">計測対象・品質・ハードウェア・入力長が異なる数字を自動で「高速化率」に換算しません。</p></div><span class="pill warn">同一条件確認が必要</span></div><div class="panel-body"><div class="two"><div><label class="tiny" for="compareA">比較対象 A</label><select id="compareA" style="width:100%;margin-top:5px"></select></div><div><label class="tiny" for="compareB">比較対象 B</label><select id="compareB" style="width:100%;margin-top:5px"></select></div></div><div class="two" id="compareCards" style="margin-top:13px"></div></div></div>
+  <div class="panel"><div class="panel-head"><h2>既存計測メモの一例 — C++修正作業の完了時間</h2><span class="pill violet">独立再照合待ち</span></div><div class="panel-body"><p class="panel-desc">同じワークロードの既存メモに記された値。モデル・量子化・版・品質の一致は未確認。小さいほど短時間で、速度だけでの優劣判定には使いません。</p><div id="cppBars" style="margin-top:20px"></div></div></div>
+  <div class="panel"><div class="panel-head"><h2>評価ゲート（合格条件）</h2></div><div class="panel-body three"><div class="callout"><h3>01｜品質の同等性</h3><p>同じ問題・期待結果・独立テストで比較。近似、未完了、破損出力を速度改善として扱わない。</p></div><div class="callout"><h3>02｜実行の全工程</h3><p>TTFT、prefill/decode、tool往復、コンパイル、長文、C++/C#修正完了時間を分解する。</p></div><div class="callout"><h3>03｜資源と安全停止</h3><p>UMA/VRAM/RAM、peak、PSI、swap、熱・安定性を含める。swap保護が働いた試行も記録して採否判断。</p></div></div></div>
+ </section>
+ <section class="section" id="section-workflow"><div class="panel"><div class="panel-head"><div><h2>継続調査フロー</h2><p class="panel-desc">新規資料の発見と既存記録の差分更新を反復するための運用設計。操作はこのファイル内に限定されます。</p></div><span class="pill primary">情報収集のみ</span></div><div class="panel-body" id="workflowSteps"></div></div><div class="two"><div class="panel"><div class="panel-head"><h2>調査頻度</h2><span class="pill warn">未設定・承認待ち</span></div><div class="panel-body"><p class="muted">Sites側の新しい実行頻度は未指定です。ここで選んでも実際の自動実行タスクは変更されず、承認用の提案としてローカル保存されます。</p><label class="tiny" for="cadenceSelect">希望頻度（案）</label><select id="cadenceSelect" style="width:100%;margin-top:6px"><option value="未指定">未指定（現状維持）</option><option value="毎日">毎日</option><option value="週3回">週3回</option><option value="週1回">週1回</option><option value="手動のみ">手動のみ</option></select><div style="margin-top:11px"><button class="btn primary" id="saveCadence">承認待ち案として保存</button></div><p class="tiny" id="cadenceMessage" style="margin-top:10px"></p><div class="rule"></div><p class="tiny">参考：既存の別タスク「AOTG 高速化技術収集」は毎日12:00 JST。今回のサイト用頻度とは別で、変更しません。</p></div></div><div class="panel"><div class="panel-head"><h2>次の確認作業</h2></div><div class="panel-body" id="nextTasks"></div></div></div></section>
+ <section class="section" id="section-approvals"><div class="panel"><div class="panel-head"><div><h2>承認キュー</h2><p class="panel-desc">下記は実行済みではありません。調査から実機・外部書込みへ進む作業を明確に分けます。</p></div><span class="pill warn">外部への書込み 0 件</span></div><div class="panel-body"><div id="approvalList"></div><div class="toolbar-bottom"><span class="tiny">承認・実行・予約はこの画面から行えません。</span><button class="btn small" id="copyApproval">承認確認用メモをコピー</button></div></div></div><div class="callout"><h3>絶対に自動で通過しないゲート</h3><p>GPU/BIOS/firmware/driverの変更、swap・熱・品質保護の解除、root操作、モデル起動、ベンチ、サービス停止、AOTG/Linear/GitHubへの書込み、PR/merge、費用の発生。実験する場合は、変更前スナップショット、資源上限、独立品質試験、ロールバックと明示承認が必要です。</p></div></section>
+ <section class="section" id="section-sources"><div class="panel"><div class="panel-head"><h2>原本・参照先</h2><span class="pill primary">読取専用で照合済み：2026-11-18</span></div><div class="panel-body"><div class="three"><div class="callout"><h3>AOTG Repository</h3><p>実装・設計・README。機能の実装/実機検証の現状はREADMEとPRを優先。</p><p class="linkline" style="margin-top:10px"><a href="https://github.com/uobnnisiuk/AOTG" target="_blank" rel="noopener noreferrer">github.com/uobnnisiuk/AOTG ↗</a></p></div><div class="callout"><h3>Linear 正本 · UOB-80</h3><p>調査範囲・受入ゲート・継続収集ルール。UOB-50/52/53/54/71と連携。</p><p class="linkline" style="margin-top:10px"><a href="https://linear.app/uobnnisiuk/issue/UOB-80" target="_blank" rel="noopener noreferrer">linear.app/.../UOB-80 ↗</a></p></div><div class="callout"><h3>GitHub 蓄積 · Issue #34</h3><p>既存SPD-0001〜0023とREFカードの追記先。ここでは重複しない独立IDを保つ。</p><p class="linkline" style="margin-top:10px"><a href="https://github.com/uobnnisiuk/AOTG/issues/34" target="_blank" rel="noopener noreferrer">AOTG/issues/34 ↗</a></p></div></div><div class="rule"></div><h3 style="font-size:15px">データの持出し・取込み</h3><p class="muted">操作結果はブラウザのローカル領域に保存。ブラウザ変更や環境初期化に備え、JSONを定期的に保存してください。GitHub/Linearへの自動投稿・自動反映はありません。</p><div class="topactions"><button class="btn primary" id="exportJson">↓ 台帳 JSON</button><button class="btn" id="exportCsv">↓ CSV（技術）</button><button class="btn" id="exportMetrics">↓ CSV（測定値）</button><button class="btn ghost" id="importButton">↑ JSONインポート・ID重複統合</button></div><input type="file" id="importFile" accept=".json,application/json" hidden><div class="rule"></div><p class="muted" style="font-size:12px"><b>根拠の階層：</b>原本（一次資料）→上流の測定（公表値）→第三者による検証→既存のAOTG実測メモ→試験ログ・ハッシュを照合した実機再現。数値は独立に昇格させます。比較できない指標の倍率や推奨順位は計算しません。</p><p class="tiny">初期データは2026-11-18時点。自動更新は無効です。インポート時、IDが同じカードは更新、URL+名称が一致するカードは重複を防ぎます。外部ソースからの自動同期はありません。</p><button class="btn warn small" id="resetBtn">↺ 初期データに戻す</button></div></div></section>
+ <div class="footer">AOTG RESEARCH TRACKER · LOCAL WORKING COPY · 2026-11-18 · EXTERNAL SYSTEMS UNCHANGED</div>
+</main></div>
+<div id="detailOverlay" class="overlay" role="dialog" aria-modal="true" aria-label="レコード詳細"><div class="modal"><div class="modal-header"><div><div id="detailId" class="smallcaps"></div><h2 id="detailTitle"></h2></div><button class="iconbtn" data-close="detailOverlay" aria-label="閉じる">×</button></div><div id="detailContent" class="modal-content"></div><div class="modal-footer"><button class="btn ghost" data-close="detailOverlay">閉じる</button><button class="btn primary" id="editCurrent">編集する</button></div></div></div>
+<div id="editOverlay" class="overlay" role="dialog" aria-modal="true" aria-label="レコード編集"><div class="modal"><div class="modal-header"><div><div class="smallcaps">LOCAL RECORD EDITOR</div><h2 id="editTitle">記録を編集</h2></div><button class="iconbtn" data-close="editOverlay" aria-label="閉じる">×</button></div><form id="editForm"><div id="editFields" class="modal-content edit-grid"></div><div class="modal-footer"><button type="button" class="btn ghost" data-close="editOverlay">キャンセル</button><button type="submit" class="btn primary">ローカル保存する</button></div></form></div></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script id="seedData" type="application/json">{
+  "schemaVersion": 1,
+  "createdAt": "2026-11-18",
+  "sourceCheckedAt": "2026-11-18",
+  "title": "AOTG 高速化技術トラッカー",
+  "sources": {
+    "repo": "https://github.com/uobnnisiuk/AOTG",
+    "linear": "https://linear.app/uobnnisiuk/issue/UOB-80",
+    "catalog": "https://github.com/uobnnisiuk/AOTG/issues/34"
+  },
+  "records": [
+    {
+      "id": "SPD-0001",
+      "name": "FlashAttention-2｜warp間通信と非matmul処理の削減",
+      "category": "GPUカーネル",
+      "source": "https://proceedings.iclr.cc/paper_files/paper/2024/hash/98ed250b203d1ac6b24bbcf263e3d4a7-Abstract-Conference.html",
+      "mechanism": "非matmul FLOPs削減、head内のthread block分散、warp間shared-memory通信削減",
+      "bottleneck": "GPU占有率とshared-memory通信",
+      "claim": "A100のカーネルで初代比約2倍。モデル全工程ではない",
+      "env": "NVIDIA A100",
+      "status": "一次資料",
+      "evidence": "査読論文／上流値",
+      "app": "GPU形状別kernel比較",
+      "next": "ROCmへの直用不可／未確認",
+      "constraints": "カーネルshapeと対応GPUを照合する",
+      "publicDate": "CUDA固有条件をEVO/R9700へ外挿しない",
+      "checkedDate": "2026-11-18",
+      "kind": "2024",
+      "metrics": [
+        {
+          "label": "カーネル速度",
+          "value": "約2",
+          "unit": "倍",
+          "origin": "公表値",
+          "condition": "A100、初代FlashAttention比較",
+          "before": "",
+          "after": "",
+          "note": ""
+        }
+      ],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "scheduling-parallelism",
+        "memory-transfer"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "prefill / attention",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0002",
+      "name": "vLLM｜PagedAttention / continuous batching",
+      "category": "推論エンジン",
+      "source": "https://docs.vllm.ai/en/stable/",
+      "mechanism": "KV cacheのページ管理とリクエスト継続batch化",
+      "bottleneck": "KVメモリ断片化・予約の無駄／並行待機",
+      "claim": "特定倍率なし",
+      "env": "高並列serving",
+      "status": "一次資料",
+      "evidence": "公式文書",
+      "app": "複数request時に限る候補",
+      "next": "単発OpenCodeの完了時間を改善するとは限らない",
+      "constraints": "単発／並列負荷を分けて測る",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "cache-reuse",
+        "scheduling-parallelism"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "並列serving",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0003",
+      "name": "llama.cpp / EAGLE-3｜投機的decode",
+      "category": "モデル・アルゴリズム",
+      "source": "https://github.com/ggml-org/llama.cpp/blob/master/docs/speculative.md",
+      "mechanism": "draftが複数tokenを提案し、targetで一括検証する",
+      "bottleneck": "targetの1 tokenずつの逐次計算",
+      "claim": "採択率とdraft費用に依存、実機倍率未確認",
+      "env": "llama.cpp／EAGLE-3",
+      "status": "一次資料",
+      "evidence": "公式実装文書",
+      "app": "DFlash系の候補比較",
+      "next": "draft/target互換、追加VRAM、品質同等性が条件",
+      "constraints": "accepted tokensとKV占有を照合する",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "speculative-decoding"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/vllm-project/speculators/blob/main/docs/user_guide/algorithms/eagle3.md",
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0004",
+      "name": "ROCm AITER｜演算融合・専用kernel",
+      "category": "GPUカーネル",
+      "source": "https://github.com/ROCm/aiter",
+      "mechanism": "Triton/CK/HIP/ASMによるGEMM/Attention/MoE/norm/RoPEの最適化",
+      "bottleneck": "小粒演算のlaunchと中間メモリ転送",
+      "claim": "gfx1151 / gfx1201はExperimental（確認時資料）",
+      "env": "AMD／主にInstinct、一部実験的RDNA",
+      "status": "一次資料",
+      "evidence": "公式リポジトリ",
+      "app": "GPU互換性調査",
+      "next": "CDNAとRDNAではカーネル互換を仮定しない",
+      "constraints": "対象gfxのサポート行列と版を確認する",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "kernel-fusion",
+        "scheduling-parallelism"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0005",
+      "name": "hipBLASLt Stream-K｜GEMM負荷分散",
+      "category": "GPUカーネル",
+      "source": "https://rocmdocs.amd.com/projects/hipBLASLt/en/develop/what-is-hipBLASLt.html",
+      "mechanism": "GEMM内積反復をCUへ均等に割り当てる",
+      "bottleneck": "細長い行列などでCUが遊休",
+      "claim": "定量値未確認",
+      "env": "AMD ROCm / GEMM",
+      "status": "一次資料",
+      "evidence": "AMD公式文書",
+      "app": "shape別のGEMM候補探索",
+      "next": "gfx1151/gfx1201性能未確認",
+      "constraints": "実際のGEMM行列形状を先に収集する",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "scheduling-parallelism"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0006",
+      "name": "FlashInfer｜JIT特殊化 / paged KV",
+      "category": "GPUカーネル",
+      "source": "https://github.com/flashinfer-ai/flashinfer",
+      "mechanism": "入力shapeに応じたJIT、sparse/paged KV、inspector-executor",
+      "bottleneck": "汎用kernelのshape不一致・余分なKV処理",
+      "claim": "定量値は環境依存",
+      "env": "主にCUDA",
+      "status": "一次資料",
+      "evidence": "公式実装",
+      "app": "shape→kernel選択の考え方",
+      "next": "RDNAへそのまま適用できる保証なし",
+      "constraints": "CUDA依存部と一般化できる原理を分離する",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "compiler-graph",
+        "cache-reuse"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0007",
+      "name": "FlashMLA｜fused attention / 低精度KV",
+      "category": "GPUカーネル",
+      "source": "https://github.com/deepseek-ai/FlashMLA",
+      "mechanism": "norm/RoPE/attention/cast融合、モデル専用attention形状とFP8/FP4",
+      "bottleneck": "中間転送・launch・KV帯域",
+      "claim": "ベンダー公表値をAMDへ外挿できない",
+      "env": "主にNVIDIA B200ほか",
+      "status": "一次資料",
+      "evidence": "公式実装",
+      "app": "モデル・kernel分離の設計参考",
+      "next": "対象GPU世代・モデル・KV形式に破壊的変更あり",
+      "constraints": "固定版と対応GPUを確認する",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "kernel-fusion",
+        "quantization"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0008",
+      "name": "Agent prefix固定｜compaction後の再計算回避",
+      "category": "クライアント／Harness",
+      "source": "https://github.com/sgl-project/sglang/discussions/46590",
+      "mechanism": "token-identicalな共通prefixを保存しcache hitを維持",
+      "bottleneck": "要約checkpoint除去によるprefix cache失効",
+      "claim": "第三者報告: hit 10.1→99.6%、TTFT 206.9→3.1秒",
+      "env": "SGLang実例、OpenCode適合未確認",
+      "status": "未確認",
+      "evidence": "第三者の再現報告（独立未確認）",
+      "app": "OpenCode compactionの静的診断",
+      "next": "記事条件に依存、品質・token一致が必要",
+      "constraints": "compaction前後のprefix hashを比較",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [
+        {
+          "label": "TTFT",
+          "value": "206.9→3.1",
+          "unit": "秒",
+          "origin": "公表値",
+          "condition": "特定のprefix cache事例",
+          "before": "206.9",
+          "after": "3.1",
+          "note": ""
+        },
+        {
+          "label": "cache hit",
+          "value": "10.1→99.6",
+          "unit": "%",
+          "origin": "公表値",
+          "condition": "特定の事例",
+          "before": "10.1",
+          "after": "99.6",
+          "note": ""
+        }
+      ],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "agent-workflow",
+        "cache-reuse"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0009",
+      "name": "zllm｜GPU argmaxでCPU readback削減",
+      "category": "GPUカーネル",
+      "source": "https://github.com/fankh/zllm/blob/f32312685deb45c153c38c2596f52f00e90ecd88/BENCHMARKS.md",
+      "mechanism": "GPUでargmaxしlogits全体の転送をインデックス4 byteへ置換",
+      "bottleneck": "tokenごとのGPU→CPU logits readback約513KB",
+      "claim": "作者測定: サーバ経路59→114 tok/s",
+      "env": "8060S / Win11 / Vulkan / Llama-3.2-1B系",
+      "status": "一次資料",
+      "evidence": "上流実装＋著者実測",
+      "app": "GPU→CPU同期診断",
+      "next": "sampling/grammar/tie条件で結果が変わり得る",
+      "constraints": "実装が既にGPU sampling済みでないか確認",
+      "publicDate": "2026-07",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [
+        {
+          "label": "decode",
+          "value": "59→114",
+          "unit": "tok/s",
+          "origin": "公表値",
+          "condition": "作者サーバ経路 8060S Vulkan",
+          "before": "59",
+          "after": "114",
+          "note": ""
+        }
+      ],
+      "quality": "greedy 24/24（作者報告）",
+      "memory": "",
+      "stability": "",
+      "reproduction": "固定commit f323126、モデル/quant/context/buildの不足条件を埋めたAB比較",
+      "tags": [
+        "memory-transfer",
+        "kernel-fusion"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0010",
+      "name": "zllm｜SDPA spillとhead/KV並列化",
+      "category": "GPUカーネル",
+      "source": "https://github.com/fankh/zllm/blob/f32312685deb45c153c38c2596f52f00e90ecd88/BENCHMARKS.md",
+      "mechanism": "head per 1 threadからworkgroup分散、KV blockのonline softmax部分統合",
+      "bottleneck": "GPU低占有とregister spill、長文KV逐次走査",
+      "claim": "作者ベンチ: prefill 1363→1928、ctx2048単体decode 31→162 tok/s",
+      "env": "8060S / Win11 / Vulkan",
+      "status": "一次資料",
+      "evidence": "上流実装＋著者実測",
+      "app": "occupancyとspill診断",
+      "next": "浮動小数点加算順序、barrier削除はrace危険",
+      "constraints": "shape別にspill/占有率を測る",
+      "publicDate": "2026-07",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [
+        {
+          "label": "prefill",
+          "value": "1363→1928",
+          "unit": "tok/s",
+          "origin": "公表値",
+          "condition": "8060S、作者ベンチ",
+          "before": "1363",
+          "after": "1928",
+          "note": ""
+        },
+        {
+          "label": "decode-forward",
+          "value": "31→162",
+          "unit": "tok/s",
+          "origin": "公表値",
+          "condition": "ctx2048、kernel段階",
+          "before": "31",
+          "after": "162",
+          "note": ""
+        }
+      ],
+      "quality": "CPU参照誤差報告あり、独立再現なし",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "scheduling-parallelism",
+        "memory-transfer"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0011",
+      "name": "R9700｜GQA full-foldによるKV再読込削減",
+      "category": "GPUカーネル",
+      "source": "https://github.com/ggml-org/llama.cpp/issues/28867",
+      "mechanism": "GQA headをまとめ同じKV load/dequantを再利用、round-robin分割",
+      "bottleneck": "狭いverify幅で同一KVを繰り返し読み出し",
+      "claim": "公表: MTP decode 28.20→36.03 tok/s、別条件の移植では24.5→25.9",
+      "env": "R9700 gfx1201 / llama.cpp / Qwen3.8-27B",
+      "status": "反証",
+      "evidence": "上流実験＋別人の限定追試",
+      "app": "R9700 long-KV kernel候補",
+      "next": "幅1やMTPなしで悪化、未統合patch、数値精度に注意",
+      "constraints": "GQA ratio・KV format・n_qとgreedyを照合",
+      "publicDate": "2026-09",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [
+        {
+          "label": "MTP decode",
+          "value": "28.20→36.03",
+          "unit": "tok/s",
+          "origin": "公表値",
+          "condition": "R9700 ctx110K、作者の実験",
+          "before": "28.20",
+          "after": "36.03",
+          "note": ""
+        },
+        {
+          "label": "別条件移植",
+          "value": "24.5→25.9",
+          "unit": "tok/s",
+          "origin": "公表値",
+          "condition": "ctx115K、別実験者",
+          "before": "24.5",
+          "after": "25.9",
+          "note": ""
+        }
+      ],
+      "quality": "初期版token差、改訂版限定一致試験あり",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "cache-reuse",
+        "scheduling-parallelism"
+      ],
+      "counter": "width=1等で悪化、別試験の閾値変更は4–5%低速化",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0012",
+      "name": "FlashOffloading｜長文KVのCPU DRAM tiering",
+      "category": "システム／メモリ",
+      "source": "https://arxiv.org/abs/2611.07542",
+      "mechanism": "KVをhostへ置き、必要な転送を計算と重畳する",
+      "bottleneck": "長文時HBM容量上限とoffload転送待ち",
+      "claim": "Ascend条件の論文値。ROCm効果は未確認",
+      "env": "vLLM-Ascend / Ascend NPU",
+      "status": "一次資料",
+      "evidence": "論文",
+      "app": "長文KV容量と転送重畳の仮説",
+      "next": "ROCm/AMD用完成実装とは限らない",
+      "constraints": "実装アーキテクチャと測定条件を読む",
+      "publicDate": "2026-11-05",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "memory-transfer",
+        "cache-reuse",
+        "memory-tiering"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "長文 / capacity",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0013",
+      "name": "8060S Vulkan/RADV｜HIPからbackend切替",
+      "category": "環境固有ハック",
+      "source": "https://github.com/ggml-org/llama.cpp/discussions/20856",
+      "mechanism": "同じgfx1151でHIPからVulkan/RADVへ推論backend切替",
+      "bottleneck": "特定decode workloadでHIPのkernel選択が遅い",
+      "claim": "コミュニティ測定: decode47.7→60.9 tok/s（+28%）",
+      "env": "8060S gfx1151 / Ubuntu24.04",
+      "status": "一次資料",
+      "evidence": "コミュニティ上流報告",
+      "app": "設定候補・backend AB",
+      "next": "prefillは逆にROCm優位との報告／版の整合要",
+      "constraints": "完全一致のモデル・GPU・driver版を特定する",
+      "publicDate": "2026-07-23",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [
+        {
+          "label": "decode",
+          "value": "47.7→60.9",
+          "unit": "tok/s",
+          "origin": "公表値",
+          "condition": "gfx1151 同一host ある条件",
+          "before": "47.7",
+          "after": "60.9",
+          "note": ""
+        }
+      ],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "environment-hack",
+        "backend-switch"
+      ],
+      "counter": "別測定ではprefillはROCmが上回る",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0014",
+      "name": "gfx1151 HIP_LAUNCH_BLOCKING｜正しさの回避策",
+      "category": "環境固有ハック",
+      "source": "https://github.com/ggml-org/llama.cpp/issues/27579",
+      "mechanism": "HIP kernel起動を同期し出力破損の報告を回避",
+      "bottleneck": "特定構成の非同期race／誤出力",
+      "claim": "高速化の根拠なし（正しさの修正）",
+      "env": "8060S gfx1151 / ROCm-HIP",
+      "status": "反証",
+      "evidence": "上流Issue報告",
+      "app": "品質退行の反例",
+      "next": "同期化で遅くなる可能性、保護解除は不可",
+      "constraints": "上流修正と再現条件を読取確認する",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "environment-hack",
+        "device-quirk",
+        "correctness-workaround"
+      ],
+      "counter": "fasterではなくcorrectness-workaround",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0015",
+      "name": "gpu-unlock｜既存tensor演算能力の制限解除",
+      "category": "ハードウェア制約",
+      "source": "https://github.com/Zagitta/gpu-unlock",
+      "mechanism": "特定GeForce世代の製品区分制限にかかわる演算能力を変更する非公式研究",
+      "bottleneck": "FP16/BF16/TF32演算スループットのSKU制限",
+      "claim": "著者報告で対象GPU matmul約1.6–2倍、decodeは効果薄",
+      "env": "NVIDIA GeForce RTX20/30/40系の一部、Linux",
+      "status": "保留",
+      "evidence": "開発者実装／測定",
+      "app": "原理調査のみ",
+      "next": "低レベル起動処理、保証/安定性/電力/セキュリティの高リスク",
+      "constraints": "AMDで同等制限があるという根拠を別途探す",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [
+        {
+          "label": "BF16 matmul",
+          "value": "約1.6–2",
+          "unit": "倍",
+          "origin": "公表値",
+          "condition": "対象NVIDIA GPU、演算単体",
+          "before": "",
+          "after": "",
+          "note": ""
+        }
+      ],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "hw-compute-unlock"
+      ],
+      "counter": "Radeonには該当性がなく採用不可",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0016",
+      "name": "Ryzen AI Max UMA｜GPU可視RAMの再配分",
+      "category": "ハードウェア制約",
+      "source": "https://rocm.blogs.amd.com/artificial-intelligence/ryzen-uma-llm/README.html",
+      "mechanism": "既存128GB共有RAMのうちGPUから扱える容量を再配分",
+      "bottleneck": "GPU可視枠の上限とCPU側RAM競合",
+      "claim": "容量改善の可能性。物理RAM総量は増えない",
+      "env": "Ryzen AI Max+ 395 / Radeon 8060S",
+      "status": "保留",
+      "evidence": "AMD公式解説",
+      "app": "EVOの容量設計を資料調査",
+      "next": "CPU残RAMの減少、swap/PSI保護必須",
+      "constraints": "BIOS/OS/ROCmで使える方式を文書照合する",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "hw-resource-reallocation",
+        "UMA",
+        "capacity-vs-speed"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "容量 / memory",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0017",
+      "name": "llama.cpp｜multi-GPU split / CPU offload",
+      "category": "ハードウェア制約",
+      "source": "https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md",
+      "mechanism": "複数GPU、CPUへのlayer/tensor/MoE分割で単一VRAMの収容上限を越える",
+      "bottleneck": "モデルとKVのVRAM容量不足",
+      "claim": "ロード可否拡大、必ずしも高速化せず",
+      "env": "R9700 32GB / 8060S共有RAM／K8は別構成",
+      "status": "保留",
+      "evidence": "上流公式文書",
+      "app": "容量と転送の交換条件を評価",
+      "next": "異種GPU同時利用の互換性不明、転送/同期コスト",
+      "constraints": "同一モデルの単GPU・CPU offload条件を設計する",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "memory-tiering",
+        "hw-physical-addition"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "容量 / memory",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0018",
+      "name": "Harness / Code Mode｜tool定義と中間結果を外へ",
+      "category": "クライアント／Harness",
+      "source": "https://www.anthropic.com/research/code-execution-with-mcp",
+      "mechanism": "必要なtoolを遅延ロードし、sandbox内コードで複数API処理を合成",
+      "bottleneck": "tool schema/巨大な中間結果のcontext流入、往復",
+      "claim": "150,000→2,000 tokensはAnthropicの特定例の入力削減",
+      "env": "MCP / OpenCode等、provider固有",
+      "status": "一次資料",
+      "evidence": "公式研究記事＋実装説明",
+      "app": "OpenCodeツール呼出しE2Eに応用",
+      "next": "権限分離・サンドボックス・副作用管理必須",
+      "constraints": "tool数、token、API回数、E2E、失敗率を同条件比較",
+      "publicDate": "2025-11-04",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [
+        {
+          "label": "context投入",
+          "value": "150000→2000",
+          "unit": "tokens",
+          "origin": "公表値",
+          "condition": "Anthropic Google Drive→Salesforceの特定例",
+          "before": "150000",
+          "after": "2000",
+          "note": ""
+        }
+      ],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "agent-workflow",
+        "code-mode",
+        "tool-lazy-loading"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "agent E2E",
+      "sourceRefs": [
+        "https://blog.cloudflare.com/code-mode-mcp/",
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0019",
+      "name": "llama.cpp SWA KV｜層ごとのcache精度分離",
+      "category": "システム／メモリ",
+      "source": "https://github.com/ggml-org/llama.cpp/pull/32240",
+      "mechanism": "boundedなSWAと増えるfull-attention KVに異なるdtypeを割当",
+      "bottleneck": "同一KV dtypeによるメモリ浪費・近似誤差",
+      "claim": "著者測定: KV tensor 111→66 MiB（全体RAMでない）。速度未測定",
+      "env": "Gemma 3 270M / Ryzen7 8845HS CPU",
+      "status": "保留",
+      "evidence": "未マージPR＋著者メモリ測定",
+      "app": "適合モデルなら設定候補",
+      "next": "SWA対応が必要、近似量子化の品質低下",
+      "constraints": "PR統合とGPU支持、長文品質を確認",
+      "publicDate": "2026-11-14",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [
+        {
+          "label": "KV tensor",
+          "value": "111→66",
+          "unit": "MiB",
+          "origin": "公表値",
+          "condition": "K8同系CPU、ctx32768。GPU未測定",
+          "before": "111",
+          "after": "66",
+          "note": ""
+        }
+      ],
+      "quality": "混合精度はf16完全同等でない",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "quantization",
+        "cache-reuse"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0020",
+      "name": "Origami gfx1151｜GEMM性能モデルの補正",
+      "category": "コンパイラ",
+      "source": "https://github.com/ROCm/rocm-libraries/pull/16178",
+      "mechanism": "実workgroup mapping/DRAM待機/clock比を予測器へ反映",
+      "bottleneck": "GEMMのメモリ時間予測が実測と乖離",
+      "claim": "予測値の比 2.01→1.03、実カーネル高速化の証拠なし",
+      "env": "8060S gfx1151 / ROCm PR（未マージ）",
+      "status": "保留",
+      "evidence": "未マージPR＋開発者測定",
+      "app": "候補探索の性能予測改善",
+      "next": "同データでフィットと評価、過適合リスク",
+      "constraints": "別形状・別周波数で予測誤差を評価",
+      "publicDate": "2026-11-17",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [
+        {
+          "label": "予測/実測 倍率",
+          "value": "2.01→1.03",
+          "unit": "倍",
+          "origin": "公表値",
+          "condition": "9測定点にfitした予測モデル",
+          "before": "2.01",
+          "after": "1.03",
+          "note": ""
+        }
+      ],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "compiler-graph",
+        "performance-model"
+      ],
+      "counter": "本番kernel速度未改善・未提示",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0021",
+      "name": "llama.cpp hybrid-prefill｜phase別GPU分割",
+      "category": "システム／スケジューリング",
+      "source": "https://github.com/ggml-org/llama.cpp/pull/32508",
+      "mechanism": "prefillはlayer、decodeはtensor配置へ切替。切替費用しきい値で判断",
+      "bottleneck": "単一分割方式ではprefillとdecodeを両立できない",
+      "claim": "作者概算でprefill700→1500 tok/s、切替約1秒",
+      "env": "CUDA 2GPU / Qwen3.8-27B（未マージ試作）",
+      "status": "保留",
+      "evidence": "未マージ試作＋著者主張",
+      "app": "phase別切替コストの一般原理",
+      "next": "作者自身がallocation問題を指摘。AMD直接適用不可",
+      "constraints": "PR修正／独立ベンチ後に再評価",
+      "publicDate": "2026-11-18",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [
+        {
+          "label": "prefill",
+          "value": "約700→1500",
+          "unit": "tok/s",
+          "origin": "公表値",
+          "condition": "CUDA 2GPU、詳細測定統計欠測",
+          "before": "700",
+          "after": "1500",
+          "note": ""
+        }
+      ],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "scheduling-parallelism",
+        "environment-hack"
+      ],
+      "counter": "現状のままマージ不可、E2E値欠測",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0022",
+      "name": "SGLang KV hints｜他workerのKV再利用土台",
+      "category": "システム／キャッシュ",
+      "source": "https://github.com/sgl-project/sglang/pull/51088",
+      "mechanism": "要求ごとのKV hintをstorageへ渡しworker間で再利用可能にする",
+      "bottleneck": "別workerで同じprefixを再計算する",
+      "claim": "速度ベンチなし。標準backendではopt-in未実装",
+      "env": "SGLang分散serving / 未マージPR",
+      "status": "保留",
+      "evidence": "上流実装差分",
+      "app": "複数worker化した将来の設計知識",
+      "next": "単一EVOは対象外、認可・名前空間検証必須",
+      "constraints": "PRにベンチ/opt-in backendが追加されたら確認",
+      "publicDate": "2026-11-17",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "cache-reuse",
+        "agent-workflow"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "複数worker",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0023",
+      "name": "mezura｜64B SIMD bitmask・I/O削減",
+      "category": "環境固有ハック",
+      "source": "https://petros-papatheodorou.dev/writing/mezura/counting-the-linux-kernel/",
+      "mechanism": "対象データ形状を見て64B SIMD bitmaskを利用し処理とI/Oを削減",
+      "bottleneck": "一般化された解析処理の無駄と下限を測らない設計",
+      "claim": "作者測定はAOTG再現ではない",
+      "env": "Linux kernel LoC集計 / mezura 3.5.0",
+      "status": "未確認",
+      "evidence": "作者技術ノート＋公開コード",
+      "app": "同種のパス処理とcache/bitmaskへの一般化",
+      "next": "AOTGのコード修正完了時間への外挿不可",
+      "constraints": "linebenchと計測条件・数値の再現性を確認",
+      "publicDate": "2026-11-16",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "simd",
+        "io-reduction",
+        "environment-hack"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/subamanis/mezura",
+        "https://github.com/loc-conformance/linebench",
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "REF-SYBIL-OPT-001",
+      "name": "inference-optimisation-skill｜実測と失敗記録の技法集",
+      "category": "調査資料集",
+      "source": "https://github.com/sybil-solutions/inference-optimisation-skill",
+      "mechanism": "control→candidate→control、理論上限・再現ログ・fail-closedと候補選別を調査する資料集",
+      "bottleneck": "不公平な測定・上限未推定・再現できない改善",
+      "claim": "作者READMEの別GPU例はAOTG実測ではない",
+      "env": "Intel Arc / NVIDIAの公開例、AMD未再現",
+      "status": "一次資料",
+      "evidence": "GitHub資料集",
+      "app": "評価設計へ抽出（丸ごと採用しない）",
+      "next": "ceiling.py/bench.py/queue.shの失敗・上限の監査必要",
+      "constraints": "関連リポジトリの新しい差分・失敗例を監視",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "資料集",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "research-source",
+        "measurement-method"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "benchmark",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34#issuecomment-6952056324"
+      ]
+    },
+    {
+      "id": "REF-YASAKANI-001",
+      "name": "YASAKANI / 八尺瓊系｜推論ランタイム調査",
+      "category": "推論エンジン",
+      "source": "https://github.com/sahenjp/yasaheni",
+      "mechanism": "GGUF互換fork等の設計を比較（実装機構は未精査）",
+      "bottleneck": "非標準runtime/量子化互換と運用性能の未把握",
+      "claim": "数値・有効性未確認",
+      "env": "EVO-X3 8060S / R9700への互換性未確認",
+      "status": "未確認",
+      "evidence": "ソース参照先（未精査）",
+      "app": "read-onlyの設計比較候補",
+      "next": "名称・実装差・対応モデル・ライセンスを要確認",
+      "constraints": "上流README/commit/対応形式を読み、重複実装を照合",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "資料集",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "runtime",
+        "gguf"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "client/engine",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "LOC-001",
+      "name": "FlashNext / Dynamic V3.1｜8060S実測メモ",
+      "category": "モデル・アルゴリズム",
+      "source": "https://github.com/uobnnisiuk/AOTG/issues/34",
+      "mechanism": "FlashNextの投機推論とDynamic V3.1の構成差を同じ開発作業で比較（実装差分の追認未了）",
+      "bottleneck": "27B比較ではtoken生成と作業完了時間が長い",
+      "claim": "既存メモ: FlashNext IQ3_S+DFlash2 45.2 tok/s・C++47秒、Dynamic V3.1 45.5 tok/s・47.07秒、27B 10.95 tok/s・162秒",
+      "env": "EVO-X3 / Radeon 8060S gfx1151",
+      "status": "未確認",
+      "evidence": "既存実測メモ（原ログ未照合）",
+      "app": "高優先・正式ベンチの候補",
+      "next": "量子化/モデル品質が異なるため単純な同品質加速とは呼べない",
+      "constraints": "原試行のrun ID/モデル版/計測ログとquality判定を固定",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "環境別評価",
+      "metrics": [
+        {
+          "label": "decode",
+          "value": "45.2",
+          "unit": "tok/s",
+          "origin": "既存計測メモ",
+          "condition": "FlashNext IQ3_S + DFlash2 / 8060S",
+          "before": "",
+          "after": "",
+          "note": ""
+        },
+        {
+          "label": "C++作業完了",
+          "value": "47",
+          "unit": "秒",
+          "origin": "既存計測メモ",
+          "condition": "FlashNext / 8060S",
+          "before": "",
+          "after": "",
+          "note": ""
+        },
+        {
+          "label": "decode",
+          "value": "45.5",
+          "unit": "tok/s",
+          "origin": "既存計測メモ",
+          "condition": "Dynamic V3.1 / 8060S",
+          "before": "",
+          "after": "",
+          "note": ""
+        },
+        {
+          "label": "C++作業完了",
+          "value": "47.07",
+          "unit": "秒",
+          "origin": "既存計測メモ",
+          "condition": "Dynamic V3.1 / 8060S",
+          "before": "",
+          "after": "",
+          "note": ""
+        },
+        {
+          "label": "decode",
+          "value": "10.95",
+          "unit": "tok/s",
+          "origin": "既存計測メモ",
+          "condition": "Qwen3.8-27B / 8060S",
+          "before": "",
+          "after": "",
+          "note": ""
+        },
+        {
+          "label": "C++作業完了",
+          "value": "162",
+          "unit": "秒",
+          "origin": "既存計測メモ",
+          "condition": "Qwen3.8-27B / 8060S",
+          "before": "",
+          "after": "",
+          "note": ""
+        }
+      ],
+      "quality": "長文113,989 tokensで全問正答と報告。C++1,010/C#27件テスト合格の既存メモあり、原ログ再照合待ち",
+      "memory": "8060S共有RAM、正確なpeak RAM/PSI未記録",
+      "stability": "長時間試験は原ログ照合待ち",
+      "reproduction": "model SHA／GGUF SHA／llama.cpp版／GPU clock／context／OpenCode設定、同一課題を3回以上ABABで比較",
+      "tags": [
+        "speculative-decoding",
+        "local-note"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "OpenCode E2E",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "LOC-002",
+      "name": "R9700 vs 8060S｜速度・swap保護の比較メモ",
+      "category": "環境別比較",
+      "source": "https://github.com/uobnnisiuk/AOTG/issues/34",
+      "mechanism": "R9700単独と8060Sの速度・長文・全工程時間を分けて比較",
+      "bottleneck": "単一decodeの速さが長文やコード修正の完了時間に直結しない",
+      "claim": "既存メモ: R9700短文32K 77.6 tok/s／OpenCode C++は8060Sより約1.96倍遅く、128Kでswap保護により中断",
+      "env": "R9700 gfx1201 32GB VRAM / EVO-X3 8060S UMA",
+      "status": "反証",
+      "evidence": "既存実測メモ（原ログ未照合）",
+      "app": "R9700は限定的な32K短文補助候補",
+      "next": "測定対象の異なる値を棒グラフで直接比較しない",
+      "constraints": "中断ログ／VRAMピーク／swap protection／E2E工程を確認",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "環境別評価",
+      "metrics": [
+        {
+          "label": "decode",
+          "value": "77.6",
+          "unit": "tok/s",
+          "origin": "既存計測メモ",
+          "condition": "R9700 32K短文（中央値）",
+          "before": "",
+          "after": "",
+          "note": ""
+        },
+        {
+          "label": "OpenCode C++相対完了時間",
+          "value": "約1.96",
+          "unit": "倍（遅い）",
+          "origin": "既存計測メモ",
+          "condition": "R9700対8060S、条件差再照合",
+          "before": "",
+          "after": "",
+          "note": ""
+        }
+      ],
+      "quality": "長文/一部C#は中断したため採点不可。完了率を分母に含める必要",
+      "memory": "R9700単体32GB。128K試行はswap保護で中断",
+      "stability": "swap保護発動＝安全停止。閾値を緩和せず中断を記録",
+      "reproduction": "32K/128Kで同一model/quant/engine/context、swap watchdogを維持し計測（要承認）",
+      "tags": [
+        "memory-tiering",
+        "local-note"
+      ],
+      "counter": "decode速度が高くてもOpenCodeのE2Eは悪化",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "OpenCode E2E",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    }
+  ],
+  "workflow": {
+    "cadence": "未指定",
+    "siteSync": "無効（未承認）",
+    "externalChanges": "禁止",
+    "existingTask": "既存のAOTG高速化技術収集タスクは毎日12:00 JST（この画面から変更しない）",
+    "updatedAt": ""
+  },
+  "approvals": [
+    {
+      "id": "AP-01",
+      "task": "Sitesでの自動調査頻度を設定",
+      "reason": "新しいワークフローの実行時刻／頻度は未指定",
+      "status": "承認待ち",
+      "risk": "運用変更"
+    },
+    {
+      "id": "AP-02",
+      "task": "EVO-X3 / K8 Plus / GPUの実機ベンチ",
+      "reason": "事前の実験窓、負荷、swap保護、rollback条件が必要",
+      "status": "承認待ち",
+      "risk": "実機変更"
+    },
+    {
+      "id": "AP-03",
+      "task": "AOTG実装への候補追加／PR作成",
+      "reason": "UOB-52/53/54/71と独立レビューの受入条件が必要",
+      "status": "承認待ち",
+      "risk": "ソース変更"
+    },
+    {
+      "id": "AP-04",
+      "task": "GitHub #34 / Linear UOB-80への書込み同期",
+      "reason": "このトラッカーは既存原本とは別。重複排除と書込み権限の確認が必要",
+      "status": "承認待ち",
+      "risk": "外部書込み"
+    },
+    {
+      "id": "AP-05",
+      "task": "既存の自動実行タスクの変更",
+      "reason": "既存の日次タスクは維持。変更する場合のみ個別承認",
+      "status": "承認待ち",
+      "risk": "運用変更"
+    }
+  ],
+  "audit": [
+    {
+      "at": "2026-11-18",
+      "type": "Seed",
+      "text": "GitHub AOTG #34のSPD-0001〜0023とREF-SYBIL-OPT-001を参照して初期化。サイトは原本を変更しない。"
+    },
+    {
+      "at": "2026-11-18",
+      "type": "Caveat",
+      "text": "LOC-001/LOC-002は過去の実測メモとして追加。原ログ、SHA、計測条件は再照合待ち。"
+    }
+  ]
+}</script>
+<script>
+'use strict';
+const SEED=JSON.parse(document.getElementById('seedData').textContent);
+const STORE='aotg-research-tracker-v1';
+const deep=x=>JSON.parse(JSON.stringify(x));
+let state=deep(SEED), view=(window.matchMedia('(max-width:730px)').matches?'cards':'table'), active='catalog', focusedId='', editId='', selected=new Set(), filt={q:'',cat:'',status:'',env:''};
+try{const saved=JSON.parse(localStorage.getItem(STORE)||'null');if(saved?.schemaVersion===1&&Array.isArray(saved.records))state=saved;}catch(e){console.warn('localStorage inaccessible; changes remain in this tab only',e)}
+function persist(){try{localStorage.setItem(STORE,JSON.stringify(state))}catch(e){toast('このブラウザでは永続保存できません。JSONをエクスポートしてください。')}}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function link(url,text){if(!/^https:\/\//i.test(String(url||'')))return esc(text||url);return `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(text||url)} ↗</a>`}
+function toast(s){let t=document.getElementById('toast');t.textContent=s;t.classList.add('show');clearTimeout(toast._timer);toast._timer=setTimeout(()=>t.classList.remove('show'),3300)}
+function e(id){return document.getElementById(id)}
+function byId(id){return state.records.find(x=>x.id===id)}
+function pill(v){const kind=v==='一次資料'?'primary':v==='未確認'?'violet':v==='反証'?'danger':'warn';return `<span class="pill ${kind}">${esc(v)}</span>`}
+function min(s,n=72){const t=String(s||'');return esc(t.length>n?t.slice(0,n-1)+'…':t)}
+function metricText(r,max=2){return (r.metrics||[]).slice(0,max).map(m=>`<span class="metricchip"><b>${esc(m.value)}</b> ${esc(m.unit)} <span style="color:#9fb1c8">${esc(m.label)}</span></span>`).join('')||'<span class="tiny">定量値なし／条件未確認</span>'}
+function counts(){return {total:state.records.length,primary:state.records.filter(r=>r.status==='一次資料').length,caution:state.records.filter(r=>r.status==='保留'||r.status==='反証').length,local:state.records.filter(r=>r.kind==='環境別評価').length}}
+function renderStats(){let c=counts();e('stats').innerHTML=[['登録カード',c.total,'SPD / 資料 / 環境別評価'],['一次資料',c.primary,'上流／著者の情報。AOTG再現とは別'],['反証・保留',c.caution,'安全・互換性・根拠を再確認'],['環境別メモ',c.local,'ローカル実測ログ再照合待ち']].map(x=>`<div class="stat"><div class="name">${x[0]}</div><div class="n">${x[1]}</div><div class="detail">${x[2]}</div></div>`).join('')}
+function switchTab(t){active=t;document.querySelectorAll('.sidenav [data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));document.querySelectorAll('.section').forEach(s=>s.classList.toggle('active',s.id==='section-'+t));e('breadcrumb').textContent=({catalog:'TECHNOLOGY CATALOG',compare:'COMPARISON LAB',workflow:'RESEARCH WORKFLOW',approvals:'APPROVAL GATES',sources:'SOURCES & DATA'})[t];if(t==='compare')renderCompare();if(t==='workflow')renderWorkflow();if(t==='approvals')renderApprovals();scrollTo({top:0,behavior:'smooth'})}
+document.querySelectorAll('.sidenav button').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
+function filtered(){let a=state.records.filter(r=>{const hay=[r.id,r.name,r.category,r.env,r.bottleneck,r.mechanism,r.app,(r.tags||[]).join(' '),r.next].join(' ').toLowerCase();let ok=!filt.q||hay.includes(filt.q.toLowerCase());ok=ok&&(!filt.cat||r.category===filt.cat)&&(!filt.status||r.status===filt.status);if(filt.env){if(filt.env==='その他')ok=ok&&!/(8060S|R9700|K8|CUDA)/i.test(r.env);else if(filt.env==='K8')ok=ok&&/(K8|8845HS)/i.test(r.env);else ok=ok&&r.env.toLowerCase().includes(filt.env.toLowerCase())}return ok});return a}
+function categories(){let cats=[...new Set(state.records.map(r=>r.category))].sort((a,b)=>a.localeCompare(b,'ja'));e('catFilter').innerHTML='<option value="">すべての分類</option>'+cats.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');e('catFilter').value=filt.cat||''}
+function renderCatalog(){categories();const data=filtered();e('countInfo').textContent=`${data.length} / ${state.records.length} 件を表示 · 参照日は 2026-11-18 · 未同期`;e('catalogView').innerHTML=view==='table'?`<div class="table-wrap"><table class="record-table"><thead><tr><th>比較</th><th>ID / 技術</th><th>分類</th><th>根拠</th><th>比較データ</th><th>次の作業</th><th>詳細</th></tr></thead><tbody>${data.map(r=>`<tr><td><input type="checkbox" class="check" data-check="${esc(r.id)}" ${selected.has(r.id)?'checked':''} aria-label="比較 ${esc(r.id)}"></td><td style="min-width:205px"><span class="rid">${esc(r.id)}</span><div class="recordtitle">${esc(r.name)}</div><div class="minor">${esc(r.kind)}</div></td><td>${esc(r.category)}</td><td>${pill(r.status)}<div class="minor">${min(r.verification,27)}</div></td><td style="min-width:160px"><div class="data-viz">${metricText(r,1)}</div></td><td><div class="short" title="${esc(r.next)}">${min(r.next,34)}</div></td><td><button class="rowlink" data-detail="${esc(r.id)}">開く</button></td></tr>`).join('')}</tbody></table></div>`:data.length?`<div class="tilegrid">${data.map(r=>`<div class="tile" data-detail="${esc(r.id)}" role="button" tabindex="0"><span class="rid" style="font-size:11px;color:#80e1ec">${esc(r.id)}</span> ${pill(r.status)}<h3>${esc(r.name)}</h3><p>${min(r.mechanism,110)}</p><div class="data-viz">${metricText(r,2)}</div><div class="tilefoot">${esc(r.category)} · ${esc(r.verification)}</div></div>`).join('')}</div>`:'<div class="placeholder">条件に合う記録がありません。</div>';
+if(!data.length&&view==='table')e('catalogView').innerHTML='<div class="placeholder">条件に合う記録がありません。</div>';e('categoryBars').innerHTML=[...new Set(state.records.map(r=>r.category))].map(k=>({name:k,n:state.records.filter(r=>r.category===k).length})).sort((a,b)=>b.n-a.n).slice(0,8).map(x=>`<div class="barentry"><div class="barline"><span>${esc(x.name)}</span><b>${x.n}</b></div><div class="barbase"><div class="barfill" style="width:${x.n/state.records.length*100}%"></div></div></div>`).join('');}
+for(const [key,el] of [['q','search'],['cat','catFilter'],['status','statusFilter'],['env','envFilter']])e(el).addEventListener(key==='q'?'input':'change',ev=>{filt[key]=ev.target.value;renderCatalog()});
+e('clearFilters').addEventListener('click',()=>{filt={q:'',cat:'',status:'',env:''};['search','catFilter','statusFilter','envFilter'].forEach(k=>e(k).value='');renderCatalog()});
+document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>{view=b.dataset.view;document.querySelectorAll('[data-view]').forEach(v=>v.classList.toggle('sel',v===b));renderCatalog()}));
+e('catalogView').addEventListener('change',ev=>{if(ev.target.dataset.check){let id=ev.target.dataset.check;ev.target.checked?selected.add(id):selected.delete(id);if(selected.size>=2){const ids=[...selected].slice(-2);e('compareA').value=ids[0];e('compareB').value=ids[1]}}});
+e('catalogView').addEventListener('click',ev=>{const target=ev.target.closest('[data-detail]');if(target)openDetail(target.dataset.detail)});
+e('catalogView').addEventListener('keydown',ev=>{if((ev.key==='Enter'||ev.key===' ')&&ev.target.dataset.detail){ev.preventDefault();openDetail(ev.target.dataset.detail)}});
+function kv(k,v){return `<div class="kv"><span class="k">${esc(k)}</span><div class="v">${v??'—'}</div></div>`}
+function metricsTable(r){if(!(r.metrics||[]).length)return '<p class="muted">速度・品質・容量の数字は未登録。根拠が揃うまで空欄を維持。</p>';return '<div class="table-wrap"><table class="record-table" style="min-width:580px"><thead><tr><th>指標</th><th>値</th><th>出所種別</th><th>測定条件</th></tr></thead><tbody>'+r.metrics.map(m=>`<tr><td>${esc(m.label)}</td><td><b style="color:#b7f7e8">${esc(m.value)} ${esc(m.unit)}</b></td><td>${esc(m.origin)}</td><td>${esc(m.condition||'条件未記載')}</td></tr>`).join('')+'</tbody></table></div>'}
+function openDetail(id){let r=byId(id);if(!r)return;focusedId=id;e('detailId').textContent=r.id+' · '+r.category;e('detailTitle').textContent=r.name;e('detailContent').innerHTML=`<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:13px">${pill(r.status)}<span class="pill gray">${esc(r.kind)}</span><span class="pill gray">${esc(r.verification)}</span></div>${kv('ボトルネック',esc(r.bottleneck))}${kv('高速化の仕組み',esc(r.mechanism))}${kv('公表上の主張',esc(r.claim||'未確認'))}${kv('公開日',esc(r.publicDate||'未特定'))}${kv('照合日',esc(r.checkedDate||'—'))}${kv('対象環境',esc(r.env||'未特定'))}${kv('検証状況',esc(r.evidence))}${kv('適用可能性',esc(r.app))}${kv('制約／リスク',esc(r.constraints||'未評価'))}${kv('品質／長文',esc(r.quality||'未検証'))}${kv('GPU／RAM／swap',esc(r.memory||'未計測'))}${kv('安定性',esc(r.stability||'未計測'))}${kv('反証',esc(r.counter||'未登録'))}${kv('再現手順',esc(r.reproduction||'環境・版・入力・baseline固定から開始'))}${kv('次に確認',esc(r.next))}<div class="rule"></div><h3 style="font-size:15px">公表値／既存測定値を分けて記録</h3>${metricsTable(r)}<div class="rule"></div><h3 style="font-size:15px">出典と関連資料</h3><p class="linkline">${link(r.source)}</p>${(r.sourceRefs||[]).map(u=>`<p class="linkline">${link(u)}</p>`).join('')||''}<p class="tiny">原本への自動保存はしません。編集はこのローカル台帳だけです。</p>`;e('detailOverlay').classList.add('open')}
+const editSpec=[['id','ID','text'],['name','技術名','text'],['category','分類','text'],['kind','レコード種別','select','手法,資料集,環境別評価'],['status','根拠レーン','select','一次資料,未確認,反証,保留'],['publicDate','公開日（不明なら空欄）','text'],['checkedDate','確認日','text'],['source','一次資料URL','text'],['env','対象環境 / GPU / OS / driver','textarea'],['version','version / commit / PR','text'],['scope','高速化対象段階','text'],['bottleneck','解消対象のボトルネック','textarea'],['mechanism','高速化の仕組み / before→after','textarea'],['claim','公表根拠 / ベンチ主張','textarea'],['evidence','上流証拠の種類','text'],['verification','AOTG検証状況','text'],['quality','出力品質 / 長文 / コードテスト','textarea'],['memory','GPUメモリ / RAM / swap保護','textarea'],['stability','安定性 / 障害・停止','textarea'],['constraints','制約 / 注意点','textarea'],['counter','反証 / 負け条件','textarea'],['app','AOTGへの適用可能性','textarea'],['reproduction','再現手順','textarea'],['next','次に確認する作業','textarea'],['tags','原理タグ（カンマ区切り）','text'],['sourceRefs','追加出典（改行区切り）','textarea'],['metrics','測定値（1行1件）','textarea']];
+function openEditor(id){editId=id||'';let r=id?deep(byId(id)):deep({id:'NEW-'+Date.now(),name:'',category:'',kind:'手法',status:'未確認',checkedDate:new Date().toISOString().slice(0,10),source:'',env:'',verification:'未実施',metrics:[],sourceRefs:[]});if(!r)return;e('editTitle').textContent=id?'技術情報を編集':'新規技術を登録';e('editFields').innerHTML=editSpec.map(([key,label,type,vals])=>{let val=r[key]??'';if(key==='metrics')val=(r.metrics||[]).map(m=>[m.label,m.value,m.unit,m.origin,m.condition].join(' | ')).join('\n');if(key==='tags')val=(r.tags||[]).join(', ');if(key==='sourceRefs')val=(r.sourceRefs||[]).join('\n');let wide=['env','bottleneck','mechanism','claim','quality','memory','stability','constraints','counter','app','reproduction','next','metrics','sourceRefs'].includes(key);return `<div class="edit-field ${wide?'wide':''}"><label for="edit-${key}">${esc(label)}</label>${type==='textarea'?`<textarea id="edit-${key}" name="${key}" rows="${key==='metrics'?5:3}">${esc(val)}</textarea>`:type==='select'?`<select id="edit-${key}" name="${key}">${vals.split(',').map(opt=>`<option ${opt===val?'selected':''}>${opt}</option>`).join('')}</select>`:`<input id="edit-${key}" type="text" name="${key}" value="${esc(val)}">`}${key==='metrics'?'<span class="fieldhint">形式：指標 | 値 | 単位 | 出所（公表値／既存計測メモ／独立検証など） | 条件。未確認なら空欄。</span>':''}</div>`}).join('');e('editOverlay').classList.add('open')}
+e('editForm').addEventListener('submit',ev=>{ev.preventDefault();const form=new FormData(ev.target);const record={};for(const [key] of editSpec)record[key]=String(form.get(key)||'').trim();record.id=record.id||('NEW-'+Date.now());record.metrics=record.metrics.split('\n').filter(x=>x.trim()).map(s=>{const [label,value,unit,origin,condition]=s.split('|').map(x=>x.trim());return {label:label||'',value:value||'',unit:unit||'',origin:origin||'未確認',condition:condition||''}});record.tags=record.tags.split(',').map(x=>x.trim()).filter(Boolean);record.sourceRefs=record.sourceRefs.split('\n').map(x=>x.trim()).filter(Boolean);record.checkedDate=record.checkedDate||new Date().toISOString().slice(0,10);const clash=state.records.find(x=>x.id===record.id&&x.id!==editId);if(clash){toast('このIDはすでに存在します。重複は登録できません。');return}if(!record.name||!record.category){toast('技術名と分類は必須です');return}const pos=state.records.findIndex(x=>x.id===editId);if(pos>=0)state.records[pos]=record;else state.records.push(record);state.audit.unshift({at:new Date().toISOString().slice(0,10),type:'Local Edit',text:record.id+' をローカル編集'});persist();selected.delete(editId);e('editOverlay').classList.remove('open');e('detailOverlay').classList.remove('open');renderAll();toast('ローカル台帳に保存しました。外部への反映はありません。')});
+e('addTop').addEventListener('click',()=>openEditor());e('editCurrent').addEventListener('click',()=>{e('detailOverlay').classList.remove('open');openEditor(focusedId)});
+document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>e(b.dataset.close).classList.remove('open')));document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',ev=>{if(ev.target===o)o.classList.remove('open')}));window.addEventListener('keydown',ev=>{if(ev.key==='Escape')document.querySelectorAll('.overlay').forEach(o=>o.classList.remove('open'))});
+function compareCard(r){if(!r)return '<div class="placeholder">技術を選択してください</div>';return `<div class="comparecard"><div class="smallcaps">${esc(r.id)} · ${esc(r.category)}</div><h3>${esc(r.name)}</h3>${pill(r.status)}${kv('仕組み',esc(r.mechanism))}${kv('対象環境',esc(r.env))}${kv('品質',esc(r.quality||'未検証'))}${kv('メモリ／swap',esc(r.memory||'未計測'))}${kv('安定性',esc(r.stability||'未計測'))}${kv('適用可能性',esc(r.app))}<h4>比較値（異なる指標は換算不可）</h4>${metricsTable(r)}<div style="margin-top:12px">${link(r.source,'一次資料')}</div></div>`}
+function renderCompare(){let a=e('compareA'),b=e('compareB');let va=a.value||'LOC-001',vb=b.value||'LOC-002';let opt=state.records.map(r=>`<option value="${esc(r.id)}">${esc(r.id+' | '+r.name)}</option>`).join('');a.innerHTML=opt;b.innerHTML=opt;a.value=byId(va)?va:state.records[0]?.id;b.value=byId(vb)?vb:state.records[1]?.id;e('compareCards').innerHTML=compareCard(byId(a.value))+compareCard(byId(b.value));const cpp=[['Qwen3.8-27B',162],['FlashNext + DFlash2',47],['Dynamic V3.1',47.07]];e('cppBars').innerHTML=cpp.map(([label,v])=>`<div class="barentry"><div class="barline"><span>${label}</span><b>${v} 秒</b></div><div class="barbase" style="height:17px"><div class="barfill" style="width:${v/162*100}%"></div></div></div>`).join('')+`<p class="tiny">出典区分：過去の実測メモ（原ログ再照合待ち）。全バーで作業の完了と品質合格の条件が同じであることは未確定。棒の長さは所要時間。</p>`}
+e('compareA').addEventListener('change',renderCompare);e('compareB').addEventListener('change',renderCompare);
+const steps=[['公開情報を発見','GitHubリリース・PR/commit・公式tech note・論文・公開ベンチから新規技法と重要な既存漏れを探す。環境固有hack、ハードウェア制約、失敗例も含める。'],['重複照合と一次資料の確定','SPD ID、URL、commit、技法・原理・対象環境を既存#34と突き合わせる。新しい数値だけなら同IDに追記し、新カードは増やさない。'],['機構を分解','beforeのボトルネック → 変更内容 → なぜ効くか。高速化/容量拡大/正しさの回避策/低速化/未測定を明確に分類する。'],['公表値を精査','元baseline、precision、入力長、batch、GPU、OS、driver、版、warmup、試行数、品質、メモリ、swap停止と負け条件を記録。欠測は空欄のまま残す。'],['AOTGへの適用仮説を整理','設定のみ／限定patch／非対応／要研究を判断候補として記す。UOB-50/52/53/54/71の安全・独立ゲートへ繋げるが、実行しない。'],['承認があれば別工程で再現','最小実験計画、資源上限、サービス分離、rollback、独立品質ゲートを準備し、明示承認後のみ実機へ。反証も同じIDに保存。'],['差分だけ次回更新','通常1〜5件を上限とし、新規性がなければ更新なし。既存PRの統合・改修、独立再現、失敗や反証が出た場合は同じカードを更新し、監査ログに残す。']];
+function renderWorkflow(){e('workflowSteps').innerHTML=steps.map(([name,desc],i)=>`<div class="step"><div class="stepnum">${String(i+1).padStart(2,'0')}</div><div><b>${name}</b><p>${desc}</p></div></div>`).join('');e('cadenceSelect').value=state.workflow.cadence||'未指定';e('cadenceMessage').textContent='提案：'+(state.workflow.cadence||'未指定')+' ／ 実行設定なし';e('nextTasks').innerHTML=state.records.filter(r=>r.next).slice().sort((a,b)=>({反証:0,保留:1,未確認:2,一次資料:3}[a.status])-({反証:0,保留:1,未確認:2,一次資料:3}[b.status])).slice(0,6).map(r=>`<div class="statusrow"><div class="head"><b style="font-size:12px">${esc(r.id)} ${min(r.name,28)}</b>${pill(r.status)}</div><p>${esc(r.next)}</p></div>`).join('')}
+e('saveCadence').addEventListener('click',()=>{state.workflow.cadence=e('cadenceSelect').value;state.workflow.updatedAt=new Date().toISOString();persist();renderWorkflow();toast('希望頻度をローカル保存。自動タスクは未設定・未変更です。')});
+function renderApprovals(){e('approvalList').innerHTML=state.approvals.map(r=>`<div class="statusrow"><div class="head"><div><span class="smallcaps">${esc(r.id)} · ${esc(r.risk)}</span><h3>${esc(r.task)}</h3></div><span class="pill warn">${esc(r.status)}</span></div><p>${esc(r.reason)}</p></div>`).join('')}
+e('copyApproval').addEventListener('click',async()=>{let s='AOTG 高速化技術調査｜承認事項（未実行）\nSites用の希望頻度: '+state.workflow.cadence+'（未設定）\n'+state.approvals.map(x=>'- '+x.id+' '+x.task+'：'+x.reason).join('\n')+'\n※この依頼文をコピーしても承認や実機変更にはなりません。';try{await navigator.clipboard.writeText(s);toast('承認確認メモをコピーしました')}catch(e){toast('クリップボードが使えません。JSONから確認してください。')}});
+function dl(filename,txt,type){let blob=new Blob([txt],{type:type||'text/plain;charset=utf-8'});let u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=filename;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+function saveJson(){dl('AOTG-research-tracker-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(state,null,2),'application/json;charset=utf-8');toast('JSONをエクスポートしました')}
+function csvCell(x){let s=String(x??'');return '"'+s.replace(/"/g,'""')+'"'}
+function saveCsv(metricOnly){let arr;if(metricOnly){arr=[['ID','技術名','分類','指標','値','単位','測定値区分','条件']];state.records.forEach(r=>(r.metrics||[]).forEach(m=>arr.push([r.id,r.name,r.category,m.label,m.value,m.unit,m.origin,m.condition])))}else{const keys=['id','name','category','kind','status','publicDate','source','env','scope','bottleneck','mechanism','claim','evidence','verification','quality','memory','stability','constraints','counter','app','reproduction','next'];arr=[keys];state.records.forEach(r=>arr.push(keys.map(k=>r[k]||'')))}dl('AOTG-'+(metricOnly?'metrics':'catalog')+'.csv','\uFEFF'+arr.map(row=>row.map(csvCell).join(',')).join('\r\n'),'text/csv;charset=utf-8');toast('CSVをエクスポートしました')}
+for(const id of ['exportTop','exportJson'])e(id).addEventListener('click',saveJson);e('exportCsv').addEventListener('click',()=>saveCsv(false));e('exportMetrics').addEventListener('click',()=>saveCsv(true));e('importButton').addEventListener('click',()=>e('importFile').click());
+function canon(s){return String(s||'').trim().toLowerCase().replace(/\/$/,'').replace(/[#?].*$/,'')}
+e('importFile').addEventListener('change',async ev=>{const f=ev.target.files?.[0];if(!f)return;let data;try{data=JSON.parse(await f.text())}catch(err){toast('JSONを読み取れませんでした');return}if(!Array.isArray(data.records)||data.schemaVersion!==1){toast('このトラッカー形式のJSONではありません');return}let added=0,updated=0,skipped=0;for(const entry of data.records){if(!entry||!entry.id||!entry.name)continue;const idx=state.records.findIndex(x=>x.id===entry.id||(canon(x.name)===canon(entry.name)&&canon(x.source)===canon(entry.source)));if(idx>=0){if(JSON.stringify(state.records[idx])!==JSON.stringify(entry)){state.records[idx]={...state.records[idx],...entry,id:state.records[idx].id};updated++}else skipped++}else{state.records.push(entry);added++}}state.audit.unshift({at:new Date().toISOString().slice(0,10),type:'JSON import',text:`${added}件追加、${updated}件更新、${skipped}件一致`});persist();renderAll();ev.target.value='';toast(`ID／出典照合：追加${added}、更新${updated}、一致${skipped}`)});
+e('resetBtn').addEventListener('click',()=>{if(!confirm('ローカルで追記・編集した内容を失い、初期データに戻しますか？\n先にJSON保存を推奨します。'))return;state=deep(SEED);selected.clear();persist();renderAll();toast('初期データへ戻しました。GitHub/Linearは変更していません。')});
+function renderAll(){document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('sel',b.dataset.view===view));renderStats();renderCatalog();renderCompare();renderWorkflow();renderApprovals()}
+renderAll();
+</script>
+</body>
+</html>
