@@ -44,4 +44,35 @@ assert.equal(csvCell('日本語'),'"日本語"');assert.equal(csvCell('47.0'),'"
 assert.ok(index.includes('/* tracker-core-helpers begin */'));
 assert.ok(index.includes('"id": "SPD-0033"'));assert.ok(index.includes('"id": "REF-FROSTBITE-001"'));
 assert.ok(!index.includes('__SEED_JSON__'));
-console.log('OK: 27-to-40 migration, lossless edits, safe imports, safe CSV, generated HTML');
+
+const moe25=deep(seed.records.find(r=>r.id==='SPD-0025'));
+moe25.metrics[0].otherProvenance={source:'moe-only'};
+moe25.metrics[1].otherProvenance={source:'dense-only'};
+const old25=deep(moe25.metrics),rows25=metricLines(moe25.metrics).split('\n');
+const reordered25=[rows25[1],rows25[0].replace('1151.66→1432.97','1151.67→1432.97')].join('\n');
+const swapped25=applyMetricEdit(moe25.metrics,reordered25);
+assert.equal(swapped25[0].label,'dense pp2048');
+assert.equal(swapped25[0].note,'逆効果');
+assert.equal(swapped25[0].before,'322.5');
+assert.equal(swapped25[0].after,'309.8');
+assert.deepEqual(swapped25[0].otherProvenance,{source:'dense-only'});
+assert.equal(swapped25[1].label,'MoE pp512');
+assert.equal(swapped25[1].value,'1151.67→1432.97');
+assert.equal(swapped25[1].note,'');
+assert.equal(swapped25[1].before,'1151.66');
+assert.equal(swapped25[1].after,'1432.97');
+assert.deepEqual(swapped25[1].otherProvenance,{source:'moe-only'});
+assert.deepEqual(moe25.metrics,old25); // editing must not mutate original
+const edited25=mergeEditorRecord(moe25,{id:moe25.id,name:moe25.name,category:moe25.category},reordered25,moe25.tags.join(','),moe25.sourceRefs.join('\n'));
+assert.deepEqual(edited25.metrics,swapped25);
+const roundTrip25=mergeImported(seed,{schemaVersion:1,records:[edited25]},'2026-11-23').next;
+assert.deepEqual(JSON.parse(JSON.stringify(roundTrip25)).records.find(r=>r.id==='SPD-0025').metrics,swapped25);
+assert.deepEqual(applyMetricEdit(moe25.metrics,rows25[1]),[old25[1]]); // deletion must not copy another row's note
+const inserted25=applyMetricEdit(moe25.metrics,metricLines(moe25.metrics)+'\nnew metric | 1 | tok/s | 未確認 | test');
+assert.deepEqual(inserted25.slice(0,2),old25);assert.equal(inserted25[2].note,undefined);
+assert.throws(()=>applyMetricEdit(moe25.metrics,[rows25[1],rows25[0].replace('MoE pp512','renamed metric')].join('\n')),/同一性/);
+assert.throws(()=>applyMetricEdit(moe25.metrics,[rows25[1],rows25[0].replace('公表値（当方未実測）','未確認')].join('\n')),/同一性/);
+const duplicate25=deep(moe25.metrics);for(const key of ['label','unit','origin','condition'])duplicate25[1][key]=duplicate25[0][key];
+assert.throws(()=>applyMetricEdit(duplicate25,metricLines(duplicate25).replace('1151.66→1432.97','1151.67→1432.97')),/同一性/);
+
+console.log('OK: 27-to-40 migration, lossless edits, safe imports, safe CSV, provenance-safe reorder and value edits, generated HTML');
