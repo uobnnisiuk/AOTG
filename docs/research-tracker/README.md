@@ -31,11 +31,18 @@ python docs/research-tracker/build.py
 
 ## データ範囲
 
-- `SPD-0001`〜`SPD-0023`: GitHub [AOTG Issue #34](https://github.com/uobnnisiuk/AOTG/issues/34) の既存IDを保持。公開出典の内容を短く整理。
+- `SPD-0001`〜`SPD-0033`: GitHub [AOTG Issue #34](https://github.com/uobnnisiuk/AOTG/issues/34) の既存IDを保持。公開出典の内容を短く整理。
 - `REF-SYBIL-OPT-001`: inference-optimisation-skill — 技法集であり、単独の高速化SPDではありません。
 - `REF-YASAKANI-001`: YASAKANI系ランタイム調査の要確認資料。
+- `REF-SYNC-STRATA-001` / `REF-BLINK-001` / `REF-FROSTBITE-001`: 既存#34で追跡する複数技法の情報源／研究・反証候補。採用や実機再現を認定しない。
 - `LOC-001` / `LOC-002`: FlashNext、Dynamic V3.1、Qwen3.8-27B、8060S、R9700の既存計測メモ。**原ログのハッシュ／設定／品質条件を未照合**のため、実機再現済みの根拠には昇格させていません。
-- 当初登録: 27件、メトリクス22件。原本の変更や同期はありません。
+- 2026-11-18の初期登録27件（メトリクス22件）。2026-11-22に既存#34由来の13件を追補し、現在**40件、メトリクス36件**。原本#34は変更せず、静的seedの手動反映です。
+
+## 2026-11-22の収録更新
+
+- [#34](https://github.com/uobnnisiuk/AOTG/issues/34)に既に記録された `SPD-0024`〜`SPD-0033` と `REF-SYNC-STRATA-001`、`REF-BLINK-001`、`REF-FROSTBITE-001` を追加。公表数値には原環境・改善指標・未再現・逆効果を付記し、査読・採用済みに昇格させていません。
+- SPD-0029の公開数値は独立出典照合が不十分なまま明記。SPD-0032は432比較の2件差を注記。SPD-0033は作者による主張撤回・環境固有性を記載しました。
+- この変更は**既存Draft PR #35のデータと決定的な生成HTMLのみ**。GitHub #34/Linearへの自動同期、サイト公開、モデル実行、実機測定はしません。公開前の機材別メモ/出典の安全レビューと独立PRレビューは依然必要です。
 
 ## 正本・関連リンク
 
