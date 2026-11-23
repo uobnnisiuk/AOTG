@@ -1,4 +1,5 @@
 """Independent synthetic, no real guard, model, recovery or service calls."""
+import importlib
 import io
 import pathlib
 import sys
@@ -6,8 +7,8 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1] / "docs" / "field-notes" / "memory-context-candidate"
 sys.path.insert(0, str(ROOT))
-import observation_journal as journal
-import verify_observation_journal as reader
+journal = importlib.import_module("observation_journal")
+reader = importlib.import_module("verify_observation_journal")
 
 
 class IndependentJournalReaderTests(unittest.TestCase):
