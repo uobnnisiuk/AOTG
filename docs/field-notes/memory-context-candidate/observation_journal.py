@@ -70,7 +70,7 @@ class ObservationJournal(SerializedBudget):
         if self.initial_written:self._stop('duplicate-initial')
         if record.get('phase')!='startup-anchor':self._stop('initial-phase')
         self._capacity(1,self.limits.primary_line_bytes)
-        raw=self._persist(record,self.limits.primary_line_bytes);self.initial_written=True;return raw
+        raw=self._persist({**record,'run_id':self.run_id},self.limits.primary_line_bytes);self.initial_written=True;return raw
 
     def observed(self, record, now, *, force=False):
         self.clock(now)
@@ -85,7 +85,7 @@ class ObservationJournal(SerializedBudget):
         # Reserve the guard's full permitted line before committing pre-guard
         # evidence. This does not require or delay the real guard verdict.
         self._capacity(2,self.limits.primary_line_bytes+GUARD_LINE_BYTES)
-        raw=self._persist(record,self.limits.primary_line_bytes)
+        raw=self._persist({**record,'run_id':self.run_id},self.limits.primary_line_bytes)
         self._reserved_rows=1;self._reserved_bytes=GUARD_LINE_BYTES
         self._pending={'sequence':record['sequence'],'primary_sha256':hashlib.sha256(raw).hexdigest(),'at':now}
         self.primary_ticks+=1;self._last_sample=now;self._forced+=int(force)
@@ -114,7 +114,7 @@ class ObservationJournal(SerializedBudget):
                 reason='context-capacity-refused';stop_after=self.stopped_reason
             else:reason='context-selected';selected=True
         enriched={**{k:v for k,v in record.items() if k not in ('sample','anchor')},
-                  'primary_sha256':self._pending['primary_sha256'],'context_schedule':{'reason':reason,'attempts_before':self._attempts,
+                  'run_id':self.run_id,'primary_sha256':self._pending['primary_sha256'],'context_schedule':{'reason':reason,'attempts_before':self._attempts,
                    'interval_skips':self.context_skipped_interval}}
         self._reserved_rows=0;self._reserved_bytes=0
         raw=self._persist(enriched,GUARD_LINE_BYTES)
