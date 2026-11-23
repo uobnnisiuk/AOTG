@@ -1,6 +1,8 @@
 """Independent synthetic, no real guard, model, recovery or service calls."""
 import importlib
 import io
+from dataclasses import replace
+from unittest import mock
 import pathlib
 import sys
 import unittest
@@ -105,6 +107,59 @@ class IndependentJournalReaderTests(unittest.TestCase):
             self.assertNotEqual(changed[index], rows[index])
             with self.subTest(index=index):
                 self.assert_invalid(b"".join(changed))
+
+    def test_capacity_refusal_ends_chain_and_forbids_later_primary(self):
+        stream = io.StringIO()
+        j = journal.ObservationJournal(stream, origin=0, deadline=10, run_id="synthetic")
+        j.start({"phase": "startup-anchor"}, 0)
+        # Primary+guard fit; the full optional context reservation does not.
+        j.limits = replace(j.limits, max_bytes=8_192)
+        j.observed({"phase": "observed", "sequence": 0}, 0, force=True)
+        with self.assertRaisesRegex(journal.BudgetStop, "aggregate-byte-cap"):
+            j.verdict({"phase": "guard-result", "sequence": 0, "guard_verdict": "passed"}, 0)
+        raw = stream.getvalue().encode("ascii")
+        self.assertEqual(len(raw.splitlines()), 3)
+        self.assertIn(b"context-capacity-refused", raw)
+        out = self.check(raw)
+        self.assertEqual(out["primary_ticks"], 1)
+        self.assertFalse(out["rejected_guard_recorded"])
+        self.assertFalse(out["runtime_qualified"])
+        # A valid-looking next primary is still forbidden after terminal stop.
+        extra = self.fixture(rejected=True).splitlines(keepends=True)[1]
+        with self.assertRaisesRegex(reader.JournalIntegrityError, "record-after-terminal-guard"):
+            self.check(raw + extra)
+        # A first-tick claim that the attempt quota was exhausted is unbound.
+        spoofed = raw.replace(b"context-capacity-refused", b"context-attempt-quota")
+        with self.assertRaisesRegex(reader.JournalIntegrityError, "context-attempt-quota-unproven"):
+            self.check(spoofed)
+
+    def test_attempt_quota_stop_ends_chain_even_when_guard_passed(self):
+        # Lower only the *synthetic* quota in this unit fixture to exercise
+        # a reachable quota stop without thousands of artificial samples.
+        stream = io.StringIO()
+        j = journal.ObservationJournal(stream, origin=0, deadline=10, run_id="synthetic")
+        j.start({"phase": "startup-anchor"}, 0)
+        with mock.patch.object(journal, "MAX_CONTEXT_ATTEMPTS", 1):
+            j.observed({"phase": "observed", "sequence": 0}, 0, force=True)
+            j.verdict({"phase": "guard-result", "sequence": 0, "guard_verdict": "passed"}, 0)
+            j.context_after_primary_flush(lambda _: {"status": "incomplete"}, clock=lambda: 0)
+            j.observed({"phase": "observed", "sequence": 1}, 2.1)
+            with self.assertRaisesRegex(journal.BudgetStop, "context-attempt-quota"):
+                j.verdict({"phase": "guard-result", "sequence": 1, "guard_verdict": "passed"}, 2.1)
+        raw = stream.getvalue().encode("ascii")
+        self.assertEqual(len(raw.splitlines()), 6)
+        self.assertIn(b"context-attempt-quota", raw)
+        with mock.patch.object(reader, "MAX_CONTEXT", 1):
+            out = self.check(raw)
+            self.assertEqual((out["primary_ticks"], out["context_rows"]), (2, 1))
+            self.assertFalse(out["rejected_guard_recorded"])
+            self.assertFalse(out["authorizes_retry"])
+            extra = self.fixture(rejected=True).splitlines(keepends=True)[1]
+            with self.assertRaisesRegex(reader.JournalIntegrityError, "record-after-terminal-guard"):
+                self.check(raw + extra)
+        # The production quota has not been met by this reduced fixture.
+        with self.assertRaisesRegex(reader.JournalIntegrityError, "context-attempt-quota-unproven"):
+            self.check(raw)
 
     def test_wrong_stream_type_and_missing_trusted_run_id(self):
         with self.assertRaises(reader.JournalIntegrityError):
