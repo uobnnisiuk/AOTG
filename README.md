@@ -59,6 +59,17 @@ AOTGは、対象の**機材・OS・ソフトウェア・用途・制約**を入�
 
 今後は、[UOB-50（実務ベンチ・独立評価）](https://linear.app/uobnnisiuk/issue/UOB-50)をはじめ、実機測定、有限な設定探索、必要に応じたsource改修、実行可能な専用キットの生成へ段階的に進めます。初回実装の詳細と受入条件は[MVP設計](docs/mvp.md)、[manifestスキーマ](schema/manifest.schema.json)、[基準ベンチのfixtureと測定設計](docs/benchmark.md)を参照してください。
 
+## 実測データ（AMD環境のローカルLLM）
+
+AOTGの最適化の前提になる実機検証は、noteマガジン「AMDで動かすローカルLLM実測」で公開しています。すべて筆者の所有機材での実測です。
+
+- [Radeon 8060S vs AI PRO R9700：同じ27Bモデルで生成速度は2.43倍違った](https://note.com/uobnnisiuk/n/ne1f65933f1ed)
+- [Flash-Nextは27Bより4倍速いのか：8060S単独で測って、本番採用するまでの実測記録](https://note.com/uobnnisiuk/n/nb3a49171ee75)
+- [R9700の27Bを速くする設定はあるか：バッチ512・n-gram投機・MTPまで全部試した実測](https://note.com/uobnnisiuk/n/ne4c927729e94)
+- [AMDでローカルLLMを始めるならどの構成か：EVO-X3単体か、R9700を足すか](https://note.com/uobnnisiuk/n/n3648b49f0ea6)
+
+検証環境：GMKtec EVO-X3（Ryzen AI Max+ 395／Radeon 8060S／メモリ128GB）＋ Radeon AI PRO R9700（OCuLink外付け）、llama.cpp／ROCm。
+
 ## 安全と再現性
 
 実機の計測やソフトウェア改修は、既存サービスとは分離した環境で行います。測定の開始条件・試行数・時間・資源上限を固定し、失敗や性能悪化も記録します。生成物の本番適用は独立した検証と明示的な許可を必要とします。
