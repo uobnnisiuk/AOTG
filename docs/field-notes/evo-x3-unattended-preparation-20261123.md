@@ -112,3 +112,9 @@ The next completion evidence must come from an explicitly approved new run,
 including independent restoration confirmation and preserved collection results.
 At this cutoff, this packet has **zero new startup trials, zero comparisons and
 zero new quality evaluations**. No prior approval or consumed attempt is reused.
+
+## Later execution addendum — 2026-11-23
+
+The 14:06:59 UTC cutoff above remains a pre-approval preparation record. A later explicit approval and one authentication were followed by a local supervisor entry failure before any watcher or remote release. The default preview had not traversed the actual supervisor `main()`; it assumed a nonexistent total-budget field. The exact four budget fields and their 1,140-second sum are now validated, and the launcher preview exercises the real entry.
+
+A separate read-only check established the retained gate was authenticated and unconsumed and that the 19 protected files and native baseline still matched. After local repair and an exclusive continuation guard, the same approved operation made its first release without a second authentication. The startup diagnostic stopped on the unchanged swap counter guard; it did not reach readiness or perform an inference workload. Automatic restoration, independent baseline/API checks and bounded result collection then completed. These results supersede only the earlier prospective execution status, not its historical cutoff or test records. See [the failure and diagnostic outcome note](evo-x3-supervisor-entry-failure-20261123.md) for the measured scope and remaining limits.
