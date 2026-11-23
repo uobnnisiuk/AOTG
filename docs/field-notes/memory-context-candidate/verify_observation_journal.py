@@ -39,8 +39,9 @@ def _reject_constant(_):
 def verify_stream(stream, *, expected_run_id):
     """Read a binary stream once; never label synthetics as runtime-qualified.
 
-    expected_run_id comes from a separately trusted run manifest. It binds only
-    optional context rows; neither it nor a digest authenticates the producer.
+    expected_run_id comes from a separately trusted run manifest. Every
+    synthetic record must carry the same ID. This is structural matching,
+    not producer authentication or proof of runtime execution.
     """
     if not isinstance(expected_run_id, str) or not 1 <= len(expected_run_id) <= 64:
         raise ValueError("expected-run-id-required")
@@ -75,6 +76,8 @@ def verify_stream(stream, *, expected_run_id):
             raise JournalIntegrityError("invalid-jsonl") from exc
         if not isinstance(record, dict) or canonical != raw:
             raise JournalIntegrityError("noncanonical-jsonl")
+        if record.get("run_id") != expected_run_id:
+            raise JournalIntegrityError("record-run-id-unbound")
         file_hash.update(raw)
         if state == "startup":
             if record.get("phase") != "startup-anchor":
@@ -121,9 +124,10 @@ def verify_stream(stream, *, expected_run_id):
             if contexts > MAX_CONTEXT:
                 raise JournalIntegrityError("context-quota")
             state = "observed"
-    if state in ("startup", "guard", "context"):
+    if state in ("startup", "guard", "context") or (state == "observed" and primary == 0):
         raise JournalIntegrityError("missing-startup-verdict-or-selected-context")
     return {"status": "incomplete-unverified-runtime", "structure_consistent": True,
+            "run_id_bound": True,
             "runtime_qualified": False, "authorizes_retry": False,
             "root_cause_proven": False, "rejected_guard_recorded": rejected,
             "primary_ticks": primary, "context_rows": contexts, "rows": rows,
