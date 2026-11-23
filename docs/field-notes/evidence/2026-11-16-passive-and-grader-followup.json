@@ -1,0 +1,106 @@
+{
+  "additive_cpp_regrade": {
+    "expected": 15,
+    "isolation_sha256": "b879d938c9c49a4e4a0bea674bea0500dd92c8397150aea0989d5d5df68f25c5",
+    "native_mode": "ubsan",
+    "outer_readonly": true,
+    "outer_verified": true,
+    "passed": 15,
+    "quality_accepted": true,
+    "quality_sha256": "31ce87f8a3940903d42e002fcf6891eb879cfde55bf8d5f99cae5ed6f2de9844",
+    "scope": "Existing generated source copied unchanged. No model rerun. Additive offline replay only.",
+    "source_review_sha256": "43c8357dc5fd70d642823ce7ba977690a80a5852b8c8bb740f2bd2bb6c1a2fd0",
+    "source_sha256": "d0b69fe6ee4e6e90dce20056c6f7d52def0ac00f281c3e3e7abb667e59fa3a4b"
+  },
+  "artifact": "aotg-field-followup-diagnostic-summary",
+  "date": "2026-11-16",
+  "goal_complete": false,
+  "grader": {
+    "catalog_sha256": "277abb01f995890be289b2c3d2e679f8a3283a12040b54218991fc005c19c268",
+    "github_review": "https://github.com/uobnnisiuk/AOTG/pull/23#pullrequestreview-5914542316",
+    "grader_sha256": "f8797a3a6ab7bad05995572e7bed306f372eb5cd8a356396bc8f0f4ac8f42e9c",
+    "head": "a8be61d6a7ad86dcf22b18563f9426962f1ce7f3",
+    "independent_review_sha256": "0f72226a083f64aa9825c711bf9e4becc354f42caab8969d3dc65a50781fb5fd",
+    "pr": "https://github.com/uobnnisiuk/AOTG/pull/23"
+  },
+  "limits": [
+    "Native regrade is additional verification of the same C++ source, not another model coding-time sample.",
+    "Old catalog-bound reports and consumed plans are not relabeled or changed.",
+    "No valid comparative baseline, optimized configuration selection, kit rebuild or new production-window approval follows from these observations."
+  ],
+  "new_model_inference": false,
+  "original_evidence_preserved": {
+    "old_9_case_quality_sha256": "90532974c6107ba4d4ef5212d5b9a3d08c5a4b45ed7c819e73cd730e57d2e1f5",
+    "old_report_not_rewritten": true,
+    "source_sha256": "d0b69fe6ee4e6e90dce20056c6f7d52def0ac00f281c3e3e7abb667e59fa3a4b"
+  },
+  "passive": {
+    "global_counter_first_last": {
+      "allocstall_movable": [
+        20171,
+        20171
+      ],
+      "allocstall_normal": [
+        4608,
+        4608
+      ],
+      "compact_stall": [
+        10295,
+        10295
+      ],
+      "oom_kill": [
+        0,
+        0
+      ],
+      "pgmajfault": [
+        23920,
+        23920
+      ],
+      "pgscan_direct": [
+        5295592,
+        5295592
+      ],
+      "pgscan_kswapd": [
+        216038991,
+        216038991
+      ],
+      "pswpin": [
+        6,
+        6
+      ],
+      "pswpout": [
+        106,
+        106
+      ]
+    },
+    "job_empty": true,
+    "memory": {
+      "available_min_bytes": 59787603968,
+      "available_min_gib": 55.68154525756836,
+      "cache_min_bytes": 59424329728,
+      "free_min_bytes": 576671744,
+      "swap_used_bytes_values": [
+        417792
+      ]
+    },
+    "observation_seconds": 24.00204816198675,
+    "observed_end_utc": "2026-11-16T02:45:40.722914+00:00",
+    "observed_start_utc": "2026-11-16T02:45:16.726525+00:00",
+    "sample_count": 13,
+    "service_state_unchanged": true,
+    "swappiness_read_only": 60
+  },
+  "passive_evidence_sha256": {
+    "analysis": "19f9dfb5410c014652e95c8a19bd07334e521da65f4d246080b59ef474e435ce",
+    "capture": "1e2381c2315ea19431bbc3347df90d5a2f2af912b09fe84c2608d7e7f3223332",
+    "independent_review": "ef779a217a7df3f5c66d075d6146ed14cb946a688fcd306fd194971a672f5408"
+  },
+  "passive_scope": [
+    "13 unprivileged samples over approximately24seconds; no benchmark or GPU-work submission.",
+    "Counter readings remain constant inside this capture; the unobserved interval since the failed startup cannot be attributed.",
+    "The per-sample end timestamp/elapsed field precedes vmstat and meminfo acquisition; final UTC precedes the service/process scan. These are not exact whole-acquisition brackets.",
+    "No configuration, swap policy, cache or production service was changed."
+  ],
+  "production_service_control": false,
+  "version": 1
+}
