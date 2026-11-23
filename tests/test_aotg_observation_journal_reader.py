@@ -25,12 +25,12 @@ class IndependentJournalReaderTests(unittest.TestCase):
             j.context_after_primary_flush(lambda clk: {"status": "incomplete", "psi": None}, clock=lambda: 0)
         return stream.getvalue().encode("ascii")
 
-    def check(self, content):
-        return reader.verify_stream(io.BytesIO(content), expected_run_id="synthetic")
+    def check(self, content, **trusted):
+        return reader.verify_stream(io.BytesIO(content), expected_run_id="synthetic", **trusted)
 
-    def assert_invalid(self, data):
+    def assert_invalid(self, data, **trusted):
         with self.assertRaises(reader.JournalIntegrityError):
-            self.check(data)
+            self.check(data, **trusted)
 
     def test_passed_context_linkage_but_never_runtime_qualified(self):
         out = self.check(self.fixture())
@@ -120,14 +120,18 @@ class IndependentJournalReaderTests(unittest.TestCase):
         raw = stream.getvalue().encode("ascii")
         self.assertEqual(len(raw.splitlines()), 3)
         self.assertIn(b"context-capacity-refused", raw)
-        out = self.check(raw)
+        # Explicit trusted test configuration: never mistake this fixture
+        # for the published production max_bytes=128MiB.
+        with self.assertRaisesRegex(reader.JournalIntegrityError, "capacity-refusal-unproven"):
+            self.check(raw)
+        out = self.check(raw, trusted_max_bytes=8_192)
         self.assertEqual(out["primary_ticks"], 1)
         self.assertFalse(out["rejected_guard_recorded"])
         self.assertFalse(out["runtime_qualified"])
         # A valid-looking next primary is still forbidden after terminal stop.
         extra = self.fixture(rejected=True).splitlines(keepends=True)[1]
         with self.assertRaisesRegex(reader.JournalIntegrityError, "record-after-terminal-guard"):
-            self.check(raw + extra)
+            self.check(raw + extra, trusted_max_bytes=8_192)
         # A first-tick claim that the attempt quota was exhausted is unbound.
         spoofed = raw.replace(b"context-capacity-refused", b"context-attempt-quota")
         with self.assertRaisesRegex(reader.JournalIntegrityError, "context-attempt-quota-unproven"):
@@ -160,6 +164,49 @@ class IndependentJournalReaderTests(unittest.TestCase):
         # The production quota has not been met by this reduced fixture.
         with self.assertRaisesRegex(reader.JournalIntegrityError, "context-attempt-quota-unproven"):
             self.check(raw)
+
+    def test_capacity_refusal_verified_at_exact_reservation_boundary(self):
+        stream = io.StringIO()
+        j = journal.ObservationJournal(stream, origin=0, deadline=10, run_id="synthetic")
+        j.start({"phase": "startup-anchor"}, 0)
+        j.observed({"phase": "observed", "sequence": 0}, 0, force=True)
+        # At the guard decision the writer still reserves the FULL guard cap,
+        # plus the entire optional context cap (rather than actual guard bytes).
+        reservation = j.bytes + journal.GUARD_LINE_BYTES + journal.CONTEXT_LINE_BYTES
+        j.limits = replace(j.limits, max_bytes=reservation - 1)
+        with self.assertRaisesRegex(journal.BudgetStop, "aggregate-byte-cap"):
+            j.verdict({"phase": "guard-result", "sequence": 0, "guard_verdict": "passed"}, 0)
+        raw = stream.getvalue().encode("ascii")
+        self.assertIn(b"context-capacity-refused", raw)
+        self.assertEqual(len(raw.splitlines()), 3)
+        with self.assertRaisesRegex(reader.JournalIntegrityError, "context-capacity-refusal-unproven"):
+            self.check(raw)  # Default production caps make this claim impossible.
+        out = self.check(raw, trusted_max_bytes=reservation - 1)
+        self.assertEqual(out["status"], "incomplete-unverified-runtime")
+        self.assertFalse(out["root_cause_proven"])
+        with self.assertRaisesRegex(reader.JournalIntegrityError, "context-capacity-refusal-unproven"):
+            self.check(raw, trusted_max_bytes=reservation)  # Full reservation fits.
+        extra = self.fixture(rejected=True).splitlines(keepends=True)[1]
+        with self.assertRaisesRegex(reader.JournalIntegrityError, "record-after-terminal-guard"):
+            self.check(raw + extra, trusted_max_bytes=reservation - 1)
+
+    def test_capacity_row_limit_and_untrusted_limit_rejected(self):
+        stream = io.StringIO()
+        j = journal.ObservationJournal(stream, origin=0, deadline=10, run_id="synthetic")
+        j.start({"phase": "startup-anchor"}, 0)
+        j.observed({"phase": "observed", "sequence": 0}, 0, force=True)
+        j.limits = replace(j.limits, max_rows=3)
+        with self.assertRaisesRegex(journal.BudgetStop, "aggregate-row-cap"):
+            j.verdict({"phase": "guard-result", "sequence": 0, "guard_verdict": "passed"}, 0)
+        raw = stream.getvalue().encode("ascii")
+        self.assertEqual(self.check(raw, trusted_max_rows=3)["primary_ticks"], 1)
+        with self.assertRaisesRegex(reader.JournalIntegrityError, "context-capacity-refusal-unproven"):
+            self.check(raw)
+        with self.assertRaisesRegex(reader.JournalIntegrityError, "context-capacity-refusal-unproven"):
+            self.check(raw, trusted_max_rows=4)
+        for illegal in (0, -1, True, reader.MAX_BYTES + 1, 1.5):
+            with self.subTest(illegal=illegal), self.assertRaises(ValueError):
+                self.check(raw, trusted_max_bytes=illegal)
 
     def test_wrong_stream_type_and_missing_trusted_run_id(self):
         with self.assertRaises(reader.JournalIntegrityError):
