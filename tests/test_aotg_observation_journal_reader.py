@@ -1,11 +1,11 @@
 """Independent synthetic, no real guard, model, recovery or service calls."""
 import importlib
 import io
-from dataclasses import replace
-from unittest import mock
 import pathlib
 import sys
 import unittest
+from dataclasses import replace
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[1] / "docs" / "field-notes" / "memory-context-candidate"
 sys.path.insert(0, str(ROOT))
