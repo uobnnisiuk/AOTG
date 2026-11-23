@@ -1,0 +1,131 @@
+{
+  "actual_pipe_or_ssh_backpressure_tested": false,
+  "actual_remote_actions": false,
+  "artifact": "aotg-local-collector-wire-boundary-audit",
+  "checks": {
+    "blocked_deadline": {
+      "blocked": false,
+      "error": "wire_deadline",
+      "returncode": null,
+      "rows_requested": 1,
+      "wire_bytes": 0,
+      "wire_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "writes": 0
+    },
+    "exact_raw_total": {
+      "baseline_total": 40399,
+      "slack_bytes": {
+        "0": {
+          "errors": [
+            "aggregate_byte_limit"
+          ],
+          "raw_bytes": 15435,
+          "status": "incomplete",
+          "total_read_bytes": 40399
+        },
+        "1": {
+          "errors": [],
+          "raw_bytes": 15435,
+          "status": "complete",
+          "total_read_bytes": 40399
+        }
+      }
+    },
+    "line_100000": {
+      "blocked": false,
+      "error": null,
+      "returncode": 0,
+      "rows_requested": 1,
+      "wire_bytes": 100000,
+      "wire_sha256": "e014f3eb4d8b0f1bb613913cef50ef2e1703b07db0af14666f9ca0671cf22c9e",
+      "writes": 1
+    },
+    "line_100001": {
+      "blocked": false,
+      "error": "wire_budget",
+      "returncode": null,
+      "rows_requested": 1,
+      "wire_bytes": 0,
+      "wire_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "writes": 0
+    },
+    "metadata_shapes": {
+      "emit": {
+        "blocked": false,
+        "error": null,
+        "returncode": 0,
+        "rows_requested": 3,
+        "wire_bytes": 7303,
+        "wire_sha256": "26b41885720297406b86c9176fa54a3a3b0fb6fa2f6b9745cb04549533a4cba6",
+        "writes": 3
+      },
+      "four_kib_assumption_holds_for_these_shapes": true,
+      "maximum_observed_shape_is_not_a_formal_platform_bound": true,
+      "serialized_bytes": {
+        "complete_final": 2818,
+        "early_incomplete_final": 3711,
+        "last_file_close": 774
+      },
+      "stat_assumption": "64-bit device/inode/time/size; 32-bit uid/gid; directory links64bit"
+    },
+    "partial_writes": {
+      "blocked": true,
+      "error": null,
+      "returncode": 0,
+      "rows_requested": 1,
+      "wire_bytes": 100000,
+      "wire_sha256": "e014f3eb4d8b0f1bb613913cef50ef2e1703b07db0af14666f9ca0671cf22c9e",
+      "writes": 7
+    },
+    "real_early_final": {
+      "attempted_files": 0,
+      "bytes": 3475,
+      "errors": [
+        "remote_collection_deadline",
+        "remote_collection_deadline"
+      ],
+      "status": "incomplete"
+    },
+    "records_6200": {
+      "blocked": false,
+      "error": null,
+      "returncode": 0,
+      "rows_requested": 6200,
+      "wire_bytes": 18600,
+      "wire_sha256": "f0e193dbc8339e328ac95d83c1794b13b0977036de3a40a88527f16aa0682a76",
+      "writes": 6200
+    },
+    "records_6201": {
+      "blocked": false,
+      "error": "wire_budget",
+      "returncode": null,
+      "rows_requested": 6201,
+      "wire_bytes": 18600,
+      "wire_sha256": "f0e193dbc8339e328ac95d83c1794b13b0977036de3a40a88527f16aa0682a76",
+      "writes": 6200
+    },
+    "wire_total_extra_False": {
+      "blocked": false,
+      "error": null,
+      "returncode": 0,
+      "rows_requested": 4027,
+      "wire_bytes": 402653184,
+      "wire_sha256": "f1799cad8bda2168e6ddac8f724ab582e0d3db08e1e9b1c92b1e9ba3d0310852",
+      "writes": 4027
+    },
+    "wire_total_extra_True": {
+      "blocked": false,
+      "error": "wire_budget",
+      "returncode": null,
+      "rows_requested": 4028,
+      "wire_bytes": 402653184,
+      "wire_sha256": "f1799cad8bda2168e6ddac8f724ab582e0d3db08e1e9b1c92b1e9ba3d0310852",
+      "writes": 4027
+    }
+  },
+  "source_sha256": "22a8667bd5f935403e85ebbce6a6f8dbfaeddd00137e6241448df87d074ddf5d",
+  "test_count": 7,
+  "tests_passed": true,
+  "version": 1,
+  "whole_chain_qualified": false
+}

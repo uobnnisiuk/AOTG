@@ -1,45 +1,86 @@
 {
-  "artifact": "aotg-memory-context-source-index",
-  "collector_integration": {
-    "existing_observation_byte_cap": 134217728,
-    "existing_observation_record_cap": 60001,
-    "new_context_rows_per_pass": 1,
-    "qualified": false,
-    "required_before_runtime_use": [
-      "fixed sampling frequency/thinning and full-window row bound",
-      "serialized byte bound and read/measurement overhead review",
-      "new explicitly pinned source/plan graph and authority"
-    ]
-  },
-  "deployed": false,
-  "files": {
-    "README.md": {
-      "bytes": 4828,
-      "sha256": "86cb6a76be54ed36b4132d8ae83994022f159c36a5bac9322fc10859d476c72b"
+  "artifact": "aotg-observation-integration-source-index",
+  "comparison_quality_accepted": false,
+  "files": [
+    {
+      "bytes": 9323,
+      "path": "capacity_envelope.py",
+      "sha256": "13a24bf00ef57d4b09e7e4cd2ff6e4d8580eafdb1f91c3bb548ca8129f76c5ca"
     },
-    "memory-context.patch": {
-      "bytes": 13500,
-      "sha256": "275f1daeeba1468bc1710b1666200db62b22e70d4c1938f141cc925e1e967e0b"
+    {
+      "bytes": 13937,
+      "path": "serialized_budget.py",
+      "sha256": "db472032ad46452b290d8e58cfe471a766fe06dc9a508feba1eecdfeb0410e5d"
     },
-    "resource_context.py": {
+    {
+      "bytes": 7424,
+      "path": "diagnostic_triage.py",
+      "sha256": "5b679177e1905f5d1e0d97260f4d75df980e4ab8c05474acf22b89af1739f9bf"
+    },
+    {
       "bytes": 11757,
+      "path": "resource_context.py",
       "sha256": "3f2d7cacf83111e14ea82a3ce434ffb6f777074f94070e69f59b1f15382f45e6"
     },
-    "test_resource_context.py": {
-      "bytes": 13890,
-      "sha256": "00bc825e959cc394e037b29b8372cb4c4197b49fc0129d0b34ec022b289d38f1"
+    {
+      "bytes": 9451,
+      "path": "observation_journal.py",
+      "sha256": "8582aa22a0c04c5d92320eb467289cafc0191b71040e8ecc56fed200054b10b7"
+    },
+    {
+      "bytes": 7956,
+      "path": "test_resource_context.py",
+      "sha256": "ff0e41d2525a2ece7ad9002aa47b59688e85abf6fd14b71f522ce0cb5f8fe2f0"
+    },
+    {
+      "bytes": 13052,
+      "path": "test_observation_journal.py",
+      "sha256": "f488bba91b9cedd9889b22b2c5effb4ad31e73d9299eb25acf3359f0c957441a"
+    },
+    {
+      "bytes": 9212,
+      "path": "test_private_integration.py",
+      "sha256": "cffc5892cfd20b99bb4353a27173706834fa1a75f356765d599cd7afdb3337e4"
+    },
+    {
+      "bytes": 30125,
+      "path": "memory-context-integration.patch",
+      "sha256": "d39f5a5c6607285f9de12f53b28aab78b9e75c44be12fd831466a7acbbf35ff7"
+    },
+    {
+      "bytes": 6719,
+      "path": "README.md",
+      "sha256": "38db4e88578b4764dfb8bd6d5aada335fc9d65e1f42e2f37bb0b4759d10b221b"
+    },
+    {
+      "bytes": 1055,
+      "path": "capacity-result.json",
+      "sha256": "e2de02049180cd51793511fa8d24b922f672a48144003063dd91564ac414c1f0"
     }
-  },
-  "frozen_worker_or_guard_changes": false,
-  "live_sampling": false,
-  "model_quality_or_cause_attribution_proven": false,
+  ],
+  "independent_restore_verified": false,
+  "limitations": [
+    "No live worker/proc/cgroup run; helper self-only calibration is separate.",
+    "No real restore or end-to-end one-collection proof after journal failure.",
+    "Other producer file caps and wire metadata remain required full-chain conditions.",
+    "Compact reference reader authentication/duplicate/tamper qualification is not implemented.",
+    "Additional accepted-tick overhead; blocked syscall preemption and fsync durability are not claimed."
+  ],
+  "observation_bytes_upper": 130394112,
+  "observation_rows_upper": 59072,
   "private_base_sha256": "692904c3d1c394fe617a2a16a76284925c2823f2cc52a3e26d3376b7119538f9",
-  "private_patched_worker_sha256": "ecd090c4dca2646e386ebe6554bef2a32017aa537d6711dbaf9497033a70d445",
-  "private_worker_included": false,
-  "private_worker_integration_tests": 5,
-  "public_ci_private_worker_coverage_claimed": false,
-  "runtime_or_collector_caps_modified": false,
-  "scope": "offline source-only unapproved integration candidate",
-  "synthetic_tests_passed": 19,
+  "private_candidate_sha256": "d26162a6192a08644dbc6133c94bd0b3c0c0561b596b78df58297af7ac494557",
+  "private_core_tests_sha256": "8cc256ea2099ade7acb843636e0421dce8da99425b29ca36c906b4b12435dda7",
+  "raw_total_conservative_upper": 264611840,
+  "resources_bytes_upper": 57753600,
+  "runtime_qualified": false,
+  "status": "source-only-unapproved-not-deployed",
+  "synthetic_tests": {
+    "private": 6,
+    "public": 64,
+    "relocated_public": 64,
+    "skipped": 0
+  },
+  "upstream_commit": "31a5f0f5a63b4e9a4ec98a4d27e5e30c249dd967",
   "version": 1
 }

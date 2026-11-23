@@ -1,23 +1,116 @@
-# Bounded memory context candidate
+# Bounded observation integration candidate
 
-Source-only proposal, not deployed. This work does not change frozen worker bytes, plans, guard thresholds, restore logic, service state, models or authorization. It does not run live proc/cgroup sampling. No comparison rerun or new approval is implied.
+Source-only, unapproved and not deployed. No model/service/SSH operation or field
+measurement is performed by these sources or the synthetic tests. Original
+runtime, plans and execution evidence remain unchanged.
 
-Public-safe preservation candidates are resource_context.py, test_resource_context.py, memory-context.patch and this README. The complete private worker copy and preparation record are private and must not be uploaded.
+This reuses PR38 head `31a5f0f5a63b4e9a4ec98a4d27e5e30c249dd967`:
+`serialized_budget.py` and `diagnostic_triage.py` are byte-identical; the capacity
+calculator adds optional force ticks, a hard sample quota and a separate guard
+line cap. Its original defaults and eight original tests remain unchanged.
+`resource_context.py` is the previously reviewed bounded reader, byte-identical.
+The helper test copy removes only its obsolete optional private integration suite;
+the new private runner tests the current adapter explicitly.
 
-The helper reads only fixed cgroup v2 memory.current, memory.swap.current, memory.stat, memory.events, memory.swap.events, memory.pressure, global /proc/pressure/memory and selected /proc/vmstat counters. It reads stat/cgroup only for this worker and explicitly supplied already-owned root/native PIDs, with before/after start-tick and cgroup binding. It enumerates no processes, reads no commands/environment, writes nothing and launches nothing. Numeric counters are raw observations, not rates or causal attribution. Missing files/keys are null or absent with explicit reasons, never zero. Replaced PIDs/cgroups invalidate binding. The fixed inputs are opened with no-follow directory traversal and regular-file checks.
+`ObservationJournal` reserves the next guard line before flushing the raw observed
+sample. The original guard then runs unchanged. A rejected guard performs zero
+context reads; its original exception remains primary even if verdict recording
+fails. Accepted resource lines remain accepted-only. After the passed guard and
+resource line are flushed, an optional context may be read. No fsync or power-loss
+durability is claimed. A blocking kernel syscall cannot be preempted by these
+userspace clock checks.
 
-Each call has at most 24 file reads, 256 KiB of input, file-specific byte caps, and a 50 ms monotonic userspace budget checked around operations. Sequential proc/sysfs reads are not atomic, and a userspace timer cannot interrupt an uninterruptible kernel syscall. The limits are not a hard realtime claim.
+Expected missing/invalid diagnostic values remain `null` with reasons and may
+continue after the unchanged guard passed. Unexpected sampler exceptions, clock
+rollback/nonfinite/deadline, serialization, quota or write errors latch a stop.
+The selected attempt is consumed before the reader; no retry resets quota or
+clock state. A failure witness is attempted within its reserved line. Failed
+writes cannot be reported as completed capture. Post-call actual monotonic time
+is checked, including the shared worker deadline. Skip reasons/counts occupy the
+existing guard row, not an extra row per skipped tick.
 
-The separate integration patch embeds the exact helper definitions into a private worker copy, avoiding a new unpinned runtime import. It samples context only after a passed guard and the flushed accepted resource record, tied to the same observation sequence. The observed context is later than the primary sample and cannot prove the reason for an earlier swap event. On a rejected guard it does no extra resource reads, records guard-rejected-cleanup-priority, and preserves the original exception and cleanup. Failed optional context remains explicitly incomplete. Existing observation-write failures remain fail closed.
+Context reads are separated by at least two seconds between actual start times;
+force ticks do not reset that clock. The compact guard record preserves verdict,
+reason and sequence and references the exact pre-guard JSONL bytes (including
+newline) by SHA256 instead of repeating the full sample/anchor. Context uses the
+same sequence/hash. The old offline triage accepts explicit evidence fields, not
+raw journal rows, so it is unchanged. A separately qualified raw-journal join and
+adversarial duplicate/missing/tampered-record reader is **not implemented** here;
+these references alone are not independent authenticity or quality evidence.
 
-Private base SHA256: 692904c3d1c394fe617a2a16a76284925c2823f2cc52a3e26d3376b7119538f9
-Candidate worker SHA256: ecd090c4dca2646e386ebe6554bef2a32017aa537d6711dbaf9497033a70d445
-Helper SHA256: 3f2d7cacf83111e14ea82a3ce434ffb6f777074f94070e69f59b1f15382f45e6
+## Fixed capacity
 
-The n=0 diff requires git apply --unidiff-zero against a trusted copy of that exact private base. Applying it creates a different worker identity; old plans cannot authorize it. The standalone helper has no CLI that samples the live system. Tests require Python standard library only. Run the helper tests with python3 -I -S -B test_resource_context.py; to include the five private integration checks, additionally provide --base-worker /trusted/base.py --candidate-worker /isolated/candidate.py. Never supply an unreviewed worker because the integration tests import its definitions. The public repository does not contain the private worker; those checks cannot be claimed as public CI coverage without supplying it.
+All limits apply to the fully escaped, encoded JSONL bytes **including newline**.
+No field is truncated and no absent counter becomes zero. Oversize records stop.
 
-Observed verification: all 19 tests passed locally, using synthetic reader/clock state, temporary harmless files and mocked worker telemetry. Cases include missing/invalid data, PID reuse/cgroup replacement, late-read cutoff, no-follow/symlink/FIFO/byte limits, rejected-guard cleanup priority, context failure and primary exception preservation. Every original top-level function/class except Monitor has identical AST, including resource_check, read_pswpout, OwnedProcesses and execute. Monitor constructor, kernel helpers and close remain identical. No native model, SSH or live sampling was used.
+| Item | Hard upper bound |
+| --- | ---: |
+| Worker window | 5,340 seconds |
+| Normal primary cadence | at least 190 ms |
+| Forced guard samples | 65 (initial + at most 64 arms) |
+| Total primary samples, including forced | 28,200 |
+| Context attempts | 2,671 |
+| Startup / observed / guard / context line | 2,048 / 2,048 / 1,024 / 16,384 bytes |
+| Observations | 59,072 rows; 130,394,112 bytes |
+| Accepted resources | 28,200 rows; 57,753,600 bytes |
 
-Before any runtime use, the new bytes and any new graph must be independently reviewed and pinned. Added context records change the observation-volume budget: the old collector's 60,001-row/128-MiB limit has NOT been expanded or qualified for this candidate. Collection schema/row/byte budgets, measurement overhead and actual kernel field availability must be resolved in a separately reviewed integration; this patch is not an executable approved plan. Guards must not be relaxed to accommodate missing context. Source tests do not establish causes, performance, model quality or restoration.
+The conservative cadence bound is `ceil(5340000/190)+1+65 = 28172`.
+The hard quota of 28,200 includes forced samples and does not delay or skip them.
+The observation calculation is `1 + 2*28200 + 2671` rows and
+`2048 + 28200*(2048+1024) + 2671*16384` bytes. Initial discussion assumed a
+1 KiB anchor (130,393,088 bytes); the serialized boundary test found that the
+implementation uses a 2 KiB anchor, and the upper bound above follows the source.
 
-Deferred integration design: choose and freeze a lower context sampling frequency or deterministic thinning, then calculate worst-case rows and serialized bytes for the full bounded window. A proposed 1 Hz frequency is only a design option, not proof that the existing cap suffices. Preserve explicit skipped-sampling reasons and timestamps, and measure the added overhead before treating the configuration as comparable. No frequency, collector limit or runtime plan is changed here.
+This is below the existing 60,001-row/128 MiB observation and 30,000-row/64 MiB
+resource caps. With the calculator's conservative 128 MiB of **other** raw data,
+raw total is 264,611,840 bytes, strictly below 256 MiB (the actual collector's EOF
+probe is conservative at an exactly exhausted raw cap). Other files must still
+satisfy their own caps. The current producer server log can exceed the collector's
+individual log caps; this candidate does not fix that separate condition.
+The reused wire calculation remains conditional on bounded metadata and other
+files. Passing this local arithmetic does not qualify a complete capture chain.
+
+## Reproduce offline checks
+
+Linux/WSL, stdlib only, no downloads. From any working directory:
+
+```sh
+python3 -I -S -B /path/to/candidate/test_observation_journal.py
+```
+
+This runs 64 tests with no skips on Linux: 20 new adapter/boundary tests, the
+original 30 pure prototype tests and 14 helper tests. It includes a complete
+synthetic 5,340-second clock window with 64 forced arm checks, exact serialized
+line boundaries, maximum uint64/PSI/role fixtures, missing values, identity drift,
+clock discontinuity, full-cap reservation before reads and no-retry failures.
+It uses no live proc/cgroup reads. The POSIX no-follow test uses temporary files.
+
+The full private worker is deliberately excluded from publication. With explicitly
+trusted private source and core-test files available:
+
+```sh
+python3 -I -S -B /path/to/candidate/test_private_integration.py \
+  --base-worker /private/field-worker-v2.py \
+  --candidate-worker /private/field-worker-integrated-candidate.py \
+  --core-tests /private/tests/test_comparison_runtime.py
+```
+
+The six private synthetic tests cover actual Monitor ordering, owned PID/start
+bindings, zero extra reads after rejection, preserved original rejection on write
+failure, and original execute cleanup/barrier/kernel/summary behavior after an
+actual journal or context failure using fake children. All original top-level
+functions/classes except Monitor, its original guard try-body, and kernel/close
+methods are AST-identical to the frozen base. This is not a real systemd restore
+or an end-to-end automatic collection test. Coordinator restore followed by one
+collection after a new journal failure remains separately unqualified.
+
+The earlier per-pass `memory-context.patch` remains a separate unchanged historical candidate; `memory-context-integration.patch` is this bounded replacement against the exact original base.
+
+The n=0 patch requires `git apply --unidiff-zero` against the exact private base
+hash in `source-index.json`. It embeds reviewed helper definitions into the
+private standalone worker, so root imports do not gain an unpinned dependency.
+No patch application, source pin update, plan generation, approval, enrollment or
+runtime launch is performed here. The new adapter adds measurable work to accepted
+ticks; no zero-overhead, same-performance-condition or causal attribution claim
+is made. Self-only reader calibration does not measure this worker, flushes or
+production guard intervals.

@@ -28,6 +28,9 @@ class Envelope:
     context_min_period_ms: int = 2_000
     primary_rows_per_tick: int = 2
     primary_fixed_rows: int = 1
+    primary_forced_ticks: int = 0
+    primary_hard_tick_quota: int = 0
+    primary_guard_max_line_bytes: int = 0
     primary_max_line_bytes: int = 2_048
     context_max_line_bytes: int = 4_096
     other_raw_max_bytes: int = 128 * MIB
@@ -57,11 +60,22 @@ def calculate(e=Envelope()):
                 e.wire_chunk_bytes, e.primary_rows_per_tick)):
         raise ValueError("invalid-envelope-period-or-rows")
     primary_ticks = ceil_div(e.window_ms, e.primary_min_period_ms) + 1
+    primary_ticks += e.primary_forced_ticks
+    if e.primary_hard_tick_quota:
+        if e.primary_hard_tick_quota < primary_ticks:
+            raise ValueError("hard-quota-below-cadence-bound")
+        primary_ticks = e.primary_hard_tick_quota
     context_ticks = ceil_div(e.window_ms, e.context_min_period_ms) + 1
     primary_rows = primary_ticks * e.primary_rows_per_tick + e.primary_fixed_rows
     observation_rows = primary_rows + context_ticks
     observations_bytes = (primary_rows * e.primary_max_line_bytes
                           + context_ticks * e.context_max_line_bytes)
+    if e.primary_guard_max_line_bytes:
+        if e.primary_rows_per_tick != 2:
+            raise ValueError("split-line-caps-require-two-primary-rows")
+        observations_bytes = (e.primary_fixed_rows * e.primary_max_line_bytes
+            + primary_ticks * (e.primary_max_line_bytes + e.primary_guard_max_line_bytes)
+            + context_ticks * e.context_max_line_bytes)
     total_raw_bytes = observations_bytes + e.other_raw_max_bytes
     inventory_files = e.other_file_count + 1
     # Each present file adds at most one rounding chunk above the aggregate.

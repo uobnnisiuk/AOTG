@@ -1,0 +1,590 @@
+--- a/field-worker.py
++++ b/field-worker.py
+@@ -28,0 +29,535 @@
++
++from dataclasses import dataclass
++
++class BudgetStop(RuntimeError):
++    """A fail-closed record/clock/guard error: caller must stop and recover."""
++
++
++@dataclass(frozen=True)
++class Limits:
++    window_ms: int = 5_340_000
++    primary_min_period_ms: int = 190
++    context_min_period_ms: int = 2_000
++    primary_line_bytes: int = 2_048
++    context_line_bytes: int = 4_096
++    max_rows: int = 60_001
++    max_bytes: int = 128 * 1024 * 1024
++
++    def __post_init__(self):
++        if any(type(v) is not int or v <= 0 for v in vars(self).values()):
++            raise ValueError('invalid-positive-limit')
++        if self.context_min_period_ms > self.window_ms:
++            raise ValueError('context-period-outside-window')
++
++
++def _line(record, cap):
++    if type(record) is not dict:
++        raise BudgetStop('non-object-record')
++    try:
++        # ensure_ascii means size is stable and includes escaping plus newline.
++        raw = (json.dumps(record, ensure_ascii=True, sort_keys=True,
++                          allow_nan=False, separators=(',', ':')) + '\n').encode('ascii')
++    except (ValueError, TypeError, OverflowError, RecursionError) as exc:
++        raise BudgetStop('invalid-json-record') from exc
++    if len(raw) > cap:
++        raise BudgetStop('serialized-line-cap')
++    return raw
++
++
++_MIN_CONTEXT_JSONL_BYTES = len(b'{}\n')
++
++
++class SerializedBudget:
++    """A *pure* fail-closed admission prototype, not a durable writer.
++
++    The primary producer supplies exactly one initial row then TWO rows per
++    observation tick. A context row is *optional*, after a passed/flushed guard.
++    Context skips are counted in memory only (NO line per skipped primary tick).
++    Any violation latches stopped; no later call can turn an incomplete run into
++    success. Time comes from the caller's single monotonic epoch in integer ms.
++    """
++    def __init__(self, limits=Limits()):
++        self.limits = limits
++        self.rows = 0
++        self.bytes = 0
++        self.primary_ticks = 0
++        self.context_ticks = 0
++        self.context_skipped_interval = 0
++        self.context_skipped_guard = 0
++        self.last_primary_ms = None
++        self.last_context_ms = None
++        self.last_seen_ms = None
++        self.initial_written = False
++        self.stopped_reason = None
++
++    def _stop(self, reason):
++        if self.stopped_reason is None:
++            self.stopped_reason = reason
++        raise BudgetStop(self.stopped_reason)
++
++    def _time(self, at_ms):
++        if self.stopped_reason is not None:
++            self._stop(self.stopped_reason)
++        if type(at_ms) is not int or at_ms < 0 or at_ms > self.limits.window_ms:
++            self._stop('clock-or-window')
++        if self.last_seen_ms is not None and at_ms < self.last_seen_ms:
++            self._stop('clock-rollback')
++        self.last_seen_ms = at_ms
++
++    def _commit(self, records, line_cap):
++        try:
++            encoded = tuple(_line(row, line_cap) for row in records)
++        except BudgetStop as exc:
++            self._stop(str(exc))
++        size = sum(map(len, encoded))
++        if self.rows + len(encoded) > self.limits.max_rows:
++            self._stop('aggregate-row-cap')
++        if self.bytes + size > self.limits.max_bytes:
++            self._stop('aggregate-byte-cap')
++        self.rows += len(encoded)
++        self.bytes += size
++        return encoded
++
++    def initial(self, at_ms, record):
++        self._time(at_ms)
++        if self.initial_written or self.primary_ticks:
++            self._stop('duplicate-initial')
++        lines = self._commit((record,), self.limits.primary_line_bytes)
++        self.initial_written = True
++        return lines
++
++    def primary(self, at_ms, raw_sample, guard_record):
++        self._time(at_ms)
++        if not self.initial_written:
++            self._stop('missing-initial')
++        if (self.last_primary_ms is not None and
++                at_ms - self.last_primary_ms < self.limits.primary_min_period_ms):
++            self._stop('primary-period')
++        lines = self._commit((raw_sample, guard_record), self.limits.primary_line_bytes)
++        self.last_primary_ms = at_ms
++        self.primary_ticks += 1
++        return lines
++
++    def context_after_guard(self, at_ms, passed_guard, sample):
++        """Return (reason, serialized lines); never call sample on guard refusal.
++
++        sample is an injected zero-argument callable (synthetic only here). The
++        real integration MUST bind guard/pass to its durable verdict and priority
++        order. This prototype cannot preempt a blocking syscall or prove flush.
++        """
++        self._time(at_ms)
++        if type(passed_guard) is not bool:
++            self._stop('unverified-guard-verdict')
++        if not passed_guard:
++            self.context_skipped_guard += 1
++            self.stopped_reason = 'guard-rejected'
++            return 'guard-rejected-no-context', ()
++        if self.primary_ticks == 0 or self.last_primary_ms != at_ms:
++            self._stop('context-without-same-tick-primary')
++        if (self.last_context_ms is not None and
++                at_ms - self.last_context_ms < self.limits.context_min_period_ms):
++            self.context_skipped_interval += 1
++            return 'interval-skipped-no-context', ()
++        if (self.rows >= self.limits.max_rows or
++                self.limits.max_bytes - self.bytes < _MIN_CONTEXT_JSONL_BYTES):
++            self._stop('no-capacity-before-context-read')
++        if not callable(sample):
++            self._stop('invalid-sampler')
++        try:
++            value = sample()
++        except BaseException:
++            self.stopped_reason = 'context-sampler-failed'
++            raise
++        lines = self._commit((value,), self.limits.context_line_bytes)
++        self.last_context_ms = at_ms
++        self.context_ticks += 1
++        return 'context-recorded', lines
++
++    def summary(self):
++        # Caller's persistence contract must store this in a SEPARATE, bounded
++        # summary artifact. It does NOT consume unbudgeted observation JSONL.
++        return {'artifact': 'aotg-offline-serialized-budget', 'version': 1,
++                'runtime_qualified': False, 'rows': self.rows, 'bytes': self.bytes,
++                'primary_ticks': self.primary_ticks, 'context_ticks': self.context_ticks,
++                'context_skipped_interval': self.context_skipped_interval,
++                'context_skipped_guard': self.context_skipped_guard,
++                'stopped_reason': self.stopped_reason,
++                'status': 'incomplete-unverified-runtime' if self.stopped_reason is None
++                else 'incomplete-stopped'}
++
++
++CONTEXT_SECONDS = 0.05
++
++
++CONTEXT_READS = 24
++
++
++CONTEXT_BYTES = 256 * 1024
++
++
++CONTEXT_KEYS = {
++    'memory.stat': ('anon','file','shmem','kernel','unevictable','pgscan','pgsteal',
++                    'pgscan_kswapd','pgscan_direct','pgsteal_kswapd','pgsteal_direct'),
++    'memory.events': ('low','high','max','oom','oom_kill','oom_group_kill'),
++    'memory.swap.events': ('high','max','fail'),
++    'vmstat': ('pswpin','pswpout','pgscan_kswapd','pgscan_direct','pgsteal_kswapd',
++               'pgsteal_direct','pgscan_direct_throttle','allocstall_normal',
++               'allocstall_movable','oom_kill'),
++}
++
++
++class ContextUnavailable(ValueError):
++    pass
++
++
++def _context_require(value, reason):
++    if not value:
++        raise ContextUnavailable(reason)
++
++
++def _context_open_directory(path):
++    parts=path.split('/')
++    _context_require(parts[0]=='' and all(p not in ('','.','..') for p in parts[1:]), 'directory-path')
++    fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
++    try:
++        for part in parts[1:]:
++            nextfd=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
++            os.close(fd);fd=nextfd
++        return fd
++    except BaseException:
++        os.close(fd);raise
++
++
++def _context_read_at(root, relative, cap):
++    parts=relative.split('/')
++    _context_require(parts and all(re.fullmatch(r'[A-Za-z0-9_.-]+',p) and p not in ('.','..') for p in parts),'relative-path')
++    parent=os.dup(root)
++    try:
++        for part in parts[:-1]:
++            nextfd=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
++            os.close(parent);parent=nextfd
++        fd=os.open(parts[-1],os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=parent)
++        try:
++            before=os.fstat(fd);_context_require(stat.S_ISREG(before.st_mode),'nonregular-input')
++            raw=bytearray()
++            while True:
++                chunk=os.read(fd,min(4096,cap+1-len(raw)))
++                if not chunk:break
++                raw.extend(chunk);_context_require(len(raw)<=cap,'file-byte-limit')
++            after=os.fstat(fd)
++            _context_require((before.st_dev,before.st_ino)==(after.st_dev,after.st_ino),'file-identity-changed')
++            return bytes(raw).decode('ascii','strict')
++        finally:os.close(fd)
++    finally:os.close(parent)
++
++
++class _ContextFiles:
++    def __init__(self,cgroup):
++        self.proc=_context_open_directory('/proc');self.group=None;self.cgroup=cgroup
++        try:self.group=_context_open_directory('/sys/fs/cgroup'+cgroup)
++        except BaseException:os.close(self.proc);raise
++    def read(self,domain,relative,cap):
++        return _context_read_at(self.proc if domain=='proc' else self.group,relative,cap)
++    def group_identity(self):
++        fd=_context_open_directory('/sys/fs/cgroup'+self.cgroup)
++        try:
++            current=os.fstat(fd);retained=os.fstat(self.group)
++            _context_require((current.st_dev,current.st_ino)==(retained.st_dev,retained.st_ino),'cgroup-replaced')
++            return {'device':current.st_dev,'inode':current.st_ino}
++        finally:os.close(fd)
++    def close(self):
++        os.close(self.proc);os.close(self.group)
++
++
++def _context_uint(text):
++    _context_require(isinstance(text,str) and re.fullmatch(r'[0-9]{1,20}',text) is not None,'invalid-counter')
++    n=int(text);_context_require(n<=2**64-1,'counter-range');return n
++
++
++def _context_counters(text,keys):
++    values={}
++    for line in text.splitlines():
++        pair=line.split();_context_require(len(pair)==2 and pair[0] not in values,'counter-rows')
++        values[pair[0]]=_context_uint(pair[1])
++    return {'values':{key:values.get(key) for key in keys},'missing_keys':[key for key in keys if key not in values]}
++
++
++def _context_pressure(text):
++    values={}
++    for line in text.splitlines():
++        row=line.split();_context_require(len(row)==5 and row[0] in ('some','full') and row[0] not in values,'pressure-rows')
++        data={}
++        for field in row[1:]:
++            pair=field.split('=');_context_require(len(pair)==2 and pair[0] not in data,'pressure-fields');data[pair[0]]=pair[1]
++        _context_require(set(data)=={'avg10','avg60','avg300','total'},'pressure-fields')
++        for key in ('avg10','avg60','avg300'):
++            _context_require(re.fullmatch(r'[0-9]{1,3}(?:\.[0-9]{1,6})?',data[key]) is not None,'pressure-number')
++            data[key]=float(data[key]);_context_require(0<=data[key]<=100,'pressure-range')
++        data['total']=_context_uint(data['total']);values[row[0]]=data
++    return {'values':{key:values.get(key) for key in ('some','full')},'missing_keys':[key for key in ('some','full') if key not in values]}
++
++
++def collect_resource_context(expected_cgroup, *, root_identity=None, native_identity=None,
++                             _files=None, _clock=time.monotonic, _worker_pid=None):
++    """Read one fixed bounded context. Internal injected readers are synthetic-test seams.
++
++    No signals, writes, commands, environment reads, broad proc scan, or retries.
++    Deadline checks surround each operation, but cannot interrupt a blocked kernel
++    syscall. Limits are a userspace budget, not a hard realtime guarantee.
++    """
++    _context_require(isinstance(expected_cgroup,str) and re.fullmatch(r'/system\.slice/aotg-[0-9a-f]{16}-worker\.service',expected_cgroup) is not None,'cgroup-scope')
++    def requested(value):
++        if value is None:return None
++        _context_require(isinstance(value,dict) and set(value)=={'pid','start_ticks'},'identity-fields')
++        _context_require(type(value['pid']) is int and 0<value['pid']<2**31 and type(value['start_ticks']) is int and 0<value['start_ticks']<2**64,'identity-values')
++        return dict(value)
++    root_identity=requested(root_identity);native_identity=requested(native_identity)
++    _context_require(native_identity is None or root_identity is not None,'native-without-owned-root')
++    began=_clock();deadline=began+CONTEXT_SECONDS;reads=0;size=0
++    result={'artifact':'aotg-memory-context','version':1,'status':'incomplete','diagnostic_only':True,
++            'utc_read_start':datetime.datetime.now(datetime.timezone.utc).isoformat(),
++            'expected_cgroup':expected_cgroup,'bindings':{},'metrics':{},'errors':[],
++            'limits':{'seconds':CONTEXT_SECONDS,'reads':CONTEXT_READS,'bytes':CONTEXT_BYTES},
++            'atomic_snapshot':False,'guard_accepted':None,'cause_attribution_proven':False}
++    files=None;created=False
++    def cutoff():_context_require(_clock()<deadline,'deadline')
++    def read(domain,name,cap):
++        nonlocal reads,size
++        cutoff();_context_require(reads<CONTEXT_READS,'read-count');reads+=1
++        value=files.read(domain,name,cap);size+=len(value.encode('ascii'))
++        _context_require(len(value.encode('ascii'))<=cap and size<=CONTEXT_BYTES,'total-byte-limit');cutoff();return value
++    def identity(pid):
++        raw=read('proc',str(pid)+'/stat',4096)
++        prefix,sep,tail=raw.rpartition(')');_context_require(sep and prefix.startswith(str(pid)+' ('),'stat-pid')
++        parts=tail.split();_context_require(len(parts)>=20,'stat-fields');ticks=_context_uint(parts[19])
++        groups=read('proc',str(pid)+'/cgroup',4096).splitlines()
++        _context_require(groups==['0::'+expected_cgroup],'pid-cgroup-mismatch')
++        return {'pid':pid,'start_ticks':ticks,'cgroup':expected_cgroup}
++    def error_name(exc):return str(exc) if isinstance(exc,ContextUnavailable) else type(exc).__name__
++    try:
++        cutoff();files=_files if _files is not None else _ContextFiles(expected_cgroup);created=_files is None;cutoff()
++        cg_before=files.group_identity();cutoff()
++        result['cgroup_identity_before']=cg_before
++        pid=os.getpid() if _worker_pid is None else _worker_pid
++        _context_require(type(pid) is int and 0<pid<2**31,'worker-pid')
++        wanted={'worker':{'pid':pid,'start_ticks':None},'root':root_identity,'native':native_identity}
++        for role,want in wanted.items():
++            result['bindings'][role]={'requested':want,'before':None,'after':None,'verified':None if want is None else False}
++            if want is not None:
++                try:
++                    actual=identity(want['pid']);result['bindings'][role]['before']=actual
++                    _context_require(want['start_ticks'] is None or actual['start_ticks']==want['start_ticks'],'pid-start-mismatch')
++                except (OSError,ValueError) as exc:
++                    result['bindings'][role]['error']=error_name(exc)
++                    result['errors'].append(role+'-before:'+error_name(exc))
++        _context_require(result['bindings']['worker']['before'] is not None,'worker-binding-unavailable')
++        specifications=[('cgroup-memory-current','cgroup','memory.current',64,lambda v:_context_uint(v.strip())),
++          ('cgroup-swap-current','cgroup','memory.swap.current',64,lambda v:_context_uint(v.strip())),
++          *[(name,'cgroup',name,16384,lambda v,k=keys:_context_counters(v,k)) for name,keys in CONTEXT_KEYS.items() if name!='vmstat'],
++          ('cgroup-memory-pressure','cgroup','memory.pressure',2048,_context_pressure),
++          ('global-memory-pressure','proc','pressure/memory',2048,_context_pressure),
++          ('global-vmstat','proc','vmstat',65536,lambda v:_context_counters(v,CONTEXT_KEYS['vmstat']))]
++        for label,domain,name,cap,parser in specifications:
++            record={'status':'missing','value':None,'reason':None};result['metrics'][label]=record
++            try:
++                value=parser(read(domain,name,cap));record.update(status='observed',value=value)
++                if isinstance(value,dict) and value.get('missing_keys'):
++                    record.update(status='partial',reason='missing-keys');result['errors'].append(label+':missing-keys')
++            except (OSError,ValueError) as exc:
++                record['reason']=error_name(exc);result['errors'].append(label+':'+error_name(exc))
++        for role,want in wanted.items():
++            if want is not None:
++                try:
++                    actual=identity(want['pid']);result['bindings'][role]['after']=actual
++                    _context_require(actual==result['bindings'][role]['before'] and (want['start_ticks'] is None or actual['start_ticks']==want['start_ticks']),'pid-identity-changed')
++                    _context_require('error' not in result['bindings'][role],'pid-before-unverified')
++                    result['bindings'][role]['verified']=True
++                except (OSError,ValueError) as exc:
++                    result['bindings'][role]['error']=error_name(exc);result['errors'].append(role+'-after:'+error_name(exc))
++        cutoff();result['cgroup_identity_after']=files.group_identity();cutoff()
++        _context_require(result['cgroup_identity_after']==cg_before,'cgroup-identity-changed')
++        if not result['errors']:result['status']='observed-bindings-verified'
++    except (OSError,ValueError) as exc:result['errors'].append(error_name(exc))
++    finally:
++        if created and files is not None:files.close()
++        result['utc_read_end']=datetime.datetime.now(datetime.timezone.utc).isoformat()
++        result['seconds']=max(0,_clock()-began);result['read_calls']=reads;result['read_bytes']=size
++    if result['seconds']>=CONTEXT_SECONDS:
++        result['status']='incomplete'
++        if 'deadline' not in result['errors']:result['errors'].append('deadline')
++    return result
++
++
++MAX_PRIMARY_SAMPLES = 28_200
++
++
++MAX_FORCED_SAMPLES = 65
++
++
++MAX_CONTEXT_ATTEMPTS = 2_671
++
++
++CONTEXT_INTERVAL_SECONDS = 2.0
++
++
++CONTEXT_CALL_SECONDS = 0.05
++
++
++RESOURCE_LINE_BYTES = 2_048
++
++
++GUARD_LINE_BYTES = 1_024
++
++
++CONTEXT_LINE_BYTES = 16_384
++
++
++class ObservationJournal(SerializedBudget):
++    def __init__(self, stream, *, origin, deadline, run_id):
++        super().__init__(Limits(context_line_bytes=CONTEXT_LINE_BYTES))
++        if (type(origin) not in (int,float) or not math.isfinite(origin)
++                or type(deadline) not in (int,float) or not math.isfinite(deadline)
++                or not origin < deadline <= origin + self.limits.window_ms/1000
++                or not isinstance(run_id,str) or not 1 <= len(run_id) <= 64):
++            raise BudgetStop('invalid-observation-origin')
++        self.stream=stream;self.origin=origin;self.deadline=deadline;self.run_id=run_id
++        self._last_clock=origin;self._last_sample=None;self._pending=None
++        self._forced=0;self._selected=None;self._last_started=None
++        self._attempts=0;self._reserved_rows=0;self._reserved_bytes=0
++
++    def clock(self, now, *, io=False):
++        if type(now) not in (int,float) or not math.isfinite(now):self._stop('nonfinite-clock')
++        if now < self._last_clock:self._stop('clock-rollback')
++        self._last_clock=now
++        if now < self.origin or now >= self.deadline:self._stop('worker-deadline')
++        self._time(int((now-self.origin)*1000))
++        return now
++
++    def _capacity(self, rows, size):
++        if self.rows+self._reserved_rows+rows>self.limits.max_rows:self._stop('aggregate-row-cap')
++        if self.bytes+self._reserved_bytes+size>self.limits.max_bytes:self._stop('aggregate-byte-cap')
++
++    def _persist(self, record, cap):
++        # Upstream commit performs exact serialization and aggregate admission.
++        raw=self._commit((record,),cap)[0]
++        try:
++            written=self.stream.write(raw.decode('ascii'))
++            if written!=len(raw):self._stop('short-observation-write')
++            self.stream.flush()
++        except BaseException:
++            if self.stopped_reason is None:self.stopped_reason='observation-write-failed'
++            raise
++        return raw
++
++    def start(self, record, now):
++        self.clock(now)
++        if self.initial_written:self._stop('duplicate-initial')
++        if record.get('phase')!='startup-anchor':self._stop('initial-phase')
++        self._capacity(1,self.limits.primary_line_bytes)
++        raw=self._persist(record,self.limits.primary_line_bytes);self.initial_written=True;return raw
++
++    def observed(self, record, now, *, force=False):
++        self.clock(now)
++        if not self.initial_written or self._pending is not None or self._selected is not None:self._stop('primary-phase-order')
++        if type(force) is not bool:self._stop('force-type')
++        if self.primary_ticks>=MAX_PRIMARY_SAMPLES:self._stop('primary-sample-quota')
++        if record.get('phase')!='observed' or type(record.get('sequence')) is not int or record['sequence']!=self.primary_ticks:self._stop('primary-sequence')
++        if force:
++            if self._forced>=MAX_FORCED_SAMPLES:self._stop('forced-sample-quota')
++        elif self._last_sample is not None and now-self._last_sample<.19:
++            self._stop('primary-period')
++        # Reserve the guard's full permitted line before committing pre-guard
++        # evidence. This does not require or delay the real guard verdict.
++        self._capacity(2,self.limits.primary_line_bytes+GUARD_LINE_BYTES)
++        raw=self._persist(record,self.limits.primary_line_bytes)
++        self._reserved_rows=1;self._reserved_bytes=GUARD_LINE_BYTES
++        self._pending={'sequence':record['sequence'],'primary_sha256':hashlib.sha256(raw).hexdigest(),'at':now}
++        self.primary_ticks+=1;self._last_sample=now;self._forced+=int(force)
++        self.last_primary_ms=int((now-self.origin)*1000)
++        return raw
++
++    def verdict(self, record, now):
++        self.clock(now)
++        if self._pending is None or record.get('phase')!='guard-result' or record.get('sequence')!=self._pending['sequence']:self._stop('guard-phase-order')
++        verdict=record.get('guard_verdict')
++        if verdict not in ('passed','rejected'):self._stop('guard-verdict')
++        selected=False;stop_after=None
++        if verdict=='rejected':
++            reason='guard-rejected-no-context';self.context_skipped_guard+=1
++        elif self._last_started is not None and now-self._last_started<CONTEXT_INTERVAL_SECONDS:
++            reason='interval-skipped-no-context';self.context_skipped_interval+=1
++        elif now+CONTEXT_CALL_SECONDS>=self.deadline:
++            reason='deadline-headroom-skipped-no-context'
++        elif self._attempts>=MAX_CONTEXT_ATTEMPTS:
++            reason='context-attempt-quota';stop_after=reason
++        else:
++            # Guard line is already reserved. Reserve the FULL context cap,
++            # not merely the smallest valid JSON, before any optional read.
++            try:self._capacity(1,self.limits.context_line_bytes)
++            except BudgetStop:
++                reason='context-capacity-refused';stop_after=self.stopped_reason
++            else:reason='context-selected';selected=True
++        enriched={**{k:v for k,v in record.items() if k not in ('sample','anchor')},
++                  'primary_sha256':self._pending['primary_sha256'],'context_schedule':{'reason':reason,'attempts_before':self._attempts,
++                   'interval_skips':self.context_skipped_interval}}
++        self._reserved_rows=0;self._reserved_bytes=0
++        raw=self._persist(enriched,GUARD_LINE_BYTES)
++        pending=self._pending;self._pending=None
++        if selected:
++            self._attempts+=1
++            self._selected={**pending,'attempt':self._attempts}
++            self._reserved_rows=1;self._reserved_bytes=self.limits.context_line_bytes
++        if verdict=='rejected':self.stopped_reason='guard-rejected'
++        if stop_after is not None:self._stop(stop_after)
++        return raw
++
++    def context_after_primary_flush(self, sample, *, clock=time.monotonic):
++        selected=self._selected
++        if selected is None:return None
++        # Consume the selection before calling any external reader. Failure,
++        # disappearance, or writer error can never be retried at this tick.
++        self._selected=None
++        fault=None
++        try:
++            began=self.clock(clock(),io=True)
++            if began+CONTEXT_CALL_SECONDS>=self.deadline:self._stop('context-deadline-headroom')
++            if self._last_started is not None and began-self._last_started<CONTEXT_INTERVAL_SECONDS:
++                self._stop('context-start-period')
++            self._last_started=began
++            call_deadline=min(self.deadline,began+CONTEXT_CALL_SECONDS)
++            def read_clock():
++                now=self.clock(clock(),io=True)
++                if now>=call_deadline:self._stop('context-read-deadline')
++                return now
++            context=sample(read_clock)
++            read_clock()
++        except BudgetStop as exc:
++            fault=exc;context={'status':'incomplete','reason':str(exc),'guard_accepted':None,'cause_attribution_proven':False}
++        except Exception as exc:
++            self.stopped_reason='unexpected-context-exception'
++            fault=BudgetStop(self.stopped_reason)
++            context={'status':'incomplete','reason':type(exc).__name__,'guard_accepted':None,'cause_attribution_proven':False}
++        record={'artifact':'aotg-memory-context-link','version':1,'run_id':self.run_id,
++                'sequence':selected['sequence'],'primary_sha256':selected['primary_sha256'],'context':context}
++        self._reserved_rows=0;self._reserved_bytes=0
++        try:raw=self._persist(record,self.limits.context_line_bytes)
++        except BudgetStop:
++            # Oversized context is not truncated, replaced with zeros or silently
++            # dropped. The worker fails closed, retaining the selected verdict.
++            raise
++        self.context_ticks+=1
++        if fault is not None:raise fault
++        return raw
++
++    def bounded_resource_line(self, sample):
++        try:return _line(sample,RESOURCE_LINE_BYTES).decode('ascii')
++        except BudgetStop as exc:self._stop('accepted-resource:'+str(exc))
++
++    def summary(self):
++        return {**super().summary(),'adapter_version':1,'primary_hard_quota':MAX_PRIMARY_SAMPLES,
++                'forced_samples':self._forced,'forced_hard_quota':MAX_FORCED_SAMPLES,
++                'context_attempts':self._attempts,'context_hard_quota':MAX_CONTEXT_ATTEMPTS,
++                'reserved_rows':self._reserved_rows,'reserved_bytes':self._reserved_bytes,
++                'runtime_qualified':False}
++
++
+@@ -726,0 +1262,2 @@
++        self.observation_budget = ObservationJournal(observation_stream, origin=self.started,
++                                                     deadline=deadline, run_id=plan["run_id"])
+@@ -746,2 +1283,2 @@
+-    def record_observation(self, record):
+-        """Flush separate evidence; observation never implies guard acceptance."""
++    def record_observation(self, record, *, at=None, force=False):
++        """Reserve and flush pre-guard evidence; verdict is committed separately."""
+@@ -751,2 +1288,11 @@
+-            self.observation_stream.write(canonical(event) + "\n")
+-            self.observation_stream.flush()
++            now = time.monotonic() if at is None else at
++            if record["phase"] == "startup-anchor":
++                self.observation_budget.start(event, now)
++            elif record["phase"] == "observed":
++                self.observation_budget.observed(event, now, force=force)
++            elif record["phase"] == "guard-result":
++                self.observation_budget.verdict(event, now)
++            else:
++                raise BudgetStop("unknown-observation-phase")
++        except BudgetStop as exc:
++            raise StopTrial("Resource observation budget: " + str(exc)) from exc
+@@ -754,0 +1301,14 @@
++
++    def record_memory_context(self, owned, native_pid):
++        def sample(clock):
++            def bound(pid):
++                info = owned.records[pid]
++                return {"pid": info["pid"], "start_ticks": info["start_ticks"]}
++            root = bound(owned.process.pid) if owned is not None else None
++            native = bound(native_pid) if native_pid is not None and owned is not None else None
++            return collect_resource_context("/system.slice/" + self.plan["maintenance_unit"],
++                root_identity=root, native_identity=native, _clock=clock)
++        try:
++            return self.observation_budget.context_after_primary_flush(sample, clock=time.monotonic)
++        except BudgetStop as exc:
++            raise StopTrial("Resource context budget: " + str(exc)) from exc
+@@ -773 +1333 @@
+-                                     "guard_verdict": "not-evaluated"})
++                                     "guard_verdict": "not-evaluated"}, at=now, force=force)
+@@ -795 +1355 @@
+-                                             "reason": str(exc), "error_type": type(exc).__name__})
++                                             "reason": str(exc), "error_type": type(exc).__name__}, at=now)
+@@ -801 +1361,5 @@
+-            self.stream.write(canonical(sample) + "\n")
++            try:
++                resource_line = self.observation_budget.bounded_resource_line(sample)
++            except BudgetStop as exc:
++                raise StopTrial("Resource record budget: " + str(exc)) from exc
++            self.stream.write(resource_line)
+@@ -803,0 +1368 @@
++            self.record_memory_context(owned, native_pid)
