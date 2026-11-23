@@ -15,8 +15,8 @@ MAX_PRIMARY = 28_200
 MAX_CONTEXT = 2_671
 CAPS = {"startup": 2_048, "observed": 2_048, "guard": 1_024,
         "context": 16_384}
-PASS_SKIPS = {"interval-skipped-no-context", "deadline-headroom-skipped-no-context",
-              "context-attempt-quota", "context-capacity-refused"}
+PASS_SKIPS = {"interval-skipped-no-context", "deadline-headroom-skipped-no-context"}
+PASS_TERMINALS = {"context-attempt-quota", "context-capacity-refused"}
 
 
 class JournalIntegrityError(ValueError):
@@ -64,7 +64,7 @@ def verify_stream(stream, *, expected_run_id):
         if len(raw) > MAX_LINE or not raw.endswith(b"\n") or raw.endswith(b"\r\n"):
             raise JournalIntegrityError("oversized-or-truncated-jsonl")
         if state == "done":
-            raise JournalIntegrityError("record-after-rejected-guard")
+            raise JournalIntegrityError("record-after-terminal-guard")
         if len(raw) > CAPS[state]:
             raise JournalIntegrityError("phase-line-cap")
         try:
@@ -112,6 +112,12 @@ def verify_stream(stream, *, expected_run_id):
                 state = "context"
             elif verdict == "passed" and reason in PASS_SKIPS:
                 state = "observed"
+            elif verdict == "passed" and reason in PASS_TERMINALS:
+                # Writer latches stopped immediately after persisting this guard.
+                # An attempt-quota claim must also match independently counted rows.
+                if reason == "context-attempt-quota" and contexts != MAX_CONTEXT:
+                    raise JournalIntegrityError("context-attempt-quota-unproven")
+                state = "done"
             else:
                 raise JournalIntegrityError("guard-schedule-contradiction")
         elif state == "context":
