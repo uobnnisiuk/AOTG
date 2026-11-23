@@ -1,0 +1,265 @@
+--- a/field-startup-diagnostic.py
++++ b/field-startup-diagnostic.py
+@@ -1,5 +1,5 @@
+ #!/usr/bin/env python3
+-"""Private, finite EVO trial worker. No production control or restoration calls.
++"""Private, one-attempt EVO baseline startup diagnostic. No inference or production control calls.
+ 
+ Default preflight is read-only and never starts a GPU runtime. Execution requires
+ the reviewed maintenance unit, read-only model/source mounts, and a frozen plan.
+@@ -33,8 +33,8 @@
+     "task_root", "worker_python", "python", "engine", "telemetry", "hip_probe", "journalctl",
+     "control_root", "source_roots", "source_files", "dependency_packages", "active_config",
+     "expert_profile", "api_key_file", "gpu", "strata_dirs", "path_dirs",
+-    "library_dirs", "readonly_roots", "native_argv", "profiles", "schedule",
+-    "field_plan", "max_seconds", "kernel_since", "required_alarm_keys",
++    "library_dirs", "readonly_roots", "native_argv", "profiles",
++    "max_seconds", "kernel_since", "required_alarm_keys",
+ }
+ TOKEN = "{{prefill}}"
+ EXPERT = "{{expert_profile}}"
+@@ -191,16 +191,16 @@
+ 
+ def validate_plan(plan):
+     exact(plan, PLAN_FIELDS, "worker plan")
+-    require(plan["artifact"] == "aotg-evo-worker-plan" and plan["version"] == 1, "Unsupported plan")
++    require(plan["artifact"] == "aotg-evo-startup-diagnostic-plan" and plan["version"] == 1, "Unsupported plan")
+     require(isinstance(plan["run_id"], str) and ID.fullmatch(plan["run_id"]), "Invalid run ID")
+     require(SHA.fullmatch(plan["worker_sha256"]), "Invalid worker hash")
+     require(re.fullmatch(r"aotg-[a-z0-9-]+\.service", plan["maintenance_unit"]), "Invalid maintenance unit")
+-    require(type(plan["max_seconds"]) is int and 60 <= plan["max_seconds"] <= 2040,
+-            "Worker deadline must leave time before the 35 minute unit limit")
++    require(type(plan["max_seconds"]) is int and plan["max_seconds"] == 240,
++            "Startup diagnostic requires the fixed 240-second worker limit")
+     require(re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC", plan["kernel_since"]), "Invalid kernel since")
+     for name in ("task_root", "control_root", "api_key_file"):
+         absolute(plan[name])
+-    for name in ("worker_python", "python", "engine", "telemetry", "hip_probe", "journalctl", "active_config", "expert_profile", "field_plan"):
++    for name in ("worker_python", "python", "engine", "telemetry", "hip_probe", "journalctl", "active_config", "expert_profile"):
+         descriptor(plan[name])
+     for name in ("source_roots", "path_dirs", "library_dirs", "readonly_roots"):
+         require(isinstance(plan[name], list) and plan[name] and len(plan[name]) == len(set(plan[name])), "Invalid " + name)
+@@ -225,21 +225,15 @@
+         absolute(path)
+     require(isinstance(plan["required_alarm_keys"], list) and plan["required_alarm_keys"]
+             and all(isinstance(x, str) and x for x in plan["required_alarm_keys"]), "Alarm inventory required")
+-    require(isinstance(plan["profiles"], list) and len(plan["profiles"]) == 3, "Exactly three prefill profiles required")
+-    for profile in plan["profiles"]:
+-        exact(profile, ("id", "prefill", "profile_sha256"), "profile")
+-        require(ID.fullmatch(profile["id"]) and SHA.fullmatch(profile["profile_sha256"]), "Invalid profile identity")
+-        require(type(profile["prefill"]) is int and profile["prefill"] in (256, 512, 1024), "Invalid prefill")
+-    require({x["prefill"] for x in plan["profiles"]} == {256, 512, 1024}, "Profile set incomplete")
+-    require(len({x["id"] for x in plan["profiles"]}) == 3, "Duplicate profile ID")
+-    profiles = {x["id"]: x for x in plan["profiles"]}
+-    require(isinstance(plan["schedule"], list) and 1 <= len(plan["schedule"]) <= 32, "Invalid finite schedule")
+-    for index, row in enumerate(plan["schedule"]):
+-        exact(row, ("index", "candidate_id", "comparison_id", "workload_id", "block"), "schedule row")
+-        require(row["index"] == index and row["candidate_id"] in profiles and row["comparison_id"] in profiles,
+-                "Invalid schedule identity")
+-        require(ID.fullmatch(row["workload_id"]) and type(row["block"]) is int and 0 <= row["block"] < 3,
+-                "Invalid workload or block")
++    require(isinstance(plan["profiles"], list) and len(plan["profiles"]) == 1,
++            "Startup diagnostic requires exactly one baseline profile")
++    profile = plan["profiles"][0]
++    exact(profile, ("id", "prefill", "profile_sha256"), "profile")
++    require(isinstance(profile["id"], str) and ID.fullmatch(profile["id"])
++            and isinstance(profile["profile_sha256"], str) and SHA.fullmatch(profile["profile_sha256"]),
++            "Invalid baseline profile identity")
++    require(type(profile["prefill"]) is int and profile["prefill"] == 512,
++            "Only the unchanged 512 baseline is permitted")
+     require(isinstance(plan["native_argv"], list) and plan["native_argv"].count(TOKEN) == 1
+             and plan["native_argv"].count(EXPERT) == 1, "Require exact native argv template")
+     validate_native(["512" if x == TOKEN else "/reviewed/expert" if x == EXPERT else x
+@@ -254,7 +248,7 @@
+         require(not task.is_relative_to(root) and not Path(root).is_relative_to(task), "Task and protected roots overlap")
+     protected = [*plan["source_roots"], *[x["path"] for x in plan["source_files"]]]
+     protected.extend(plan[name]["path"] for name in
+-                     ("worker_python", "python", "engine", "telemetry", "hip_probe", "journalctl", "active_config", "expert_profile", "field_plan"))
++                     ("worker_python", "python", "engine", "telemetry", "hip_probe", "journalctl", "active_config", "expert_profile"))
+     protected.extend(option(plan["native_argv"], key) for key in
+                      ("--pack", "--native", "--ple-gguf", "--draft-model", "--mtp-draft-vocab"))
+     for package in plan["dependency_packages"]:
+@@ -268,7 +262,7 @@
+ def verify_inputs(plan):
+     validate_plan(plan)
+     require(sha_file(__file__) == plan["worker_sha256"], "Worker changed after freeze")
+-    for name in ("worker_python", "python", "engine", "telemetry", "hip_probe", "journalctl", "active_config", "expert_profile", "field_plan"):
++    for name in ("worker_python", "python", "engine", "telemetry", "hip_probe", "journalctl", "active_config", "expert_profile"):
+         verify_file(plan[name])
+     for path in (plan["worker_python"]["path"], plan["python"]["path"], plan["engine"]["path"], plan["hip_probe"]["path"], plan["journalctl"]["path"]):
+         require(os.access(path, os.X_OK), "Frozen executable is not executable")
+@@ -293,12 +287,6 @@
+     for item in plan["source_files"]:
+         verify_file(item)
+     verify_dependencies(plan["dependency_packages"])
+-    frozen = read_json(plan["field_plan"]["path"], allow_existing_writable=True)
+-    require(frozen.get("artifact") == "aotg-field-plan" and frozen.get("version") == 1,
+-            "Invalid frozen evidence plan")
+-    require(frozen.get("schedule") == plan["schedule"], "Worker schedule differs from field evidence plan")
+-    require(frozen.get("candidates") == [{"id": p["id"], "profile_sha256": p["profile_sha256"]}
+-                                       for p in plan["profiles"]], "Profile hashes differ from evidence plan")
+     base = read_json(plan["active_config"]["path"], allow_existing_writable=True)
+     require(base.get("exe") == plan["engine"]["path"] and base.get("cwd") == plan["control_root"], "Engine/control identity mismatch")
+     require(base.get("drafting") == "dflash2" and base.get("backend") == "hip", "Unexpected drafting/backend")
+@@ -822,7 +810,7 @@
+ 
+ def input_permissions(plan):
+     existing = [plan[name]["path"] for name in
+-                ("worker_python", "python", "engine", "telemetry", "hip_probe", "journalctl", "active_config", "expert_profile", "field_plan")]
++                ("worker_python", "python", "engine", "telemetry", "hip_probe", "journalctl", "active_config", "expert_profile")]
+     existing.extend(row["path"] for row in plan["source_files"])
+     for package in plan["dependency_packages"]:
+         existing.extend(row["path"] for row in package["files"])
+@@ -837,9 +825,10 @@
+     task = Path(plan["task_root"])
+     os.umask(0o077)
+     task.mkdir(mode=0o700)
+-    summary = {"artifact": "aotg-evo-worker-result", "version": 1, "run_id": plan["run_id"],
++    summary = {"artifact": "aotg-evo-startup-diagnostic-result", "version": 1, "run_id": plan["run_id"],
+                "plan_sha256": plan_sha, "started_at": utc(), "status": "running", "arms": [],
+-               "production_restore_owned_by": plan["maintenance_unit"], "quality_accepted": False}
++               "production_restore_owned_by": plan["maintenance_unit"], "quality_accepted": False,
++               "comparison_complete": False, "benchmark_trials": 0, "inference_invoked": False}
+     atomic_json(task / "summary.json", summary)
+     started = time.monotonic()
+     deadline = started + plan["max_seconds"]
+@@ -863,12 +852,13 @@
+             monitor = Monitor(plan, telemetry, resource_stream, deadline, observation_stream)
+             monitor.finish_scan()
+             verify_hip(plan, monitor)
+-            profiles = {p["id"]: p for p in plan["profiles"]}
+-            for row in plan["schedule"]:
+-                require(time.monotonic() + 120 + 180 + 15 < deadline, "Insufficient remaining budget for another bounded arm")
++            # Validation permits one unchanged baseline only; no benchmark schedule.
++            for profile in plan["profiles"]:
++                row = {"index": 0, "purpose": "baseline-startup-only"}
++                require(time.monotonic() + 120 + 10 + 15 < deadline,
++                        "Insufficient remaining budget for one bounded startup diagnostic")
+                 verify_file(plan["active_config"])
+                 verify_file(plan["expert_profile"])
+-                profile = profiles[row["candidate_id"]]
+                 arm = task / ("arm-" + str(row["index"]).zfill(3))
+                 arm.mkdir(mode=0o700)
+                 for name in ("home", "tmp", "cache", "runtime", "state", "profile", "preset", "logs", "pycache"):
+@@ -918,44 +908,54 @@
+                         result["server_pid"] = proc.pid
+                         result["native_exe_sha256"] = sha_file(f"/proc/{native}/exe")
+                         require(result["native_exe_sha256"] == plan["engine"]["sha256"], "Loaded engine hash changed")
+-                        done_deadline = time.monotonic() + 180
+-                        ready = {"artifact": "aotg-field-ready", "version": 1, "run_id": plan["run_id"],
+-                                 "plan_sha256": plan_sha, **row, "profile_sha256": profile["profile_sha256"],
+-                                 "prefill": profile["prefill"], "endpoint": "http://127.0.0.1:19480/v1",
+-                                 "ready_at": utc(), "deadline_epoch": time.time() + 180}
+-                        atomic_json(task / "ready.json", ready)
+-                        atomic_json(arm / "ready.json", ready)
+-                        done_path = task / ("done-" + str(row["index"]) + ".json")
++                        observation_started = time.monotonic()
++                        observation_deadline = observation_started + 10
++                        atomic_json(arm / "startup-ready.json", {
++                            "artifact": "aotg-startup-ready-observation", "version": 1,
++                            "run_id": plan["run_id"], "plan_sha256": plan_sha,
++                            "profile_sha256": profile["profile_sha256"], "prefill": 512,
++                            "ready_at": utc(), "diagnostic_only": True,
++                            "inference_invoked": False, "quality_accepted": False})
+                         while True:
+-                            require(proc.poll() is None, "Strata server exited during workload")
+-                            require(time.monotonic() < done_deadline, "K8 completion deadline exceeded")
+-                            require(verify_engine(plan, owned, profile, arm) == native, "Native engine replaced/exited")
++                            require(proc.poll() is None, "Strata server exited during idle observation")
++                            require(verify_engine(plan, owned, profile, arm) == native,
++                                    "Native engine replaced/exited during idle observation")
+                             monitor.tick(owned, native)
+-                            require((arm / "logs" / "server-private.log").stat().st_size < 64 * MIB, "Server log limit")
+-                            if done_path.exists():
+-                                done = read_json(done_path, 16384)
+-                                validate_done(done, ready)
+-                                result["k8_evidence_sha256"] = done["evidence_sha256"]
++                            require((arm / "logs" / "server-private.log").stat().st_size < 64 * MIB,
++                                    "Server log limit")
++                            if time.monotonic() >= observation_deadline:
+                                 break
+                             time.sleep(0.02)
+-                        result["workload_wait_seconds"] = time.monotonic() - (done_deadline - 180)
+-                        result["status"] = "completed-awaiting-independent-quality"
++                        result["idle_observation_seconds"] = time.monotonic() - observation_started
++                        result["startup_ready_observed"] = True
++                        result["status"] = "startup-observed-no-inference"
+                 except BaseException as exc:
+                     result["status"] = "stopped"
+                     result["stop_reason"] = str(exc) if isinstance(exc, StopTrial) else type(exc).__name__
+                     raise
+                 finally:
++                    cleanup_failures = []
+                     try:
+-                        # Stop our short-lived journal subprocess before checking
+-                        # the unit for unidentified/reparented engine descendants.
+-                        monitor.close()
++                        # Every cleanup action must be attempted even if another
++                        # fails. The independent coordinator remains the backstop.
++                        try:
++                            monitor.close()
++                        except BaseException as error:
++                            cleanup_failures.append({"action": "journal-close", "error_type": type(error).__name__})
+                         if owned is not None:
+-                            owned.cleanup()
++                            try:
++                                owned.cleanup()
++                            except BaseException as error:
++                                cleanup_failures.append({"action": "owned-process-cleanup", "error_type": type(error).__name__})
+                         if baseline_members is not None:
+-                            require_clean_cgroup(group, baseline_members)
+-                    except BaseException:
+-                        result["status"] = "cleanup-failed"
+-                        raise
++                            try:
++                                require_clean_cgroup(group, baseline_members)
++                            except BaseException as error:
++                                cleanup_failures.append({"action": "cgroup-verification", "error_type": type(error).__name__})
++                        if cleanup_failures:
++                            result["status"] = "cleanup-failed"
++                            result["cleanup_failures"] = cleanup_failures
++                            raise StopTrial("Startup diagnostic cleanup failed")
+                     finally:
+                         monitor.pause_since = None
+                         result["finished_at"] = utc()
+@@ -967,14 +967,19 @@
+             monitor.finish_scan()
+             verify_file(plan["active_config"])
+             verify_file(plan["expert_profile"])
+-            summary["status"] = "completed-awaiting-independent-quality"
++            summary["status"] = "startup-observed-no-inference"
+     except BaseException as exc:
+         summary["status"] = "stopped"
+         summary["stop_reason"] = str(exc) if isinstance(exc, StopTrial) else type(exc).__name__
+         raise
+     finally:
+         if monitor is not None:
+-            monitor.close()
++            try:
++                monitor.close()
++            except BaseException as error:
++                final_error = type(error).__name__
++                summary["status"] = "stopped"
++                summary["monitor_close_error_type"] = final_error
+         if telemetry is not None:
+             try:
+                 scan = final_kernel_scan(plan, telemetry.ERROR_PATTERN)
+@@ -992,7 +997,7 @@
+         summary["wall_seconds"] = time.monotonic() - started
+         atomic_json(task / "summary.json", summary)
+     if final_error is not None:
+-        raise StopTrial("Final kernel verification failed")
++        raise StopTrial("Final diagnostic verification failed")
+ 
+ 
+ def main():
+@@ -1017,7 +1022,8 @@
+         signal.signal(signal.SIGTERM, interrupted)
+         signal.signal(signal.SIGINT, interrupted)
+         execute(plan, sha_file(args.plan))
+-        print(canonical({"status": "completed-awaiting-independent-quality", "quality_accepted": False}))
++        print(canonical({"status": "startup-observed-no-inference", "quality_accepted": False,
++                         "comparison_complete": False, "inference_invoked": False}))
+         return 0
+     except (StopTrial, OSError, ValueError, KeyError, TypeError) as exc:
+         # Do not serialize arbitrary subprocess/environment values or API secrets.

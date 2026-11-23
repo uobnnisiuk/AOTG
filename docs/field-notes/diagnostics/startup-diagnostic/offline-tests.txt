@@ -1,0 +1,26 @@
+test_all_cleanup_failures_still_reach_every_finalizer (__main__.FlowTests.test_all_cleanup_failures_still_reach_every_finalizer) ... ok
+test_before_spawn_failures_never_launch_or_claim_success (__main__.FlowTests.test_before_spawn_failures_never_launch_or_claim_success) ... ok
+test_cleanup_and_cgroup_failures_are_finalized_and_fail_closed (__main__.FlowTests.test_cleanup_and_cgroup_failures_are_finalized_and_fail_closed) ... ok
+test_default_cli_preflight_never_execute (__main__.FlowTests.test_default_cli_preflight_never_execute) ... ok
+test_execute_requires_actual_unit_before_preflight (__main__.FlowTests.test_execute_requires_actual_unit_before_preflight) ... ok
+test_final_kernel_errors_prevent_success (__main__.FlowTests.test_final_kernel_errors_prevent_success) ... ok
+test_guard_readiness_exit_identity_failures_stop_and_cleanup (__main__.FlowTests.test_guard_readiness_exit_identity_failures_stop_and_cleanup) ... ok
+test_journal_close_failure_still_attempts_owned_cleanup_and_finalization (__main__.FlowTests.test_journal_close_failure_still_attempts_owned_cleanup_and_finalization) ... ok
+test_one_start_ready_ten_seconds_idle_cleanup_without_handshake (__main__.FlowTests.test_one_start_ready_ten_seconds_idle_cleanup_without_handshake) ... ok
+test_outer_only_close_failure_still_finalizes_and_fails (__main__.FlowTests.test_outer_only_close_failure_still_finalizes_and_fails) ... ok
+test_ownership_constructor_failure_cannot_claim_clean_exit (__main__.FlowTests.test_ownership_constructor_failure_cannot_claim_clean_exit) ... ok
+test_preflight_failure_has_no_runtime_or_output (__main__.FlowTests.test_preflight_failure_has_no_runtime_or_output) ... ok
+test_real_monitor_deadline_fails_before_resource_acquisition (__main__.FlowTests.test_real_monitor_deadline_fails_before_resource_acquisition) ... ok
+test_critical_native_options_fail_closed (__main__.SchemaTests.test_critical_native_options_fail_closed) ... ok
+test_fixed_240_limit_not_bool_or_float (__main__.SchemaTests.test_fixed_240_limit_not_bool_or_float) ... ok
+test_guard_ownership_preflight_and_import_helpers_ast_unchanged (__main__.SchemaTests.test_guard_ownership_preflight_and_import_helpers_ast_unchanged) ... ok
+test_legacy_artifact_schedule_and_field_plan_rejected (__main__.SchemaTests.test_legacy_artifact_schedule_and_field_plan_rejected) ... ok
+test_only_one_512_profile (__main__.SchemaTests.test_only_one_512_profile) ... ok
+test_profile_digest_binds_active_config_and_native_argv (__main__.SchemaTests.test_profile_digest_binds_active_config_and_native_argv) ... ok
+test_protected_root_cannot_overlap_task (__main__.SchemaTests.test_protected_root_cannot_overlap_task) ... ok
+test_valid_exact_single_baseline (__main__.SchemaTests.test_valid_exact_single_baseline) ... ok
+
+----------------------------------------------------------------------
+Ran 21 tests in 0.496s
+
+OK
