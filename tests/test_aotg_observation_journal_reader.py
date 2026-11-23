@@ -40,6 +40,7 @@ class IndependentJournalReaderTests(unittest.TestCase):
     def test_rejected_guard_has_no_context_and_is_not_completion(self):
         out = self.check(self.fixture(rejected=True))
         self.assertTrue(out["rejected_guard_recorded"])
+        self.assertTrue(out["run_id_bound"])
         self.assertEqual(out["context_rows"], 0)
         self.assertNotEqual(out["status"], "complete")
 
@@ -77,6 +78,24 @@ class IndependentJournalReaderTests(unittest.TestCase):
     def test_truncation_and_oversized_phase_refused(self):
         self.assert_invalid(self.fixture()[:-1])
         self.assert_invalid(b'{"phase":"startup-anchor","pad":"'+b"x"*2048+b'"}\n')
+
+    def test_anchor_only_is_incomplete_not_consistent(self):
+        raw = self.fixture(rejected=True).splitlines(keepends=True)
+        self.assert_invalid(raw[0])
+
+    def test_rejected_guard_from_other_run_is_not_trusted(self):
+        raw = self.fixture(rejected=True)
+        with self.assertRaisesRegex(reader.JournalIntegrityError, "run-id"):
+            reader.verify_stream(io.BytesIO(raw), expected_run_id="other-run")
+
+    def test_unbound_or_tampered_primary_id_is_rejected(self):
+        rows = self.fixture(rejected=True).splitlines(keepends=True)
+        for index in range(3):
+            changed = rows.copy()
+            changed[index] = changed[index].replace(b'"run_id":"synthetic"', b'"run_id":"wrong"')
+            self.assertNotEqual(changed[index], rows[index])
+            with self.subTest(index=index):
+                self.assert_invalid(b"".join(changed))
 
     def test_wrong_stream_type_and_missing_trusted_run_id(self):
         with self.assertRaises(reader.JournalIntegrityError):
