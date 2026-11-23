@@ -10,13 +10,13 @@ import hashlib
 import importlib.util
 import json
 import os
+import pathlib
 import sys
 import tempfile
 import unittest
-from pathlib import Path
 
 
-_SOURCE = Path(__file__).resolve().parents[1] / "docs" / "field-notes" / "memory-context-candidate"
+_SOURCE = pathlib.Path(__file__).resolve().parents[1] / "docs" / "field-notes" / "memory-context-candidate"
 
 
 def _load_source(name):
@@ -83,7 +83,7 @@ class PublicDiagnosticContractTest(unittest.TestCase):
     def test_synthetic_guard_stop_persists_refusal_before_recovery(self):
         # All paths are confined to a temporary isolated fixture, not a live run.
         with tempfile.TemporaryDirectory(prefix="aotg-offline-stop-") as tmp:
-            root = Path(tmp)
+            root = pathlib.Path(tmp)
             observations = root / "observations.jsonl"
             restoration = root / "restoration.jsonl"
             budget = budget_code.SerializedBudget()
@@ -136,7 +136,7 @@ class PublicDiagnosticContractTest(unittest.TestCase):
 
     def test_synthetic_capture_failure_still_invokes_recovery_stub(self):
         with tempfile.TemporaryDirectory(prefix="aotg-offline-failure-") as tmp:
-            path = Path(tmp) / "observations.jsonl"
+            path = pathlib.Path(tmp) / "observations.jsonl"
             budget = budget_code.SerializedBudget()
             _append_durable(path, budget.initial(0, {"phase": "initial"}))
             reads = []
