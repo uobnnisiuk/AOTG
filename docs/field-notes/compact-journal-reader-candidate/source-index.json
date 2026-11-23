@@ -1,0 +1,41 @@
+{
+  "adoption_gate_integration_complete": false,
+  "artifact": "aotg-compact-journal-reader-source-index",
+  "files": [
+    {
+      "bytes": 14930,
+      "path": "verify_compact_journal.py",
+      "sha256": "0b1e980d9007e631118b5bb36ae4555a1ac1803d71a8f7bf070ddae7041976d6"
+    },
+    {
+      "bytes": 12429,
+      "path": "test_verify_compact_journal.py",
+      "sha256": "54ac0d36f8ca8b3de7ba3bb34a52a971c473a57f784f6e607038c5ef550cf4c1"
+    },
+    {
+      "bytes": 4050,
+      "path": "synthetic-writer-fixture.jsonl",
+      "sha256": "6139c91d5252999f191b0525308b6cb89d29f798c931493cee5c82e3ea184558"
+    },
+    {
+      "bytes": 642,
+      "path": "fixture-provenance.json",
+      "sha256": "f1341baf3017e651b5dfd64d407127ff3519a9f0f3a110fd83d1ca40c91cd6a4"
+    },
+    {
+      "bytes": 4733,
+      "path": "README.md",
+      "sha256": "322d31a1411938f9f9a17870dd37619aa52e62b9efbd585e957b33af165a84c9"
+    }
+  ],
+  "private_or_live_data_included": false,
+  "quality_accepted": false,
+  "relocated_tests": 28,
+  "runtime_qualified": false,
+  "same_window_for_triage": false,
+  "skipped": 0,
+  "status": "source-only-unapproved-not-deployed",
+  "tests": 28,
+  "version": 1,
+  "writer_sha256": "8582aa22a0c04c5d92320eb467289cafc0191b71040e8ecc56fed200054b10b7"
+}

@@ -1,0 +1,11 @@
+{
+  "artifact": "synthetic-compact-journal-fixture-provenance",
+  "fixture_sha256": "6139c91d5252999f191b0525308b6cb89d29f798c931493cee5c82e3ea184558",
+  "helper_sha256": "3f2d7cacf83111e14ea82a3ce434ffb6f777074f94070e69f59b1f15382f45e6",
+  "live_sampling": false,
+  "method": "Real fixed writer and helper with fake files/clock/identities; UTC labels replaced with fixed synthetic year 2000; no historical or live records.",
+  "serializer_sha256": "db472032ad46452b290d8e58cfe471a766fe06dc9a508feba1eecdfeb0410e5d",
+  "synthetic": true,
+  "version": 1,
+  "writer_sha256": "8582aa22a0c04c5d92320eb467289cafc0191b71040e8ecc56fed200054b10b7"
+}
