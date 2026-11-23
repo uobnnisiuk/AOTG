@@ -46,6 +46,10 @@ def _line(record, cap):
     return raw
 
 
+# Dict-only JSONL: the smallest accepted line is b'{}\n' (3 bytes).
+_MIN_CONTEXT_JSONL_BYTES = len(b'{}\n')
+
+
 class SerializedBudget:
     """A *pure* fail-closed admission prototype, not a durable writer.
 
@@ -137,7 +141,8 @@ class SerializedBudget:
                 at_ms - self.last_context_ms < self.limits.context_min_period_ms):
             self.context_skipped_interval += 1
             return 'interval-skipped-no-context', ()
-        if (self.rows >= self.limits.max_rows or self.bytes >= self.limits.max_bytes):
+        if (self.rows >= self.limits.max_rows or
+                self.limits.max_bytes - self.bytes < _MIN_CONTEXT_JSONL_BYTES):
             self._stop('no-capacity-before-context-read')
         if not callable(sample):
             self._stop('invalid-sampler')
@@ -247,6 +252,36 @@ class Tests(unittest.TestCase):
             b.context_after_guard(0, True, lambda: (_ for _ in ()).throw(OSError('simulated')))
         self.assertEqual(b.summary()['stopped_reason'], 'context-sampler-failed')
         self.assertEqual(b.context_ticks, 0)
+
+    def test_context_known_impossible_bytes_refused_before_sample(self):
+        baseline = self.new()
+        self.tick(baseline, 0)
+        prior_bytes = baseline.bytes
+        self.assertEqual(_line({}, 3), b'{}\n')
+        # Neither 1 nor 2 spare bytes can fit a valid dict JSONL line.
+        for free_bytes in (1, 2):
+            a = self.new(max_bytes=prior_bytes + free_bytes)
+            self.tick(a, 0)
+            calls = []
+            with self.assertRaisesRegex(BudgetStop, 'no-capacity-before-context-read'):
+                a.context_after_guard(0, True, lambda: calls.append(1) or {})
+            self.assertEqual(calls, [])
+            self.assertEqual((a.bytes, a.rows, a.context_ticks),
+                             (prior_bytes, 3, 0))
+            self.assertEqual(a.summary()['status'], 'incomplete-stopped')
+            with self.assertRaisesRegex(BudgetStop, 'no-capacity-before-context-read'):
+                a.context_after_guard(0, True, lambda: self.fail('repeat read'))
+
+        # Positive boundary: exactly three bytes available, and {} fits.
+        b = self.new(max_bytes=prior_bytes + 3)
+        self.tick(b, 0)
+        calls = []
+        outcome, lines = b.context_after_guard(0, True,
+                                               lambda: calls.append(1) or {})
+        self.assertEqual(calls, [1])
+        self.assertEqual((outcome, lines), ('context-recorded', (b'{}\n',)))
+        self.assertEqual((b.bytes, b.rows, b.context_ticks),
+                         (prior_bytes + 3, 4, 1))
 
     def test_cap_exact_and_exceeded_with_no_partial_batch(self):
         a = self.new(max_rows=5)
