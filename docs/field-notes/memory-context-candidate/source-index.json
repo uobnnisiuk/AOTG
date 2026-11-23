@@ -1,0 +1,45 @@
+{
+  "artifact": "aotg-memory-context-source-index",
+  "collector_integration": {
+    "existing_observation_byte_cap": 134217728,
+    "existing_observation_record_cap": 60001,
+    "new_context_rows_per_pass": 1,
+    "qualified": false,
+    "required_before_runtime_use": [
+      "fixed sampling frequency/thinning and full-window row bound",
+      "serialized byte bound and read/measurement overhead review",
+      "new explicitly pinned source/plan graph and authority"
+    ]
+  },
+  "deployed": false,
+  "files": {
+    "README.md": {
+      "bytes": 4828,
+      "sha256": "86cb6a76be54ed36b4132d8ae83994022f159c36a5bac9322fc10859d476c72b"
+    },
+    "memory-context.patch": {
+      "bytes": 13500,
+      "sha256": "275f1daeeba1468bc1710b1666200db62b22e70d4c1938f141cc925e1e967e0b"
+    },
+    "resource_context.py": {
+      "bytes": 11757,
+      "sha256": "3f2d7cacf83111e14ea82a3ce434ffb6f777074f94070e69f59b1f15382f45e6"
+    },
+    "test_resource_context.py": {
+      "bytes": 13890,
+      "sha256": "00bc825e959cc394e037b29b8372cb4c4197b49fc0129d0b34ec022b289d38f1"
+    }
+  },
+  "frozen_worker_or_guard_changes": false,
+  "live_sampling": false,
+  "model_quality_or_cause_attribution_proven": false,
+  "private_base_sha256": "692904c3d1c394fe617a2a16a76284925c2823f2cc52a3e26d3376b7119538f9",
+  "private_patched_worker_sha256": "ecd090c4dca2646e386ebe6554bef2a32017aa537d6711dbaf9497033a70d445",
+  "private_worker_included": false,
+  "private_worker_integration_tests": 5,
+  "public_ci_private_worker_coverage_claimed": false,
+  "runtime_or_collector_caps_modified": false,
+  "scope": "offline source-only unapproved integration candidate",
+  "synthetic_tests_passed": 19,
+  "version": 1
+}
