@@ -9,10 +9,10 @@ import hashlib
 import io
 import json
 import os
-from pathlib import Path
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 _SOURCE = Path(__file__).resolve().parents[1] / "docs" / "field-notes" / "memory-context-candidate"
 sys.path.insert(0, str(_SOURCE))
