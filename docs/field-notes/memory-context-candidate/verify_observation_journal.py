@@ -36,15 +36,22 @@ def _reject_constant(_):
     raise JournalIntegrityError("nonfinite-json")
 
 
-def verify_stream(stream, *, expected_run_id):
+def verify_stream(stream, *, expected_run_id, trusted_max_bytes=MAX_BYTES,
+                  trusted_max_rows=MAX_ROWS):
     """Read a binary stream once; never label synthetics as runtime-qualified.
 
     expected_run_id comes from a separately trusted run manifest. Every
     synthetic record must carry the same ID. This is structural matching,
     not producer authentication or proof of runtime execution.
+    The optional budget values MUST come from a separately trusted immutable
+    manifest, never a field inside the untrusted journal. Defaults are the
+    published production caps; smaller synthetic fixtures must opt in explicitly.
     """
     if not isinstance(expected_run_id, str) or not 1 <= len(expected_run_id) <= 64:
         raise ValueError("expected-run-id-required")
+    if (type(trusted_max_bytes) is not int or not 1 <= trusted_max_bytes <= MAX_BYTES
+            or type(trusted_max_rows) is not int or not 1 <= trusted_max_rows <= MAX_ROWS):
+        raise ValueError("invalid-trusted-journal-budget")
     state = "startup"
     total = rows = primary = contexts = 0
     rejected = False
@@ -59,7 +66,7 @@ def verify_stream(stream, *, expected_run_id):
             raise JournalIntegrityError("binary-stream-required")
         total += len(raw)
         rows += 1
-        if rows > MAX_ROWS or total > MAX_BYTES:
+        if rows > trusted_max_rows or total > trusted_max_bytes:
             raise JournalIntegrityError("aggregate-budget-exceeded")
         if len(raw) > MAX_LINE or not raw.endswith(b"\n") or raw.endswith(b"\r\n"):
             raise JournalIntegrityError("oversized-or-truncated-jsonl")
@@ -117,6 +124,18 @@ def verify_stream(stream, *, expected_run_id):
                 # An attempt-quota claim must also match independently counted rows.
                 if reason == "context-attempt-quota" and contexts != MAX_CONTEXT:
                     raise JournalIntegrityError("context-attempt-quota-unproven")
+                if reason == "context-capacity-refused":
+                    # Writer tries to reserve a full context row *before* writing
+                    # this guard. Its guard reservation is the 1024-byte cap,
+                    # not the shorter actual guard JSONL serialized afterward.
+                    before_guard_bytes = total - len(raw)
+                    full_reservation_fits = (
+                        rows + 1 <= trusted_max_rows
+                        and before_guard_bytes + CAPS["guard"] + CAPS["context"]
+                        <= trusted_max_bytes
+                    )
+                    if full_reservation_fits:
+                        raise JournalIntegrityError("context-capacity-refusal-unproven")
                 state = "done"
             else:
                 raise JournalIntegrityError("guard-schedule-contradiction")
