@@ -97,6 +97,15 @@ class IndependentJournalReaderTests(unittest.TestCase):
             with self.subTest(index=index):
                 self.assert_invalid(b"".join(changed))
 
+    def test_legacy_primary_without_run_id_is_not_promoted(self):
+        rows = self.fixture(rejected=True).splitlines(keepends=True)
+        for index in range(3):
+            changed = rows.copy()
+            changed[index] = changed[index].replace(b',"run_id":"synthetic"', b"")
+            self.assertNotEqual(changed[index], rows[index])
+            with self.subTest(index=index):
+                self.assert_invalid(b"".join(changed))
+
     def test_wrong_stream_type_and_missing_trusted_run_id(self):
         with self.assertRaises(reader.JournalIntegrityError):
             reader.verify_stream(io.StringIO("{}\n"), expected_run_id="synthetic")
