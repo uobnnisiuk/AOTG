@@ -23,9 +23,9 @@
       "sha256": "3f2d7cacf83111e14ea82a3ce434ffb6f777074f94070e69f59b1f15382f45e6"
     },
     {
-      "bytes": 9451,
+      "bytes": 9522,
       "path": "observation_journal.py",
-      "sha256": "8582aa22a0c04c5d92320eb467289cafc0191b71040e8ecc56fed200054b10b7"
+      "sha256": "528266a925a68f7fb10f3327b4966c361eb310cb28ad7d1a7f7127a0d83bd8ab"
     },
     {
       "bytes": 7956,
@@ -43,9 +43,9 @@
       "sha256": "cffc5892cfd20b99bb4353a27173706834fa1a75f356765d599cd7afdb3337e4"
     },
     {
-      "bytes": 30125,
+      "bytes": 30196,
       "path": "memory-context-integration.patch",
-      "sha256": "d39f5a5c6607285f9de12f53b28aab78b9e75c44be12fd831466a7acbbf35ff7"
+      "sha256": "9a68de88ca4ce03f81ac30c231c5e0f1e3522324fefec16f074698f7af52720b"
     },
     {
       "bytes": 6719,
@@ -64,12 +64,13 @@
     "No real restore or end-to-end one-collection proof after journal failure.",
     "Other producer file caps and wire metadata remain required full-chain conditions.",
     "Compact reference reader authentication/duplicate/tamper qualification is not implemented.",
-    "Additional accepted-tick overhead; blocked syscall preemption and fsync durability are not claimed."
+    "Additional accepted-tick overhead; blocked syscall preemption and fsync durability are not claimed.",
+    "Run-bound embedded patch and source hashes updated offline; former private candidate hash and earlier synthetic test results refer to the previous revision. Trusted private candidate rebuild and independent retest remain required."
   ],
   "observation_bytes_upper": 130394112,
   "observation_rows_upper": 59072,
   "private_base_sha256": "692904c3d1c394fe617a2a16a76284925c2823f2cc52a3e26d3376b7119538f9",
-  "private_candidate_sha256": "d26162a6192a08644dbc6133c94bd0b3c0c0561b596b78df58297af7ac494557",
+  "private_candidate_sha256": null,
   "private_core_tests_sha256": "8cc256ea2099ade7acb843636e0421dce8da99425b29ca36c906b4b12435dda7",
   "raw_total_conservative_upper": 264611840,
   "resources_bytes_upper": 57753600,
@@ -82,5 +83,9 @@
     "skipped": 0
   },
   "upstream_commit": "31a5f0f5a63b4e9a4ec98a4d27e5e30c249dd967",
-  "version": 1
+  "version": 2,
+  "previous_private_candidate_sha256": "d26162a6192a08644dbc6133c94bd0b3c0c0561b596b78df58297af7ac494557",
+  "private_candidate_rebuild_required": true,
+  "prior_synthetic_results_apply_to_current_source": false,
+  "prepared_from_isolated_commit": "215caaf62629e8793ef78eba2f15368342eff09a"
 }
