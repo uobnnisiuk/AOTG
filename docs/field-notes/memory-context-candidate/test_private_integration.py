@@ -7,6 +7,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import re
 from pathlib import Path
 import sys
 import tempfile
@@ -15,30 +16,63 @@ import unittest
 from unittest.mock import patch
 
 HERE=Path(__file__).resolve().parent
-sys.path.insert(0,str(HERE))
-import test_resource_context as H
-
 BASE_SHA='692904c3d1c394fe617a2a16a76284925c2823f2cc52a3e26d3376b7119538f9'
-def load(name,path):
-    spec=importlib.util.spec_from_file_location(name,path);mod=importlib.util.module_from_spec(spec);sys.modules[name]=mod;spec.loader.exec_module(mod);return mod
+CORE_SHA='8cc256ea2099ade7acb843636e0421dce8da99425b29ca36c906b4b12435dda7'
+STALE_CANDIDATE_SHA='d26162a6192a08644dbc6133c94bd0b3c0c0561b596b78df58297af7ac494557'
+
+def preflight(base, candidate, core, candidate_sha):
+    """Read and verify all three private inputs before any private import.
+
+    The candidate digest must come from a separately trusted rebuild record,
+    not from hashing an untrusted file supplied to this invocation.
+    """
+    if (not isinstance(candidate_sha, str)
+            or re.fullmatch(r'[0-9a-f]{64}', candidate_sha) is None
+            or candidate_sha in (STALE_CANDIDATE_SHA, BASE_SHA, CORE_SHA)):
+        raise ValueError('Fresh trusted private candidate SHA-256 required')
+    snapshots = []
+    for label, path, expected in (
+        ('base', base, BASE_SHA), ('candidate', candidate, candidate_sha),
+        ('core tests', core, CORE_SHA),
+    ):
+        try:
+            source = path.read_bytes()
+        except OSError as exc:
+            raise ValueError('Missing/unreadable private ' + label) from exc
+        if hashlib.sha256(source).hexdigest() != expected:
+            raise ValueError('Unexpected private ' + label + ' SHA-256')
+        snapshots.append(source)
+    return tuple(snapshots)
+
+def load(name, path, source):
+    # Execute the checked bytes, not a second read or a cached .pyc.
+    spec=importlib.util.spec_from_file_location(name,path)
+    mod=importlib.util.module_from_spec(spec)
+    sys.modules[name]=mod
+    try:
+        exec(compile(source, str(path), 'exec'), mod.__dict__)
+    except BaseException:
+        sys.modules.pop(name, None)
+        raise
+    return mod
 
 class IntegrationTests(unittest.TestCase):
     def test_original_functions_and_cleanup_unchanged(self):
-        before={n.name:ast.dump(n,include_attributes=False) for n in ast.parse(BASE.read_bytes()).body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
-        after={n.name:ast.dump(n,include_attributes=False) for n in ast.parse(CANDIDATE.read_bytes()).body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+        before={n.name:ast.dump(n,include_attributes=False) for n in ast.parse(BASE_SOURCE).body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+        after={n.name:ast.dump(n,include_attributes=False) for n in ast.parse(CANDIDATE_SOURCE).body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
         for name,value in before.items():
             if name!='Monitor':self.assertEqual(after[name],value,name)
         for name in ('start_kernel','finish_scan','close'):
-            def method(path):
-                m=next(n for n in ast.parse(path.read_bytes()).body if isinstance(n,ast.ClassDef) and n.name=='Monitor')
+            def method(source):
+                m=next(n for n in ast.parse(source).body if isinstance(n,ast.ClassDef) and n.name=='Monitor')
                 return ast.dump(next(n for n in m.body if getattr(n,'name',None)==name),include_attributes=False)
-            self.assertEqual(method(BASE),method(CANDIDATE))
+            self.assertEqual(method(BASE_SOURCE),method(CANDIDATE_SOURCE))
         # Entire original guard/thermal try-body remains byte-independent AST equal.
-        def guard(path):
-            tree=ast.parse(path.read_bytes());m=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='Monitor')
+        def guard(source):
+            tree=ast.parse(source);m=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='Monitor')
             tick=next(n for n in m.body if getattr(n,'name',None)=='tick')
             return next(n for n in ast.walk(tick) if isinstance(n,ast.Try) and any(isinstance(x,ast.Call) and isinstance(x.func,ast.Name) and x.func.id=='resource_check' for x in ast.walk(n)))
-        self.assertEqual([ast.dump(x,include_attributes=False) for x in guard(BASE).body],[ast.dump(x,include_attributes=False) for x in guard(CANDIDATE).body])
+        self.assertEqual([ast.dump(x,include_attributes=False) for x in guard(BASE_SOURCE).body],[ast.dump(x,include_attributes=False) for x in guard(CANDIDATE_SOURCE).body])
     def monitor(self):
         m=REAL_MONITOR.__new__(REAL_MONITOR);trace=[]
         class Stream(io.StringIO):
@@ -105,7 +139,7 @@ class IntegrationTests(unittest.TestCase):
                 result=json.loads((scenario.task/'summary.json').read_text())
                 self.assertEqual(result['status'],'stopped');self.assertFalse(result['quality_accepted']);self.assertTrue(scenario.environment_restored)
     def test_embedded_helpers_identical_to_public_sources(self):
-        after={n.name:ast.dump(n,include_attributes=False) for n in ast.parse(CANDIDATE.read_bytes()).body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+        after={n.name:ast.dump(n,include_attributes=False) for n in ast.parse(CANDIDATE_SOURCE).body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
         for filename in ('resource_context.py','serialized_budget.py','observation_journal.py'):
             for node in ast.parse((HERE/filename).read_bytes()).body:
                 if getattr(node,'name',None)=='Tests':break
@@ -113,10 +147,19 @@ class IntegrationTests(unittest.TestCase):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--base-worker',required=True,type=Path);parser.add_argument('--candidate-worker',required=True,type=Path);parser.add_argument('--core-tests',required=True,type=Path)
-    args=parser.parse_args();BASE=args.base_worker;CANDIDATE=args.candidate_worker
-    if hashlib.sha256(BASE.read_bytes()).hexdigest()!=BASE_SHA:raise SystemExit('Unexpected private base')
-    W=load('synthetic_integrated_worker',CANDIDATE);REAL_MONITOR=W.Monitor
-    CORE=load('synthetic_core_tests',args.core_tests);CORE.W=W
+    parser.add_argument('--candidate-sha256', required=True,
+                        help='Trusted fresh rebuild digest (not computed from the supplied candidate)')
+    args=parser.parse_args()
+    try:
+        BASE_SOURCE, CANDIDATE_SOURCE, CORE_SOURCE = preflight(
+            args.base_worker, args.candidate_worker, args.core_tests, args.candidate_sha256)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from None
+    sys.path.insert(0,str(HERE))
+    import test_resource_context as H
+
+    W=load('synthetic_integrated_worker',args.candidate_worker,CANDIDATE_SOURCE);REAL_MONITOR=W.Monitor
+    CORE=load('synthetic_core_tests',args.core_tests,CORE_SOURCE);CORE.W=W
     result=unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromTestCase(IntegrationTests))
     if result.skipped:raise SystemExit('Unexpected skipped tests')
     raise SystemExit(not result.wasSuccessful())

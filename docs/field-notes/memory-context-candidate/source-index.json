@@ -38,9 +38,9 @@
       "sha256": "f488bba91b9cedd9889b22b2c5effb4ad31e73d9299eb25acf3359f0c957441a"
     },
     {
-      "bytes": 9212,
+      "bytes": 10957,
       "path": "test_private_integration.py",
-      "sha256": "cffc5892cfd20b99bb4353a27173706834fa1a75f356765d599cd7afdb3337e4"
+      "sha256": "8bb4e4111a4ed6163f7f75ec876f279f9c9a45608a7d6e5829c1516f92452085"
     },
     {
       "bytes": 30196,
@@ -48,9 +48,9 @@
       "sha256": "9a68de88ca4ce03f81ac30c231c5e0f1e3522324fefec16f074698f7af52720b"
     },
     {
-      "bytes": 6719,
+      "bytes": 7563,
       "path": "README.md",
-      "sha256": "38db4e88578b4764dfb8bd6d5aada335fc9d65e1f42e2f37bb0b4759d10b221b"
+      "sha256": "8607bdc62fe519aed7b8052fdba03adb105549f00ddd71fb1a7325a0266f2879"
     },
     {
       "bytes": 1055,
@@ -65,7 +65,8 @@
     "Other producer file caps and wire metadata remain required full-chain conditions.",
     "Compact reference reader authentication/duplicate/tamper qualification is not implemented.",
     "Additional accepted-tick overhead; blocked syscall preemption and fsync durability are not claimed.",
-    "Run-bound embedded patch and source hashes updated offline; former private candidate hash and earlier synthetic test results refer to the previous revision. Trusted private candidate rebuild and independent retest remain required."
+    "Run-bound embedded patch and source hashes updated offline; former private candidate hash and earlier synthetic test results refer to the previous revision. Trusted private candidate rebuild and independent retest remain required.",
+    "Private runner now verifies all three input snapshots before private import; rebuilt candidate digest and actual private execution remain unavailable and unqualified."
   ],
   "observation_bytes_upper": 130394112,
   "observation_rows_upper": 59072,

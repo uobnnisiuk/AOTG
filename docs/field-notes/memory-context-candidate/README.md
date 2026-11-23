@@ -92,10 +92,22 @@ trusted private source and core-test files available:
 python3 -I -S -B /path/to/candidate/test_private_integration.py \
   --base-worker /private/field-worker-v2.py \
   --candidate-worker /private/field-worker-integrated-candidate.py \
+  --candidate-sha256 "$TRUSTED_REBUILT_CANDIDATE_SHA256" \
   --core-tests /private/tests/test_comparison_runtime.py
 ```
 
-The six private synthetic tests cover actual Monitor ordering, owned PID/start
+Before running, the private fixture holder must apply the pinned patch to the
+exact base in an isolated, single-writer copy and independently record the
+new candidate SHA-256. The old candidate digest is invalid for this revision;
+the source index intentionally leaves the new digest null. Do not derive the
+trusted argument from the untrusted input at invocation. The runner verifies
+base, candidate and core-test bytes before private imports, rejects stale,
+malformed, missing or mismatched inputs, and executes the checked snapshots
+rather than re-reading import paths. This does not sandbox untrusted Python:
+only previously trusted private fixtures and an isolated fake-only environment
+are permitted. The private inputs and new rebuild digest are not published here.
+
+The historical six private synthetic tests cover actual Monitor ordering, owned PID/start
 bindings, zero extra reads after rejection, preserved original rejection on write
 failure, and original execute cleanup/barrier/kernel/summary behavior after an
 actual journal or context failure using fake children. All original top-level
