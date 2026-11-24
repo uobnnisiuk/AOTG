@@ -109,8 +109,24 @@ fake streams (81 public tests expected). `accounting-consistent` describes only
 accounting; it is never runtime qualification or quality acceptance, and even a
 guard-stopped run may have consistent accounting. A trusted caller must bind the
 summary to the same run; neither this check nor byte counts authenticate a
-same-length modification. The raw-journal join, private summary persistence,
-accepted-resource accounting and collector/restore integration are still absent.
+same-length modification.
+
+The offline `observation_evidence_join.py` additionally requires a separately
+trusted `aotg-observation-recovery-manifest` (version 1), matching the caller's
+fixed `run_id` and `plan_sha256`, with journal SHA-256/bytes/rows and adapter
+summary SHA-256/bytes. These logical artifact entries must be bound by the
+trusted recovery inventory, not calculated from untrusted returned data and
+then treated as trusted. It joins strict journal linkage with reconciliation,
+checks the primary/context counts and terminal stop reason, and retains failure
+reasons while leaving the original bytes untouched. A nonterminal stop needs
+further evidence and remains incomplete. The adapter's configured reservation
+caps remain distinct from the tighter derived output bound. Twelve additional
+public controls cover the four independent counterexamples, identity and digest
+mismatch, uncertain writes and terminal quota (93 expected tests in CI).
+`joined-observation-consistent` is evidence consistency only, not successful
+comparison, producer authentication, restore, quality or retry permission.
+Private summary persistence/transport, accepted-resource accounting and actual
+collector/restore integration are still absent.
 
 The full private worker is deliberately excluded from publication. With explicitly
 trusted private source and core-test files available:

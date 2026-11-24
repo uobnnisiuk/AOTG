@@ -55,6 +55,7 @@ def verify_stream(stream, *, expected_run_id, trusted_max_bytes=MAX_BYTES,
     state = "startup"
     total = rows = primary = contexts = 0
     rejected = False
+    terminal_stop_reason = None
     pending_sha = None
     pending_seq = None
     file_hash = hashlib.sha256()
@@ -114,6 +115,7 @@ def verify_stream(stream, *, expected_run_id, trusted_max_bytes=MAX_BYTES,
             primary += 1
             if verdict == "rejected" and reason == "guard-rejected-no-context":
                 rejected = True
+                terminal_stop_reason = "guard-rejected"
                 state = "done"
             elif verdict == "passed" and reason == "context-selected":
                 state = "context"
@@ -136,6 +138,9 @@ def verify_stream(stream, *, expected_run_id, trusted_max_bytes=MAX_BYTES,
                     )
                     if full_reservation_fits:
                         raise JournalIntegrityError("context-capacity-refusal-unproven")
+                terminal_stop_reason = ("context-attempt-quota" if reason == "context-attempt-quota"
+                                        else "aggregate-row-cap" if rows + 1 > trusted_max_rows
+                                        else "aggregate-byte-cap")
                 state = "done"
             else:
                 raise JournalIntegrityError("guard-schedule-contradiction")
@@ -155,5 +160,6 @@ def verify_stream(stream, *, expected_run_id, trusted_max_bytes=MAX_BYTES,
             "run_id_bound": True,
             "runtime_qualified": False, "authorizes_retry": False,
             "root_cause_proven": False, "rejected_guard_recorded": rejected,
+            "terminal_stop_reason": terminal_stop_reason,
             "primary_ticks": primary, "context_rows": contexts, "rows": rows,
             "bytes": total, "raw_sha256": file_hash.hexdigest()}
