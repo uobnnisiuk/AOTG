@@ -38,9 +38,9 @@
       "sha256": "9f7981ca01e2ebde0535f1e938541e2d5cf2603ec2193df9dda58781a2af3007"
     },
     {
-      "bytes": 10957,
+      "bytes": 12539,
       "path": "test_private_integration.py",
-      "sha256": "8bb4e4111a4ed6163f7f75ec876f279f9c9a45608a7d6e5829c1516f92452085"
+      "sha256": "c75a3834f6bd4577d32b1f631d0384b6804ec7db5a7be14672b1515f43fe9779"
     },
     {
       "bytes": 31330,
@@ -48,9 +48,9 @@
       "sha256": "fe1a73162fcbbb9ce42c12ebae45d5ca3a64c7b4a0555e28dcbd00de5ae70d0c"
     },
     {
-      "bytes": 10642,
+      "bytes": 11380,
       "path": "README.md",
-      "sha256": "af7292f209601ac59003c4a7c20bfb2dcc3ce6275c4b520293385c367e5836b7"
+      "sha256": "63220a7c5b1df4d7984d27c53531d36452fb8fd3d379a0ff84c1a808eaabf77c"
     },
     {
       "bytes": 1055,
@@ -68,19 +68,19 @@
       "sha256": "0c5b18732a7bd983e025e0fef226d6b717b1f273874a27d3dad9505609603855"
     },
     {
-      "bytes": 8588,
+      "bytes": 8969,
       "path": "verify_observation_journal.py",
-      "sha256": "21bfcc9322e14dbae4b5f163dae1595df541f37733a3a7432ecbe3f6fc6722fd"
+      "sha256": "244aa43504803cce767d5529c117956b6253354ae55606559c865eda16abda75"
     },
     {
-      "bytes": 5048,
+      "bytes": 6184,
       "path": "observation_evidence_join.py",
-      "sha256": "7c68250e7c50477eb84e2dabd7e695381568b9fb5ddd3adb1dfcf7c8b4ae31a8"
+      "sha256": "26ee0f4e975eec149fe6477f5d399071c7b8ed4d8c187b7bf2d9774814d68279"
     },
     {
-      "bytes": 7965,
+      "bytes": 11105,
       "path": "test_observation_evidence_join.py",
-      "sha256": "37fcc3b47ca2b5238912f1a6bcf5aed340bb641534a1f4fbddff3d0edc1baaaf"
+      "sha256": "900323a351ef7c3981f49e6e15c8c94e5bf74ea498e6094bac9cdd6b774353f7"
     }
   ],
   "independent_restore_verified": false,
@@ -95,7 +95,8 @@
     "Shared worker deadline checks after accepted-resource flush on skipped context and after selected context flush are source changes; three public regressions added. Private integration/overhead remains unqualified. Historical test counts are not current execution evidence.",
     "Adapter admission and flush-confirmation counters now differ on failed writes; physical persistence, private summary transport and whole-chain accounting remain unqualified.",
     "Offline observation-only accounting reconciliation added; private summary transport, whole-producer accounting and runtime qualification remain absent.",
-    "Public observation-only strict reader/accounting join added; trusted run/plan and artifact inventory must be supplied separately; private summary persistence/transport and whole-chain stop/collection/restore still unqualified."
+    "Public observation-only strict reader/accounting join added; trusted run/plan and artifact inventory must be supplied separately; private summary persistence/transport and whole-chain stop/collection/restore still unqualified.",
+    "Closed observation join now validates resolved reservation, attempt/context, fixed quota, bounded forced count and guard skip accounting; added fake private Monitor-to-join acceptance test, not run on private inputs. Private persistence, collection, restoration and overhead remain unqualified."
   ],
   "observation_bytes_upper": 130394112,
   "observation_rows_upper": 59072,
@@ -121,5 +122,7 @@
   "public_deadline_regressions_added": 3,
   "public_write_accounting_regressions_added": 3,
   "public_accounting_reconciliation_tests_added": 11,
-  "public_observation_join_tests_added": 12
+  "public_observation_join_tests_added": 12,
+  "public_finalized_accounting_tests_added": 4,
+  "private_monitor_join_test_added": 1
 }

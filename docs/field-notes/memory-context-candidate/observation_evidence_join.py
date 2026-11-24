@@ -85,9 +85,26 @@ def join_observation(raw, summary_bytes, *, trusted_manifest,
     # reconcile already checked bounded JSON, duplicate keys and summary schema.
     summary = json.loads(summary_bytes)
     for key, value in (("primary_ticks", chain["primary_ticks"]),
-                       ("context_ticks", chain["context_rows"])):
+                       ("context_ticks", chain["context_rows"]),
+                       ("context_attempts", chain["context_rows"]),
+                       ("context_skipped_interval", chain["context_skipped_interval"]),
+                       ("context_skipped_guard", chain["context_skipped_guard"])):
         if type(summary.get(key)) is not int or summary[key] != value:
             return finish("summary-chain-counter-mismatch")
+    # A structurally closed chain has no unresolved producer reservation.
+    # A forced tick is not separately encoded in the journal; check its
+    # reported type and bounds, not an unprovable exact forced count.
+    for key in ("reserved_rows", "reserved_bytes"):
+        if type(summary.get(key)) is not int or summary[key] != 0:
+            return finish("summary-unresolved-reservation")
+    for key, quota in (("primary_hard_quota", reader.MAX_PRIMARY),
+                       ("context_hard_quota", reader.MAX_CONTEXT),
+                       ("forced_hard_quota", 65)):
+        if type(summary.get(key)) is not int or summary[key] != quota:
+            return finish("summary-fixed-quota-mismatch")
+    forced = summary.get("forced_samples")
+    if type(forced) is not int or not 0 <= forced <= min(65, chain["primary_ticks"]):
+        return finish("summary-forced-count-out-of-bounds")
     terminal = chain["terminal_stop_reason"]
     stop = summary["stopped_reason"]
     out.update(terminal_stop_reason=terminal, summary_stopped_reason=stop)

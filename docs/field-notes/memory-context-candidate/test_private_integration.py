@@ -108,6 +108,30 @@ class IntegrationTests(unittest.TestCase):
             with self.assertRaisesRegex(W.StopTrial,'New swapout or counter reset'):self.tick(m,o,158)
             helper.assert_not_called()
         self.assertEqual(m.stream.getvalue(),'');self.assertEqual(m.observation_budget.stopped_reason,'guard-rejected')
+    def test_real_monitor_fake_stop_observation_and_summary_join(self):
+        # Exercise the actual patched Monitor with fake telemetry/streams, not
+        # the full private execute/collector chain. Local fixture metadata is
+        # the trusted test oracle only; it is not a real recovery manifest.
+        from test_observation_evidence_join import encode, manifest
+        from observation_evidence_join import join_observation
+        m,o,trace=self.monitor()
+        with patch.object(W,'collect_resource_context',return_value={'status':'incomplete','value':None}) as helper:
+            self.tick(m,o,115)
+            with self.assertRaisesRegex(W.StopTrial,'New swapout or counter reset'):
+                self.tick(m,o,158)
+            self.assertEqual(helper.call_count,1)
+        raw=m.observation_stream.getvalue().encode('ascii')
+        summary=encode(m.observation_budget.summary())
+        def check(value):
+            return join_observation(raw,value,trusted_manifest=manifest(raw,value),
+                                    expected_run_id='synthetic',expected_plan_sha256='a'*64)
+        out=check(summary)
+        self.assertEqual(out['status'],'joined-observation-consistent')
+        self.assertEqual(out['terminal_stop_reason'],'guard-rejected')
+        self.assertFalse(out['runtime_qualified'])
+        self.assertFalse(out['independent_restore_verified'])
+        for changed in ({'context_attempts':0},{'reserved_rows':1,'reserved_bytes':16384}):
+            self.assertEqual(check(encode({**json.loads(summary),**changed}))['status'],'incomplete')
     def test_reject_write_failure_preserves_guard_error_and_no_context(self):
         m,o,trace=self.monitor();original=m.record_observation
         def broken(record,**kw):

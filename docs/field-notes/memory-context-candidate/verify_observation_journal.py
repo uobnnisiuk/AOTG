@@ -55,6 +55,7 @@ def verify_stream(stream, *, expected_run_id, trusted_max_bytes=MAX_BYTES,
     state = "startup"
     total = rows = primary = contexts = 0
     rejected = False
+    interval_skips = 0
     terminal_stop_reason = None
     pending_sha = None
     pending_seq = None
@@ -112,6 +113,10 @@ def verify_stream(stream, *, expected_run_id, trusted_max_bytes=MAX_BYTES,
                     or type(schedule.get("interval_skips")) is not int
                     or schedule["interval_skips"] < 0):
                 raise JournalIntegrityError("guard-scheduler-metadata")
+            if verdict == "passed" and reason == "interval-skipped-no-context":
+                interval_skips += 1
+            if schedule["interval_skips"] != interval_skips:
+                raise JournalIntegrityError("guard-interval-skip-count")
             primary += 1
             if verdict == "rejected" and reason == "guard-rejected-no-context":
                 rejected = True
@@ -162,4 +167,6 @@ def verify_stream(stream, *, expected_run_id, trusted_max_bytes=MAX_BYTES,
             "root_cause_proven": False, "rejected_guard_recorded": rejected,
             "terminal_stop_reason": terminal_stop_reason,
             "primary_ticks": primary, "context_rows": contexts, "rows": rows,
+            "context_skipped_interval": interval_skips,
+            "context_skipped_guard": int(rejected),
             "bytes": total, "raw_sha256": file_hash.hexdigest()}

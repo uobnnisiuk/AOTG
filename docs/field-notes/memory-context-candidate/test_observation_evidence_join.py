@@ -158,3 +158,54 @@ class EvidenceJoinTests(unittest.TestCase):
             s = {**json.loads(summary), "stopped_reason": "aggregate-byte-cap"}
             self.assertEqual(self.check(raw, encode(s))["reason"], "terminal-summary-mismatch")
         self.assertEqual(self.check(raw, summary)["reason"], "strict-journal:context-attempt-quota-unproven")
+
+    def test_finalized_summary_rejects_attempt_mismatch_and_missing(self):
+        raw, summary = fixture()
+        original = json.loads(summary)
+        for value in (0, 2, True, "1", None):
+            with self.subTest(value=value):
+                self.assertEqual(self.check(raw, encode({**original, "context_attempts": value}))["reason"],
+                                 "summary-chain-counter-mismatch")
+        del original["context_attempts"]
+        self.assertEqual(self.check(raw, encode(original))["reason"], "summary-chain-counter-mismatch")
+
+    def test_finalized_summary_rejects_unresolved_reservations(self):
+        raw, summary = fixture()
+        for key in ("reserved_rows", "reserved_bytes"):
+            for value in (1, 16384, False, -1, None):
+                with self.subTest(key=key, value=value):
+                    self.assertEqual(self.check(raw, encode({**json.loads(summary), key: value}))["reason"],
+                                     "summary-unresolved-reservation")
+
+    def test_fixed_quotas_and_reported_forced_bounds(self):
+        raw, summary = fixture()
+        for key in ("primary_hard_quota", "context_hard_quota", "forced_hard_quota"):
+            for value in (True, 0, json.loads(summary)[key] + 1, None):
+                with self.subTest(key=key, value=value):
+                    self.assertEqual(self.check(raw, encode({**json.loads(summary), key: value}))["reason"],
+                                     "summary-fixed-quota-mismatch")
+        for value in (True, -1, 2, 66, None):
+            with self.subTest(forced=value):
+                self.assertEqual(self.check(raw, encode({**json.loads(summary), "forced_samples": value}))["reason"],
+                                 "summary-forced-count-out-of-bounds")
+
+    def test_skip_counts_bound_to_guard_schedule(self):
+        stream = io.StringIO()
+        j = J.ObservationJournal(stream, origin=0, deadline=10, run_id=RUN)
+        j.start({"phase": "startup-anchor"}, 0)
+        for seq, now, verdict in ((0, 0, "passed"), (1, 0.2, "passed"), (2, 0.4, "rejected")):
+            j.observed({"phase": "observed", "sequence": seq}, now, force=True)
+            j.verdict({"phase": "guard-result", "sequence": seq, "guard_verdict": verdict}, now)
+            if verdict == "passed":
+                j.context_after_primary_flush(lambda _: {}, clock=lambda: now)
+        raw, summary = stream.getvalue().encode("ascii"), encode(j.summary())
+        self.assertEqual(self.check(raw, summary)["status"], "joined-observation-consistent")
+        for key in ("context_skipped_interval", "context_skipped_guard"):
+            self.assertEqual(self.check(raw, encode({**json.loads(summary), key: 0}))["reason"],
+                             "summary-chain-counter-mismatch")
+        rows = raw.splitlines(keepends=True)
+        guard = json.loads(rows[-1])
+        guard["context_schedule"]["interval_skips"] = 0
+        changed = b"".join(rows[:-1]) + encode(guard) + b"\n"
+        self.assertEqual(len(changed), len(raw))
+        self.assertEqual(self.check(changed, summary)["reason"], "strict-journal:guard-interval-skip-count")

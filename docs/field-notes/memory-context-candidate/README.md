@@ -122,7 +122,12 @@ reasons while leaving the original bytes untouched. A nonterminal stop needs
 further evidence and remains incomplete. The adapter's configured reservation
 caps remain distinct from the tighter derived output bound. Twelve additional
 public controls cover the four independent counterexamples, identity and digest
-mismatch, uncertain writes and terminal quota (93 expected tests in CI).
+mismatch, uncertain writes and terminal quota (93 previous public tests).
+Four additional controls check final producer accounting: attempts must equal
+context rows, unresolved reservations must be zero, fixed quotas must match,
+forced count must be a bounded integer (exact force count is not independently
+encoded), and skip counts must agree with the guard sequence. 97 public tests
+are expected in CI; this is not a new test result.
 `joined-observation-consistent` is evidence consistency only, not successful
 comparison, producer authentication, restore, quality or retry permission.
 Private summary persistence/transport, accepted-resource accounting and actual
@@ -157,7 +162,12 @@ actual journal or context failure using fake children. All original top-level
 functions/classes except Monitor, its original guard try-body, and kernel/close
 methods are AST-identical to the frozen base. This is not a real systemd restore
 or an end-to-end automatic collection test. Coordinator restore followed by one
-collection after a new journal failure remains separately unqualified.
+collection after a new journal failure remains separately unqualified. One
+additional private fake-only test feeds actual Monitor pass/reject observations
+and its in-memory summary to the join with locally trusted fixture metadata,
+including mismatched attempts and reservations. This test is not yet run on
+the rebuilt private candidate and does not demonstrate summary persistence,
+real collection, whole-chain restoration or writer overhead.
 
 The earlier per-pass `memory-context.patch` remains a separate unchanged historical candidate; `memory-context-integration.patch` is this bounded replacement against the exact original base.
 
