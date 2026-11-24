@@ -1,0 +1,209 @@
+{
+  "artifact": "aotg-published-memory-context-read-calibration",
+  "basis": "real fixed-file reads; supplemental calibration only",
+  "excluded": [
+    "module import",
+    "pre/post identity check",
+    "durable writer",
+    "worker guard loop",
+    "network transfer"
+  ],
+  "hosts": {
+    "evo-ssh-self": {
+      "actual_self_identity_unchanged": true,
+      "elapsed_seconds": 0.5215090420097113,
+      "explicit_cgroup_label_adapter": true,
+      "helper_sha256": "3f2d7cacf83111e14ea82a3ce434ffb6f777074f94070e69f59b1f15382f45e6",
+      "inference": false,
+      "private_raw_sha256": "e612e07f8cb941bd60073d8bbc0ad4cb50b9b11bc3aa989f3afdc3c0a9834498",
+      "production_binding_verified": false,
+      "production_worker_overhead_measured": false,
+      "python": "3.14.4",
+      "remote_files_written": false,
+      "remote_service_control": false,
+      "roles_alias_one_self_process": true,
+      "samples_per_profile": 128,
+      "summary": {
+        "three_roles_same_process": {
+          "context_jsonl_bytes": {
+            "count": 128,
+            "max": 2939,
+            "mean": 2938.21875,
+            "min": 2936,
+            "p50": 2938,
+            "p95": 2939,
+            "p99": 2939
+          },
+          "cpu_ms": {
+            "count": 128,
+            "max": 1.499911,
+            "mean": 0.8418668046875,
+            "min": 0.46538,
+            "p50": 0.56625,
+            "p95": 1.300481,
+            "p99": 1.34892
+          },
+          "errors": [],
+          "read_calls": [
+            20
+          ],
+          "status_counts": {
+            "observed-bindings-verified": 128
+          },
+          "wall_ms": {
+            "count": 128,
+            "max": 1.506358,
+            "mean": 0.84492225,
+            "min": 0.465828,
+            "p50": 0.566961,
+            "p95": 1.30587,
+            "p99": 1.355432
+          }
+        },
+        "worker_only": {
+          "context_jsonl_bytes": {
+            "count": 128,
+            "max": 2488,
+            "mean": 2486.171875,
+            "min": 2484,
+            "p50": 2486,
+            "p95": 2487,
+            "p99": 2488
+          },
+          "cpu_ms": {
+            "count": 128,
+            "max": 1.369941,
+            "mean": 0.7465265234375,
+            "min": 0.39092,
+            "p50": 0.46621,
+            "p95": 1.20277,
+            "p99": 1.354761
+          },
+          "errors": [],
+          "read_calls": [
+            12
+          ],
+          "status_counts": {
+            "observed-bindings-verified": 128
+          },
+          "wall_ms": {
+            "count": 128,
+            "max": 1.376683,
+            "mean": 0.7493894296875,
+            "min": 0.391405,
+            "p50": 0.466718,
+            "p95": 1.208367,
+            "p99": 1.361473
+          }
+        }
+      },
+      "utc": "2026-11-23T12:19:02.729277+00:00",
+      "warmup_per_profile": 8
+    },
+    "k8-wsl": {
+      "actual_self_identity_unchanged": true,
+      "elapsed_seconds": 0.5334931170218624,
+      "explicit_cgroup_label_adapter": true,
+      "helper_sha256": "3f2d7cacf83111e14ea82a3ce434ffb6f777074f94070e69f59b1f15382f45e6",
+      "inference": false,
+      "private_raw_sha256": "111a05cb0afbd50be1bb8b31dfd1cec751bc424405c11f84a8626a19af3fd43f",
+      "production_binding_verified": false,
+      "production_worker_overhead_measured": false,
+      "python": "3.12.3",
+      "remote_files_written": false,
+      "remote_service_control": false,
+      "roles_alias_one_self_process": true,
+      "samples_per_profile": 128,
+      "summary": {
+        "three_roles_same_process": {
+          "context_jsonl_bytes": {
+            "count": 128,
+            "max": 2879,
+            "mean": 2878.875,
+            "min": 2877,
+            "p50": 2879,
+            "p95": 2879,
+            "p99": 2879
+          },
+          "cpu_ms": {
+            "count": 128,
+            "max": 1.368625,
+            "mean": 1.0223193671875,
+            "min": 0.642701,
+            "p50": 1.093726,
+            "p95": 1.304396,
+            "p99": 1.331546
+          },
+          "errors": [],
+          "read_calls": [
+            20
+          ],
+          "status_counts": {
+            "observed-bindings-verified": 128
+          },
+          "wall_ms": {
+            "count": 128,
+            "max": 1.370965,
+            "mean": 1.02484796875,
+            "min": 0.643793,
+            "p50": 1.096216,
+            "p95": 1.307495,
+            "p99": 1.334025
+          }
+        },
+        "worker_only": {
+          "context_jsonl_bytes": {
+            "count": 128,
+            "max": 2434,
+            "mean": 2432.9609375,
+            "min": 2431,
+            "p50": 2433,
+            "p95": 2434,
+            "p99": 2434
+          },
+          "cpu_ms": {
+            "count": 128,
+            "max": 1.097322,
+            "mean": 0.79550121875,
+            "min": 0.506929,
+            "p50": 0.857939,
+            "p95": 1.000663,
+            "p99": 1.091682
+          },
+          "errors": [],
+          "read_calls": [
+            12
+          ],
+          "status_counts": {
+            "observed-bindings-verified": 128
+          },
+          "wall_ms": {
+            "count": 128,
+            "max": 1.099964,
+            "mean": 0.79763190625,
+            "min": 0.508038,
+            "p50": 0.860462,
+            "p95": 1.004388,
+            "p99": 1.095486
+          }
+        }
+      },
+      "utc": "2026-11-23T12:15:32.504582+00:00",
+      "warmup_per_profile": 8
+    }
+  },
+  "limitations": [
+    "No inference speed or quality result",
+    "No production worker/cgroup binding validation",
+    "No worst-case latency proof",
+    "K8 and EVO measurements are not controlled hardware comparisons",
+    "Three identity roles reread one actual process, not three distinct model processes",
+    "Kernel blocking calls cannot be preempted by userspace deadline checks"
+  ],
+  "public_reproduction_script": "memory-context-candidate/calibrate_resource_context.py",
+  "quantile": "nearest rank",
+  "reproduction_script_sha256": "3f8c1583c008e8f3db9b09813e6972e193e89ddccaa684e7d4e43c01ec4d7dea",
+  "samples_order": "profiles alternate first position each round; no model workload",
+  "timed_region": "reader open + helper read/parse + reader close + compact JSONL serialization",
+  "version": 1
+}

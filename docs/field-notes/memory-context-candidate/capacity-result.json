@@ -1,0 +1,27 @@
+{
+  "artifact": "aotg-memory-context-capacity-envelope",
+  "basis": "conditional-source-only-not-runtime-qualified",
+  "breaches": [],
+  "context_raw_read_bytes_upper": 700186624,
+  "context_read_calls_upper": 64104,
+  "context_ticks": 2671,
+  "context_userspace_budget_ms_sum": 133550,
+  "observations_bytes": 130394112,
+  "observations_rows": 59072,
+  "primary_rows": 56401,
+  "primary_ticks": 28200,
+  "required_evidence": [
+    "enforce_minimum_primary_and_context_sampling_periods_in_private_worker",
+    "fail_closed_on_primary_or_context_serialized_line_cap_excess",
+    "enforce_other_file_raw_total_and_wire_metadata_overhead_caps",
+    "measure_guard_interval_and_context_read_overhead_in_isolated_worker",
+    "independently_verify_guard_reject_zero_context_reads_and_cleanup",
+    "recompute_for_every_additional_phase_outside_5340_second_window"
+  ],
+  "runtime_qualified": false,
+  "status": "incomplete-unverified-assumptions",
+  "total_raw_bytes": 264611840,
+  "version": 1,
+  "wire_bytes_upper": 375730189,
+  "wire_records_upper": 5591
+}

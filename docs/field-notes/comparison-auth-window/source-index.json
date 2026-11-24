@@ -1,0 +1,43 @@
+{
+  "artifact": "aotg-comparison-auth-window-source-index",
+  "files": [
+    {
+      "bytes": 4065,
+      "path": "README.md",
+      "sha256": "d707fe2ed1d12927f65dbf1e9ad5a3fc1d0e30894776f32cb02e0d920a79db1b"
+    },
+    {
+      "bytes": 4812,
+      "path": "approved-comparison-window.ps1.in",
+      "sha256": "089f078be1d1b6a2a6cc7c27d67903256ef52f40bd87a28215ff759bb43b2c95"
+    },
+    {
+      "bytes": 10097,
+      "path": "render_comparison_window.py",
+      "sha256": "f6ef387d775f1903cc95def6d6c5ba5e4156b1e655cd0f5ab5472bb040b7ce55"
+    },
+    {
+      "bytes": 7483,
+      "path": "test_render_comparison_window.py",
+      "sha256": "17bd9929f72b0459bc9df24fdcfd251c2cdfd40a43e94ed589d4a6bd9841245d"
+    },
+    {
+      "bytes": 2617,
+      "path": "test_native_functions.ps1",
+      "sha256": "230696553975dce07acccdf0e533952177df2f0f4794ee4650ff6d7eb2c1c86f"
+    },
+    {
+      "bytes": 2406,
+      "path": "prepare_native_fixture.py",
+      "sha256": "91f5d3a1ba30a8562fc1612ad8df1551059338613fc1e3056ac860e6ce1ced6e"
+    }
+  ],
+  "independent_source_review_sha256": "c75b0c38c305b5fbbc7d830db8469a9315a1475070686b709b7e5a36caab630d",
+  "new_actual_comparison_trials": 0,
+  "operationally_ready": false,
+  "owner_runtime_plan_included": false,
+  "private_native_proof_included": false,
+  "source_only": true,
+  "synthetic_python_tests": 9,
+  "version": 2
+}

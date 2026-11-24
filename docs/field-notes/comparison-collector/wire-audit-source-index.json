@@ -1,0 +1,34 @@
+{
+  "artifact": "aotg-collector-wire-audit-source-index",
+  "files": {
+    "check_inventory_wire.py": {
+      "bytes": 7745,
+      "sha256": "1de4040c93e5452962b4dbaf3d67f6cfea64941e3dfad3b907423bd1c74aa265"
+    },
+    "inventory-serialization-results.json": {
+      "bytes": 4450,
+      "sha256": "451bfc7e06a497463937e4c16837e44d3bbcd154213ea6ed94860c61767ff5d0"
+    },
+    "test_wire_boundary.py": {
+      "bytes": 10496,
+      "sha256": "2966501acf20d491484a9eade0b413bc982926a72c050098b91c073c7bddd48f"
+    },
+    "wire-audit.md": {
+      "bytes": 2429,
+      "sha256": "cb34af93700ef92d6e46e59616f52622ac9ae2e17d94eb5a687a52f2de29bc79"
+    },
+    "wire-boundary-reference.json": {
+      "bytes": 3817,
+      "sha256": "5224c82779349988882dc966db6e8eaa39df70ad273da2a0ba46d7857b4e81f4"
+    }
+  },
+  "original_collector_sha256": "22a8667bd5f935403e85ebbce6a6f8dbfaeddd00137e6241448df87d074ddf5d",
+  "original_runtime_modified": false,
+  "validation": {
+    "inventory_serializer_cases": 4,
+    "relocated_boundary_tests": 7,
+    "skipped": 0
+  },
+  "version": 1,
+  "whole_chain_qualified": false
+}

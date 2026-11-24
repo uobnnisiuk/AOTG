@@ -1,0 +1,119 @@
+{
+  "artifact": "aotg-startup-entry-repair-and-diagnostic-summary",
+  "version": 1,
+  "record_cutoff_utc": "2026-11-23T14:53:50.287371+00:00",
+  "public_base_head": "503a13e4db2310fe81911a57838e6f55e9de90c3",
+  "publication_state": "ready-for-root-publication",
+  "local_failure": {
+    "error_type": "KeyError",
+    "missing_key": "total_seconds",
+    "before_supervisor_output_creation": true,
+    "before_watcher_and_release": true,
+    "expected_limits": {
+      "prearm_seconds": 120,
+      "maintenance_seconds": 360,
+      "recovery_seconds": 600,
+      "cleanup_seconds": 60
+    },
+    "watcher_total_seconds": 1140
+  },
+  "continuation": {
+    "same_owner_approval": true,
+    "second_authentication": false,
+    "prior_unconsumed_gate_independently_observed": true,
+    "first_remote_release": true,
+    "diagnostic_rerun": false
+  },
+  "worker": {
+    "status": "stopped",
+    "wall_seconds": 3.6058449660195038,
+    "benchmark_trials": 0,
+    "inference_workload_invoked": false,
+    "model_readiness_observed": false,
+    "guard_relaxed": false,
+    "global_pswpout_anchor": 203,
+    "global_pswpout_rejected": 207,
+    "rejected_sample_elapsed_seconds": 3.4210836800048128,
+    "causal_process_identified": false,
+    "oom_determined": false,
+    "native_vmswap_bytes_at_rejection": 0,
+    "host_mem_available_bytes_at_rejection": 62441480192,
+    "swap_free_drop_bytes": 16384,
+    "last_context_to_rejection_seconds": 1.215746,
+    "gpu_memory_used_counter_previous_bytes": 6869450752,
+    "gpu_memory_used_counter_rejected_bytes": 57748824064
+  },
+  "post": {
+    "owner_reported_restoration": true,
+    "saved_independent_baseline_verified": true,
+    "saved_api_idle_verified": true,
+    "collection_required_evidence_complete": true,
+    "planned_files": 12,
+    "captured_files": 10,
+    "captured_raw_bytes": 69166,
+    "resource_rows": 17,
+    "observation_rows": 39,
+    "startup_ready": "ungenerated",
+    "server_ready": "optional-missing",
+    "post_driver_seconds": 3.609946938988287,
+    "final_independent_audit": "passed within recorded scope",
+    "observation_journal": {
+      "anchors": 1,
+      "observed_samples": 18,
+      "guard_results": 18,
+      "contexts": 2,
+      "record_chain_consistent": true,
+      "reader_status": "incomplete",
+      "reader_reason": "guard-rejected",
+      "runtime_completion_proven": false
+    },
+    "independent_checks": 151,
+    "baseline_observed_utc": "2026-11-23T14:44:27.749353+00:00",
+    "api_idle_observed_utc": "2026-11-23T14:44:28.689188+00:00",
+    "owned_jobs_exit_zero_and_empty": 20,
+    "release_publications": 1,
+    "readiness_publications": 1,
+    "baseline_process_entries_permission_denied": 454,
+    "all_host_process_absence_verified": false,
+    "all_remote_descendants_absent_verified": false
+  },
+  "quality": {
+    "new_evaluations": 0,
+    "historical_fixed_evidence_url": "https://github.com/uobnnisiuk/AOTG/blob/d743ea89783c23b52006f5d85bff4bb8b6244baa/docs/field-notes/evidence/2026-11-16-guard-stop-window.json",
+    "historical_result_is_comparative_baseline": false
+  },
+  "comparison_complete": false,
+  "startup_succeeded": false,
+  "goal_complete": false,
+  "raw_evidence_sha256": {
+    "supervisor_summary": "8be6a29280468378bcc124e2e369152ea79f1b479c85bceef5c2f8dcf37e626a",
+    "post_result": "2f6e10e18c699a659f1a0f4e5507049039d808685ab06ed80a10454b4b6a66fb",
+    "post_flow": "5eac35831578770e37644e27c8a9dab0758c9462e6aa6368a1a991cc882bdf98",
+    "collection_phase": "7546f004cb3a14249b4c1034917cfcfa511d44a2a1ff44387c86fd447932cdd8",
+    "owner_result": "5aa9e313f8e6d5957ad79996678acb1eb607b6149260fd8c18974b9f3d69fa97",
+    "worker_summary": "362d0943121c1cdb12cf501717bc27a7223c875952d90b1b2055d1721c423c07",
+    "resource_samples": "4f843149e0615959ef2d7a625871ba81e7ff062d983c78fd7dfb250df00ffba8",
+    "observation_journal": "297eafce34b86dcfa941566b6bb2c0f6203f61d1f4dd5169cfedacfb3d11b004",
+    "collection_wire": "8d93ff874b8b6232ab74a791f6b9413cc80da9479069302ea088451e1e63248c"
+  },
+  "review_sha256": {
+    "local_repair": "037d9f8c99a6e9c0e50edaa064eebade734990875c100b8d2f56e71d1ad9ab8d",
+    "prerelease_readonly": "3f8bcfa7dc5fda04cf734fd70928eea0aa6b00f7e113f7cfdb795b78465859b7",
+    "independent_memory_analysis": "deea18084e1be601cdb49385840179315e4956e5dc35c211e07fbb8d4b9ca540",
+    "sanitized_memory_facts": "380136792bae00b77f0aca74869689e06794ec6faeec49e64cd950e59da57964",
+    "final_post_restoration_transport": "c18cc172adf25011ea0a5a3b7499661919d0e0a7bd0a00dc535c9c18c57e5df7"
+  },
+  "limitations": [
+    "Saved host observations describe their recorded intervals, not ongoing service availability.",
+    "Global swapout increments do not identify a cause or an OOM.",
+    "Controller/worker/post clocks are not API outage measurements.",
+    "Collection of a stopped attempt is not startup, comparison, quality or Goal success."
+  ],
+  "source_sha256": {
+    "failed_supervisor": "058ab9cf10d17c4b4976788b8be1d31fe3ebe0b443b05eef062806c621254ce0",
+    "repaired_supervisor": "59715109a24008001d3a2f3b8db5d7389d185fd456c2790fcac7400e948433b3",
+    "repaired_launcher": "a14dd22685b35163e5d4e4060d8888e873ff7608e1391c0fd3a2dea2468d3e13",
+    "startup_worker": "20b2f90b01b0c1d737e0fdee9487312de5493bb5aa8b5b3245a9f93455bc45e1",
+    "strict_journal_reader": "0b1e980d9007e631118b5bb36ae4555a1ac1803d71a8f7bf070ddae7041976d6"
+  }
+}

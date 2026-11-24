@@ -1,0 +1,205 @@
+"""Bounded supplemental memory context; no guard decision or process discovery.
+
+Fixed proc/cgroup files only. Caller passes already owned server/native identities.
+Missing/invalid data stays null with a reason. Sequential reads are not atomic;
+post-pass context cannot explain an earlier swap event by itself. No live CLI.
+"""
+import datetime
+import os
+import re
+import stat
+import time
+
+CONTEXT_SECONDS = 0.05
+CONTEXT_READS = 24
+CONTEXT_BYTES = 256 * 1024
+CONTEXT_KEYS = {
+    'memory.stat': ('anon','file','shmem','kernel','unevictable','pgscan','pgsteal',
+                    'pgscan_kswapd','pgscan_direct','pgsteal_kswapd','pgsteal_direct'),
+    'memory.events': ('low','high','max','oom','oom_kill','oom_group_kill'),
+    'memory.swap.events': ('high','max','fail'),
+    'vmstat': ('pswpin','pswpout','pgscan_kswapd','pgscan_direct','pgsteal_kswapd',
+               'pgsteal_direct','pgscan_direct_throttle','allocstall_normal',
+               'allocstall_movable','oom_kill'),
+}
+
+class ContextUnavailable(ValueError):
+    pass
+
+
+def _context_require(value, reason):
+    if not value:
+        raise ContextUnavailable(reason)
+
+
+def _context_open_directory(path):
+    parts=path.split('/')
+    _context_require(parts[0]=='' and all(p not in ('','.','..') for p in parts[1:]), 'directory-path')
+    fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    try:
+        for part in parts[1:]:
+            nextfd=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
+            os.close(fd);fd=nextfd
+        return fd
+    except BaseException:
+        os.close(fd);raise
+
+
+def _context_read_at(root, relative, cap):
+    parts=relative.split('/')
+    _context_require(parts and all(re.fullmatch(r'[A-Za-z0-9_.-]+',p) and p not in ('.','..') for p in parts),'relative-path')
+    parent=os.dup(root)
+    try:
+        for part in parts[:-1]:
+            nextfd=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=parent)
+            os.close(parent);parent=nextfd
+        fd=os.open(parts[-1],os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=parent)
+        try:
+            before=os.fstat(fd);_context_require(stat.S_ISREG(before.st_mode),'nonregular-input')
+            raw=bytearray()
+            while True:
+                chunk=os.read(fd,min(4096,cap+1-len(raw)))
+                if not chunk:break
+                raw.extend(chunk);_context_require(len(raw)<=cap,'file-byte-limit')
+            after=os.fstat(fd)
+            _context_require((before.st_dev,before.st_ino)==(after.st_dev,after.st_ino),'file-identity-changed')
+            return bytes(raw).decode('ascii','strict')
+        finally:os.close(fd)
+    finally:os.close(parent)
+
+
+class _ContextFiles:
+    def __init__(self,cgroup):
+        self.proc=_context_open_directory('/proc');self.group=None;self.cgroup=cgroup
+        try:self.group=_context_open_directory('/sys/fs/cgroup'+cgroup)
+        except BaseException:os.close(self.proc);raise
+    def read(self,domain,relative,cap):
+        return _context_read_at(self.proc if domain=='proc' else self.group,relative,cap)
+    def group_identity(self):
+        fd=_context_open_directory('/sys/fs/cgroup'+self.cgroup)
+        try:
+            current=os.fstat(fd);retained=os.fstat(self.group)
+            _context_require((current.st_dev,current.st_ino)==(retained.st_dev,retained.st_ino),'cgroup-replaced')
+            return {'device':current.st_dev,'inode':current.st_ino}
+        finally:os.close(fd)
+    def close(self):
+        os.close(self.proc);os.close(self.group)
+
+
+def _context_uint(text):
+    _context_require(isinstance(text,str) and re.fullmatch(r'[0-9]{1,20}',text) is not None,'invalid-counter')
+    n=int(text);_context_require(n<=2**64-1,'counter-range');return n
+
+
+def _context_counters(text,keys):
+    values={}
+    for line in text.splitlines():
+        pair=line.split();_context_require(len(pair)==2 and pair[0] not in values,'counter-rows')
+        values[pair[0]]=_context_uint(pair[1])
+    return {'values':{key:values.get(key) for key in keys},'missing_keys':[key for key in keys if key not in values]}
+
+
+def _context_pressure(text):
+    values={}
+    for line in text.splitlines():
+        row=line.split();_context_require(len(row)==5 and row[0] in ('some','full') and row[0] not in values,'pressure-rows')
+        data={}
+        for field in row[1:]:
+            pair=field.split('=');_context_require(len(pair)==2 and pair[0] not in data,'pressure-fields');data[pair[0]]=pair[1]
+        _context_require(set(data)=={'avg10','avg60','avg300','total'},'pressure-fields')
+        for key in ('avg10','avg60','avg300'):
+            _context_require(re.fullmatch(r'[0-9]{1,3}(?:\.[0-9]{1,6})?',data[key]) is not None,'pressure-number')
+            data[key]=float(data[key]);_context_require(0<=data[key]<=100,'pressure-range')
+        data['total']=_context_uint(data['total']);values[row[0]]=data
+    return {'values':{key:values.get(key) for key in ('some','full')},'missing_keys':[key for key in ('some','full') if key not in values]}
+
+
+def collect_resource_context(expected_cgroup, *, root_identity=None, native_identity=None,
+                             _files=None, _clock=time.monotonic, _worker_pid=None):
+    """Read one fixed bounded context. Internal injected readers are synthetic-test seams.
+
+    No signals, writes, commands, environment reads, broad proc scan, or retries.
+    Deadline checks surround each operation, but cannot interrupt a blocked kernel
+    syscall. Limits are a userspace budget, not a hard realtime guarantee.
+    """
+    _context_require(isinstance(expected_cgroup,str) and re.fullmatch(r'/system\.slice/aotg-[0-9a-f]{16}-worker\.service',expected_cgroup) is not None,'cgroup-scope')
+    def requested(value):
+        if value is None:return None
+        _context_require(isinstance(value,dict) and set(value)=={'pid','start_ticks'},'identity-fields')
+        _context_require(type(value['pid']) is int and 0<value['pid']<2**31 and type(value['start_ticks']) is int and 0<value['start_ticks']<2**64,'identity-values')
+        return dict(value)
+    root_identity=requested(root_identity);native_identity=requested(native_identity)
+    _context_require(native_identity is None or root_identity is not None,'native-without-owned-root')
+    began=_clock();deadline=began+CONTEXT_SECONDS;reads=0;size=0
+    result={'artifact':'aotg-memory-context','version':1,'status':'incomplete','diagnostic_only':True,
+            'utc_read_start':datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            'expected_cgroup':expected_cgroup,'bindings':{},'metrics':{},'errors':[],
+            'limits':{'seconds':CONTEXT_SECONDS,'reads':CONTEXT_READS,'bytes':CONTEXT_BYTES},
+            'atomic_snapshot':False,'guard_accepted':None,'cause_attribution_proven':False}
+    files=None;created=False
+    def cutoff():_context_require(_clock()<deadline,'deadline')
+    def read(domain,name,cap):
+        nonlocal reads,size
+        cutoff();_context_require(reads<CONTEXT_READS,'read-count');reads+=1
+        value=files.read(domain,name,cap);size+=len(value.encode('ascii'))
+        _context_require(len(value.encode('ascii'))<=cap and size<=CONTEXT_BYTES,'total-byte-limit');cutoff();return value
+    def identity(pid):
+        raw=read('proc',str(pid)+'/stat',4096)
+        prefix,sep,tail=raw.rpartition(')');_context_require(sep and prefix.startswith(str(pid)+' ('),'stat-pid')
+        parts=tail.split();_context_require(len(parts)>=20,'stat-fields');ticks=_context_uint(parts[19])
+        groups=read('proc',str(pid)+'/cgroup',4096).splitlines()
+        _context_require(groups==['0::'+expected_cgroup],'pid-cgroup-mismatch')
+        return {'pid':pid,'start_ticks':ticks,'cgroup':expected_cgroup}
+    def error_name(exc):return str(exc) if isinstance(exc,ContextUnavailable) else type(exc).__name__
+    try:
+        cutoff();files=_files if _files is not None else _ContextFiles(expected_cgroup);created=_files is None;cutoff()
+        cg_before=files.group_identity();cutoff()
+        result['cgroup_identity_before']=cg_before
+        pid=os.getpid() if _worker_pid is None else _worker_pid
+        _context_require(type(pid) is int and 0<pid<2**31,'worker-pid')
+        wanted={'worker':{'pid':pid,'start_ticks':None},'root':root_identity,'native':native_identity}
+        for role,want in wanted.items():
+            result['bindings'][role]={'requested':want,'before':None,'after':None,'verified':None if want is None else False}
+            if want is not None:
+                try:
+                    actual=identity(want['pid']);result['bindings'][role]['before']=actual
+                    _context_require(want['start_ticks'] is None or actual['start_ticks']==want['start_ticks'],'pid-start-mismatch')
+                except (OSError,ValueError) as exc:
+                    result['bindings'][role]['error']=error_name(exc)
+                    result['errors'].append(role+'-before:'+error_name(exc))
+        _context_require(result['bindings']['worker']['before'] is not None,'worker-binding-unavailable')
+        specifications=[('cgroup-memory-current','cgroup','memory.current',64,lambda v:_context_uint(v.strip())),
+          ('cgroup-swap-current','cgroup','memory.swap.current',64,lambda v:_context_uint(v.strip())),
+          *[(name,'cgroup',name,16384,lambda v,k=keys:_context_counters(v,k)) for name,keys in CONTEXT_KEYS.items() if name!='vmstat'],
+          ('cgroup-memory-pressure','cgroup','memory.pressure',2048,_context_pressure),
+          ('global-memory-pressure','proc','pressure/memory',2048,_context_pressure),
+          ('global-vmstat','proc','vmstat',65536,lambda v:_context_counters(v,CONTEXT_KEYS['vmstat']))]
+        for label,domain,name,cap,parser in specifications:
+            record={'status':'missing','value':None,'reason':None};result['metrics'][label]=record
+            try:
+                value=parser(read(domain,name,cap));record.update(status='observed',value=value)
+                if isinstance(value,dict) and value.get('missing_keys'):
+                    record.update(status='partial',reason='missing-keys');result['errors'].append(label+':missing-keys')
+            except (OSError,ValueError) as exc:
+                record['reason']=error_name(exc);result['errors'].append(label+':'+error_name(exc))
+        for role,want in wanted.items():
+            if want is not None:
+                try:
+                    actual=identity(want['pid']);result['bindings'][role]['after']=actual
+                    _context_require(actual==result['bindings'][role]['before'] and (want['start_ticks'] is None or actual['start_ticks']==want['start_ticks']),'pid-identity-changed')
+                    _context_require('error' not in result['bindings'][role],'pid-before-unverified')
+                    result['bindings'][role]['verified']=True
+                except (OSError,ValueError) as exc:
+                    result['bindings'][role]['error']=error_name(exc);result['errors'].append(role+'-after:'+error_name(exc))
+        cutoff();result['cgroup_identity_after']=files.group_identity();cutoff()
+        _context_require(result['cgroup_identity_after']==cg_before,'cgroup-identity-changed')
+        if not result['errors']:result['status']='observed-bindings-verified'
+    except (OSError,ValueError) as exc:result['errors'].append(error_name(exc))
+    finally:
+        if created and files is not None:files.close()
+        result['utc_read_end']=datetime.datetime.now(datetime.timezone.utc).isoformat()
+        result['seconds']=max(0,_clock()-began);result['read_calls']=reads;result['read_bytes']=size
+    if result['seconds']>=CONTEXT_SECONDS:
+        result['status']='incomplete'
+        if 'deadline' not in result['errors']:result['errors'].append('deadline')
+    return result

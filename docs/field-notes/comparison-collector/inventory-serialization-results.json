@@ -1,0 +1,120 @@
+{
+  "actual_remote_actions": false,
+  "actual_transport_or_storage_speed_tested": false,
+  "artifact": "aotg-synthetic-collector-inventory-serialization",
+  "cases": {
+    "existing_inventory_all_caps": {
+      "emitter_finished": true,
+      "inventory_files": 517,
+      "maximum_serialized_bytes_by_kind": {
+        "aotg-comparison-collection-final": 2805,
+        "aotg-comparison-collection-open": 914,
+        "aotg-comparison-file-chunk": 87493,
+        "aotg-comparison-file-close": 781,
+        "aotg-comparison-file-open": 148
+      },
+      "metadata_reread_bytes": 2621440,
+      "observations_bytes": 134217728,
+      "raw_budget_margin": 131072,
+      "raw_bytes": 265682944,
+      "record_budget_margin": 1110,
+      "serialization": {
+        "maximum_line_bytes": 87493,
+        "maximum_metadata_line_bytes": 2805,
+        "maximum_non_base64_overhead_bytes": 2805,
+        "records": 5090,
+        "wire_bytes": 355158990
+      },
+      "total_read_bytes": 268304384,
+      "valid_evidence_body_claimed": false,
+      "wire_budget_margin": 47494194,
+      "wire_sha256": "352c108e5602de45dda2ae9eeee9cd2f4089c67b4cd89914207e2a30d2250c56"
+    },
+    "final_runtime_anchor_2k": {
+      "emitter_finished": true,
+      "inventory_files": 517,
+      "maximum_serialized_bytes_by_kind": {
+        "aotg-comparison-collection-final": 2805,
+        "aotg-comparison-collection-open": 914,
+        "aotg-comparison-file-chunk": 87493,
+        "aotg-comparison-file-close": 781,
+        "aotg-comparison-file-open": 148
+      },
+      "metadata_reread_bytes": 2621440,
+      "observations_bytes": 130394112,
+      "raw_budget_margin": 3954688,
+      "raw_bytes": 261859328,
+      "record_budget_margin": 1168,
+      "serialization": {
+        "maximum_line_bytes": 87493,
+        "maximum_metadata_line_bytes": 2805,
+        "maximum_non_base64_overhead_bytes": 2805,
+        "records": 5032,
+        "wire_bytes": 350054356
+      },
+      "total_read_bytes": 264480768,
+      "valid_evidence_body_claimed": false,
+      "wire_budget_margin": 52598828,
+      "wire_sha256": "91ee1eb228d13da372038b39f61f81b748510c762eb1cb4129e00e1497ebd2f1"
+    },
+    "proposed_separate_primary_guard_caps": {
+      "emitter_finished": true,
+      "inventory_files": 517,
+      "maximum_serialized_bytes_by_kind": {
+        "aotg-comparison-collection-final": 2805,
+        "aotg-comparison-collection-open": 914,
+        "aotg-comparison-file-chunk": 87493,
+        "aotg-comparison-file-close": 781,
+        "aotg-comparison-file-open": 148
+      },
+      "metadata_reread_bytes": 2621440,
+      "observations_bytes": 130393088,
+      "raw_budget_margin": 3955712,
+      "raw_bytes": 261858304,
+      "record_budget_margin": 1168,
+      "serialization": {
+        "maximum_line_bytes": 87493,
+        "maximum_metadata_line_bytes": 2805,
+        "maximum_non_base64_overhead_bytes": 2805,
+        "records": 5032,
+        "wire_bytes": 350052992
+      },
+      "total_read_bytes": 264479744,
+      "valid_evidence_body_claimed": false,
+      "wire_budget_margin": 52600192,
+      "wire_sha256": "c9cdbdc36e214d36827dcc7ea64869c718c3dfca383d1df9833dd7cf33e5103f"
+    },
+    "published_conditional_2s_context": {
+      "emitter_finished": true,
+      "inventory_files": 517,
+      "maximum_serialized_bytes_by_kind": {
+        "aotg-comparison-collection-final": 2805,
+        "aotg-comparison-collection-open": 914,
+        "aotg-comparison-file-chunk": 87493,
+        "aotg-comparison-file-close": 781,
+        "aotg-comparison-file-open": 148
+      },
+      "metadata_reread_bytes": 2621440,
+      "observations_bytes": 126068736,
+      "raw_budget_margin": 8280064,
+      "raw_bytes": 257533952,
+      "record_budget_margin": 1234,
+      "serialization": {
+        "maximum_line_bytes": 87493,
+        "maximum_metadata_line_bytes": 2805,
+        "maximum_non_base64_overhead_bytes": 2805,
+        "records": 4966,
+        "wire_bytes": 344279818
+      },
+      "total_read_bytes": 260155392,
+      "valid_evidence_body_claimed": false,
+      "wire_budget_margin": 58373366,
+      "wire_sha256": "5fdf38717b68c7866027d8432ead3af6044049e828aa078a0b364df4727633ab"
+    }
+  },
+  "formal_platform_metadata_bound_proved": false,
+  "source_sha256": "22a8667bd5f935403e85ebbce6a6f8dbfaeddd00137e6241448df87d074ddf5d",
+  "stat_model": "64-bit positive stat fields and 32-bit uid/gid, fixed reviewed schema",
+  "version": 1,
+  "whole_chain_qualified": false
+}

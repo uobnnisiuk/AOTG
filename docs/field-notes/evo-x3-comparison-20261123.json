@@ -1,0 +1,256 @@
+{
+  "artifact": "aotg-evo-x3-comparison-observation",
+  "version": 1,
+  "date": "2026-11-23",
+  "scope": "one approved balanced64 comparison attempt, first baseline arm stopped before readiness",
+  "comparison_attempts": 1,
+  "counts": {
+    "accepted_resource_samples": 28,
+    "alternatives_started": 0,
+    "baseline_arm_prefill": 512,
+    "client_completed_tasks": 0,
+    "completed_arms": 0,
+    "observed_samples": 29,
+    "passed_guards": 28,
+    "planned_arms": 64,
+    "rejected_guards": 1,
+    "resource_anchor_records": 1,
+    "started_arms": 1
+  },
+  "worker_wall_seconds": 5.852980294963345,
+  "client_wall_seconds": 9.959751136018895,
+  "timeline_utc": {
+    "arm0_finished": "2026-11-23T06:53:10.442878+00:00",
+    "arm0_started": "2026-11-23T06:53:05.089274+00:00",
+    "final_kernel_scan": "2026-11-23T06:53:10.468392+00:00",
+    "last_accepted_sample": "2026-11-23T06:53:10.039729+00:00",
+    "owner_report_finished": "2026-11-23T06:53:38.012519+00:00",
+    "rejected_sample": "2026-11-23T06:53:10.235736+00:00",
+    "worker_finished": "2026-11-23T06:53:10.470692+00:00",
+    "worker_started": "2026-11-23T06:53:04.615034+00:00"
+  },
+  "primary_observed_cause": {
+    "anchor_source": "Monitor initialization reads /proc/vmstat fresh at worker entry; no frozen old baseline counter used",
+    "check_source": "field-worker-v2.py:415 num(pswpout) == num(initial_pswpout)",
+    "guard_observed_at_utc": "2026-11-23T06:53:10.235881+00:00",
+    "initial_pswpout": 115,
+    "missing_or_counter_reset": false,
+    "pswpout_delta": 43,
+    "reason": "New swapout or counter reset",
+    "rejected_pswpout": 158,
+    "rejected_sample_utc": "2026-11-23T06:53:10.235736+00:00",
+    "rejected_sequence": 28,
+    "startup_anchor": {
+      "initial_gtt_bytes": 18661376,
+      "pswpout": 115,
+      "utc_read_end": "2026-11-23T06:53:04.627424+00:00",
+      "utc_read_start": "2026-11-23T06:53:04.619616+00:00"
+    },
+    "swap_used_bytes_at_rejection": 626688,
+    "swap_used_bytes_before_rejection": 450560,
+    "swap_used_delta_bytes": 176128,
+    "type": "resource_guard_swapout_counter_increased"
+  },
+  "resource_ranges": {
+    "disk_free_bytes": {
+      "maximum": 1382088097792,
+      "minimum": 1382087520256
+    },
+    "free_vram_bytes": {
+      "maximum": 68564537344,
+      "minimum": 10970460160
+    },
+    "gpu_edge_c": {
+      "maximum": 33,
+      "minimum": 26
+    },
+    "gtt_used_bytes": {
+      "maximum": 25059328,
+      "minimum": 18661376
+    },
+    "host_mem_available_bytes": {
+      "maximum": 63168024576,
+      "minimum": 61412487168
+    },
+    "nvme_composite_c": {
+      "maximum": 26.85,
+      "minimum": 25.85
+    },
+    "nvme_sensor2_c": {
+      "maximum": 74.85,
+      "minimum": 74.85
+    },
+    "swap_used_bytes": {
+      "maximum": 626688,
+      "minimum": 450560
+    }
+  },
+  "native_process_observation": {
+    "all_observed_VmSwap_bytes_zero": true,
+    "attribution_proven": false,
+    "samples_with_process": 22
+  },
+  "supplemental_io": {
+    "cancel_requested": true,
+    "contains_vmstat_or_process_attribution": false,
+    "coverage_complete": null,
+    "first_utc": "2026-11-23T06:53:02.124216+00:00",
+    "interpretation": "Host/device cumulative observations overlap startup; no per-process swap attribution, no saturation conclusion, no complete-capture claim.",
+    "last_utc": "2026-11-23T06:53:52.125733+00:00",
+    "max_between_read_brackets_seconds": 1.000194497,
+    "sampler_final_present": false,
+    "samples": 51,
+    "worker_interval_bracketed_by_saved_samples": true
+  },
+  "kernel_scan": {
+    "scanned_at": "2026-11-23T06:53:10.468392+00:00",
+    "scope": "Frozen error-pattern scan with output hash; not full raw kernel log, not proof of no reclaim or no memory pressure.",
+    "since": "2026-11-23 05:09:30 UTC",
+    "status": "clear"
+  },
+  "startup_phase": {
+    "caution": "Log shows cache-size/profile-fill context but does not identify which process/page was swapped or prove GPU allocation caused it.",
+    "interpretation": "Stopped during initial model load before coding readiness. Server interrupt is consistent with guard-triggered owned cleanup, not evidence of an independent engine crash.",
+    "last_engine_log_phase": "expert-cache profile fill; STRATA_FILL_AHEAD=256",
+    "load_seconds_result_present": false,
+    "log_claims_not_measurements": {
+      "auto_sizing_slots": 19597,
+      "profile_cache_gib": 46.84,
+      "profile_cache_slots": 24576
+    },
+    "ready_marker_present_at_collection": false,
+    "server_log_terminal_exception": "KeyboardInterrupt"
+  },
+  "collection": {
+    "all_517_saved_complete_or_partial_hashes_verified": true,
+    "attempts": 1,
+    "captured_files": 10,
+    "errors": [
+      "remote_collection_incomplete"
+    ],
+    "explicit_missing_files": 507,
+    "incomplete_reason": "Fixed inventory includes ready/done and unstarted arms; 507 FileNotFoundError statuses remain explicit.",
+    "owned_windows_job_empty": true,
+    "planned_files": 517,
+    "remote_exit_code": 2,
+    "remote_process_exit_verified": false,
+    "status": "incomplete"
+  },
+  "client_observation": {
+    "cause_chain_status": "Owned remote job exit1; exact stderr was not retained. Consistent with worker terminal-state detection, but direct exception source unproven.",
+    "cleanup_errors": [],
+    "error": "RuntimeError: Owned remote state operation failed",
+    "status": "stopped",
+    "tasks": 0
+  },
+  "evidence_hashes": {
+    "accepted_resources": {
+      "bytes": 29039,
+      "sha256": "388fdbaed9c0a0b67ac50f3608df45077d4a05a92166083f37ca2959eecfcd04"
+    },
+    "arm0_result": {
+      "bytes": 458,
+      "sha256": "5d6937f90c3044d4262ddf7c2df54530f5dfc2611d985acc07a55e1812690f06"
+    },
+    "capture_result": {
+      "bytes": 192286,
+      "sha256": "f00be8eabf859234c11cb160c3edb3b77c052d9cc9375c55ae89ca50f931973f"
+    },
+    "client_plan": {
+      "bytes": 23715,
+      "sha256": "7eff352a0ae72dba2f11d295131f98cf5e21cbb538c0b1321ea8b9380534b2b5"
+    },
+    "client_summary": {
+      "bytes": 473,
+      "sha256": "7333549e61ca4d24c7a8b5f7dc833d88c0864e984e7dedb02d359d61f4a45556"
+    },
+    "engine_log": {
+      "bytes": 5562,
+      "sha256": "330f51e9333f272cb71fc1c102829930e4b4a218abae486194bb6f47f9ec2d4a"
+    },
+    "io_lifecycle": {
+      "bytes": 3074,
+      "sha256": "b0a726c71be3091323f7998115aea3b3703119c509ebd4c4d702a5772c0a662b"
+    },
+    "io_samples": {
+      "bytes": 79919,
+      "sha256": "3f67eaf5d8a78740af92256528cf41e76e9c7e74aedd52ae2ff2b4ce3459fe9a"
+    },
+    "kernel_final": {
+      "bytes": 196,
+      "sha256": "eb97f72587c9850d61af902053debf884f090f416415219f7861794155e5ce65"
+    },
+    "observations": {
+      "bytes": 54224,
+      "sha256": "ebdf157cc189dda898a889c3335b60341176f7ae670b095421955dd7ac57ac75"
+    },
+    "owner_result": {
+      "bytes": 778,
+      "sha256": "6ee022b2ce220622c8a3b49aa1f76d4d57779ce430a7ab644fb3c1f1c17e46e5"
+    },
+    "server_log": {
+      "bytes": 3080,
+      "sha256": "8c89b5b53e15109cec75087521b1360d829df7ddbbf3846c971a35ab08955f3c"
+    },
+    "wire": {
+      "bytes": 377945,
+      "sha256": "d3959749d1769cc0c0ac8e7ee52d43c10369ef41eefc5933f07adf4f91776ee8"
+    },
+    "worker_plan": {
+      "bytes": 97553,
+      "sha256": "418ec2d91ab3a5f9af3650ff6c50300eb22297365c37efa5729de7ee377d5546"
+    },
+    "worker_source": {
+      "bytes": 58455,
+      "sha256": "692904c3d1c394fe617a2a16a76284925c2823f2cc52a3e26d3376b7119538f9"
+    },
+    "worker_summary": {
+      "bytes": 929,
+      "sha256": "94313606367c51abb76dfb07876393b9da7297490a69ce5c66d339cff3da8ef0"
+    }
+  },
+  "independent_restoration": {
+    "baseline_observed_utc": "2026-11-23T06:55:29.885646Z",
+    "protected_hashes_equal": 19,
+    "native_argv_and_executable_stat_match": true,
+    "unit_state": "active/exited/success",
+    "baseline_record_sha256": "4a3040a9dccbe74943ae22dd4bc5cedb9df4ffebb89ea6df1175d46b0816f22b",
+    "api_observed_utc": "2026-11-23T07:01:15.104128Z",
+    "api_http_method": "GET",
+    "api_status": 200,
+    "idle_slots": 1,
+    "point_in_time_only": true,
+    "api_record_sha256": "17a20f99253ad95d33c6a383e6e51deb6a4b7e21495135fe775fc165ff1a4fec",
+    "inference_quality_verified": false
+  },
+  "unresolved": [
+    "Which process/pages contributed the +43 global pswpout increments",
+    "Whether model GPU-cache filling caused kernel reclaim or only coincided with unrelated host activity",
+    "Kernel memory-zone/PSI/cgroup swap state at the transition is not recorded",
+    "No comparison/adoption metric or model task quality result exists for this run"
+  ],
+  "comparison_complete": false,
+  "quality_accepted": false,
+  "adoption_accepted": false,
+  "goal_complete": false,
+  "rerun_performed": false,
+  "original_evidence_unchanged": true,
+  "post_cleanup": {
+    "observed_utc": "2026-11-23T07:08:06.068421Z",
+    "unit_count": 4,
+    "unit_states": "inactive/not-found/dead",
+    "known_owner_pid_absent": true,
+    "sampler_scan": {
+      "numeric_entries": 421,
+      "uid1000_entries": 12,
+      "enumeration_complete": true,
+      "exact_flag_matches": 0,
+      "read_errors": 0,
+      "unknown_descendants_exited_proven": false
+    },
+    "record_sha256": "5d06e166a3a86d6a46673850bea2f90779bde9f02fd6ba936c617b4e3e69cf08",
+    "service_control_invoked": false,
+    "inference_invoked": false,
+    "observed_processes_signalled": false
+  }
+}

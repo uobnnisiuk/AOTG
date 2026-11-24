@@ -1,0 +1,102 @@
+{
+  "artifact": "aotg-comparison-collector-source-archive",
+  "version": 1,
+  "operational_ready": false,
+  "real_collections": 0,
+  "runtime_or_production_changed": false,
+  "whole_chain_qualified": false,
+  "files": [
+    {
+      "path": "collector_remote.py",
+      "bytes": 17195,
+      "original_sha256": "22a8667bd5f935403e85ebbce6a6f8dbfaeddd00137e6241448df87d074ddf5d",
+      "published_sha256": "22a8667bd5f935403e85ebbce6a6f8dbfaeddd00137e6241448df87d074ddf5d",
+      "relocation_delta": "none"
+    },
+    {
+      "path": "collect_comparison.py",
+      "bytes": 25370,
+      "original_sha256": "010fcad5605885ac040ca2219b9b9db41247dec64eef79c76f593cb060bc1390",
+      "published_sha256": "010fcad5605885ac040ca2219b9b9db41247dec64eef79c76f593cb060bc1390",
+      "relocation_delta": "none"
+    },
+    {
+      "path": "collector_transport.py",
+      "bytes": 8428,
+      "original_sha256": "32952000f3eb6fc84257313fddda8d25ea88b988887d9d62cddeb3b5b0258e22",
+      "published_sha256": "32952000f3eb6fc84257313fddda8d25ea88b988887d9d62cddeb3b5b0258e22",
+      "relocation_delta": "none"
+    },
+    {
+      "path": "collection_phase.py",
+      "bytes": 18775,
+      "original_sha256": "a1fbd0dd79792156f843a4ddcd03b24852c50f221d58c7cdb38f801a74e803a5",
+      "published_sha256": "a1fbd0dd79792156f843a4ddcd03b24852c50f221d58c7cdb38f801a74e803a5",
+      "relocation_delta": "none"
+    },
+    {
+      "path": "test_collector.py",
+      "bytes": 17378,
+      "original_sha256": "005b647bb042633e7082929a57e0b464c9be9cd7ab84fa60226d36cb3d108e84",
+      "published_sha256": "005b647bb042633e7082929a57e0b464c9be9cd7ab84fa60226d36cb3d108e84",
+      "relocation_delta": "none"
+    },
+    {
+      "path": "test_collector_transport.py",
+      "bytes": 9307,
+      "original_sha256": "3cc8fd3f340be6ce67d32e6d6f6c30b77d3df7c361119cf04cc11e19c74e4424",
+      "published_sha256": "3cc8fd3f340be6ce67d32e6d6f6c30b77d3df7c361119cf04cc11e19c74e4424",
+      "relocation_delta": "none"
+    },
+    {
+      "path": "test_collection_phase.py",
+      "bytes": 15563,
+      "original_sha256": "82acec1290baed536ba80c06a7a25098a53a5adc8cd77bc090d715609e0eb40a",
+      "published_sha256": "82acec1290baed536ba80c06a7a25098a53a5adc8cd77bc090d715609e0eb40a",
+      "relocation_delta": "none"
+    },
+    {
+      "path": "README.md",
+      "bytes": 15184,
+      "original_sha256": "2bcf8b653709f88a60964f5efd10384a11ec0f64fcb4902dcbc08bedb262835a",
+      "published_sha256": "2bcf8b653709f88a60964f5efd10384a11ec0f64fcb4902dcbc08bedb262835a",
+      "relocation_delta": "none"
+    }
+  ],
+  "independent_source_review_sha256": "7bb5b3e9a147a5a06b209336d6d917707a1aa2ff95808cf13a5861beeac375cb",
+  "independent_source_tests": 61,
+  "relocated_offline_tests": {
+    "cases": 61,
+    "all_passed": true,
+    "scope": "Temporary local files, synthetic handoff verifier/runner, local pipes and fake OwnedSSH/Job receipts only. No real SSH, Windows Job, inference or service operation.",
+    "suites": [
+      {
+        "suite": "test_collector.py",
+        "cases": 32,
+        "exit_code": 0,
+        "stderr_sha256": "678a332016d5e4d119407e40ae8520ba39aaeb7c6c7c7ccb1cee9a352b09aa87"
+      },
+      {
+        "suite": "test_collector_transport.py",
+        "cases": 9,
+        "exit_code": 0,
+        "stderr_sha256": "6ea04e9106c9f5f1cd76b87707b3feb5634880756a4a669ed6e7981ae0718b0e"
+      },
+      {
+        "suite": "test_collection_phase.py",
+        "cases": 20,
+        "exit_code": 0,
+        "stderr_sha256": "a9934ac5d73aa8544ac75b41f82eaeadf31074ecfa43291d219f3b4fb3396c68"
+      }
+    ]
+  },
+  "ordinary_repository_ci_executes_archived_suites": false,
+  "private_evidence_or_concrete_plans_included": false,
+  "source_relocation_deltas": [],
+  "limitations": [
+    "Parent supervisor/launcher connection and real source-plan preview/stage/readback are not qualified by this archive.",
+    "The handoff and pinned runtime needed for an actual collection are not included here.",
+    "The whole-chain time proposal and concrete operational plan still require separate review and appropriate owner authorization.",
+    "A complete capture is not independent restoration, remote process-exit proof, quality acceptance or adoption."
+  ]
+}
