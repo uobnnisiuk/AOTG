@@ -40,6 +40,7 @@ class ObservationJournal(SerializedBudget):
         self._last_clock=origin;self._last_sample=None;self._pending=None
         self._forced=0;self._selected=None;self._last_started=None
         self._attempts=0;self._reserved_rows=0;self._reserved_bytes=0
+        self._flush_confirmed_rows=0;self._flush_confirmed_bytes=0
 
     def clock(self, now, *, io=False):
         if type(now) not in (int,float) or not math.isfinite(now):self._stop('nonfinite-clock')
@@ -63,6 +64,9 @@ class ObservationJournal(SerializedBudget):
         except BaseException:
             if self.stopped_reason is None:self.stopped_reason='observation-write-failed'
             raise
+        # Admission remains charged even if write/flush failed. Only a full
+        # write followed by successful flush is confirmed, not fsync durability.
+        self._flush_confirmed_rows+=1;self._flush_confirmed_bytes+=len(raw)
         return raw
 
     def start(self, record, now):
@@ -179,6 +183,11 @@ class ObservationJournal(SerializedBudget):
 
     def summary(self):
         return {**super().summary(),'adapter_version':1,'primary_hard_quota':MAX_PRIMARY_SAMPLES,
+                'admitted_rows':self.rows,'admitted_bytes':self.bytes,
+                'flush_confirmed_rows':self._flush_confirmed_rows,
+                'flush_confirmed_bytes':self._flush_confirmed_bytes,
+                'unconfirmed_admitted_rows':self.rows-self._flush_confirmed_rows,
+                'unconfirmed_admitted_bytes':self.bytes-self._flush_confirmed_bytes,
                 'forced_samples':self._forced,'forced_hard_quota':MAX_FORCED_SAMPLES,
                 'context_attempts':self._attempts,'context_hard_quota':MAX_CONTEXT_ATTEMPTS,
                 'reserved_rows':self._reserved_rows,'reserved_bytes':self._reserved_bytes,

@@ -57,5 +57,5 @@ class PublicObservationSuiteTests(unittest.TestCase):
         print(result.stdout, flush=True)
         print(f"observation-suite exit={result.returncode}", flush=True)
         self.assertEqual(result.returncode, 0, result.stdout)
-        self.assertRegex(result.stdout, r"(?m)^Ran 67 tests in ")
+        self.assertRegex(result.stdout, r"(?m)^Ran 70 tests in ")
         self.assertRegex(result.stdout, r"(?m)^OK$")

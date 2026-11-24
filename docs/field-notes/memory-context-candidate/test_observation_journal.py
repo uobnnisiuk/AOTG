@@ -171,6 +171,47 @@ class JournalTests(unittest.TestCase):
         j=J.ObservationJournal(Broken(),origin=0,deadline=1,run_id='synthetic')
         with self.assertRaises(B.BudgetStop):j.start({'phase':'startup-anchor'},0)
         self.assertIsNotNone(j.stopped_reason)
+    def test_flush_confirmed_accounting_on_complete_records(self):
+        j,s=self.make();self.primary(j,0,force=True)
+        j.context_after_primary_flush(lambda c:{},clock=lambda:0)
+        summary=j.summary()
+        self.assertEqual(summary['admitted_rows'],4)
+        self.assertEqual(summary['admitted_bytes'],len(s.getvalue().encode('ascii')))
+        self.assertEqual(summary['flush_confirmed_rows'],summary['admitted_rows'])
+        self.assertEqual(summary['flush_confirmed_bytes'],summary['admitted_bytes'])
+        self.assertEqual((summary['unconfirmed_admitted_rows'],summary['unconfirmed_admitted_bytes']),(0,0))
+    def test_short_or_failed_write_keeps_admission_not_confirmation(self):
+        for mode in ('short','raise'):
+            with self.subTest(mode=mode):
+                j,s=self.make();before=j.summary()
+                effect=(lambda value:len(value)-1) if mode=='short' else OSError('synthetic write failure')
+                with patch.object(s,'write',side_effect=effect):
+                    with self.assertRaises((B.BudgetStop,OSError)):
+                        j.observed({'phase':'observed','sequence':0},0,force=True)
+                summary=j.summary()
+                self.assertEqual(summary['admitted_rows'],before['admitted_rows']+1)
+                self.assertEqual(summary['flush_confirmed_rows'],before['flush_confirmed_rows'])
+                self.assertEqual(summary['flush_confirmed_bytes'],before['flush_confirmed_bytes'])
+                self.assertEqual(summary['unconfirmed_admitted_rows'],1)
+                self.assertGreater(summary['unconfirmed_admitted_bytes'],0)
+                self.assertEqual(summary['rows'],summary['admitted_rows'])
+                self.assertEqual(summary['bytes'],summary['admitted_bytes'])
+                with self.assertRaises(B.BudgetStop):
+                    j.observed({'phase':'observed','sequence':0},0,force=True)
+    def test_failed_context_flush_is_unconfirmed_even_if_bytes_visible(self):
+        j,s=self.make();self.primary(j,0,force=True);before=j.summary()
+        with patch.object(s,'flush',side_effect=OSError('synthetic flush failure')):
+            with self.assertRaises(OSError):
+                j.context_after_primary_flush(lambda c:{},clock=lambda:0)
+        summary=j.summary()
+        self.assertEqual(summary['admitted_rows'],4)
+        self.assertEqual(summary['flush_confirmed_rows'],3)
+        self.assertEqual(summary['flush_confirmed_bytes'],before['flush_confirmed_bytes'])
+        self.assertEqual(summary['unconfirmed_admitted_rows'],1)
+        self.assertEqual(summary['admitted_bytes'],len(s.getvalue().encode('ascii')))
+        self.assertEqual(summary['unconfirmed_admitted_bytes'],summary['admitted_bytes']-before['flush_confirmed_bytes'])
+        self.assertEqual(summary['status'],'incomplete-stopped')
+        self.assertIsNone(j.context_after_primary_flush(lambda c:self.fail('retry')))
     def test_complete_window_and_64_forced_arm_checks(self):
         j,_=self.make();count=0;last=None
         microseconds=0;forced=0;step=0

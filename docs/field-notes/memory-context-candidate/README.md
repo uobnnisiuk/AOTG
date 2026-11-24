@@ -25,7 +25,14 @@ continue after the unchanged guard passed. Unexpected sampler exceptions, clock
 rollback/nonfinite/deadline, serialization, quota or write errors latch a stop.
 The selected attempt is consumed before the reader; no retry resets quota or
 clock state. A failure witness is attempted within its reserved line. Failed
-writes cannot be reported as completed capture. Post-call actual monotonic time
+writes cannot be reported as completed capture. The adapter summary retains
+`rows`/`bytes` as admission charges (also named `admitted_rows`/`admitted_bytes`).
+`flush_confirmed_rows`/`flush_confirmed_bytes` advance only after a full write
+and successful flush; `unconfirmed_admitted_*` is their difference, not a
+physical file-size measurement. Failed or partial writes remain charged;
+visible bytes after a failed flush are not confirmation. This is not fsync,
+collector verification, or proof that the private worker persists this summary.
+Post-call actual monotonic time
 is checked, including the shared worker deadline. Passed ticks also check the
 shared worker deadline after accepted-resource flush when context is skipped,
 and after a selected context is serialized and flushed. The 50 ms reader budget
@@ -84,8 +91,9 @@ python3 -I -S -B /path/to/candidate/test_observation_journal.py
 
 This suite previously ran 64 tests with no skips on Linux: 20 adapter/boundary
 tests, the original 30 pure prototype tests and 14 helper tests. Three additional
-worker-deadline regression tests are included (67 expected total); the historical
-64-test result is not evidence for the new revision. It includes a complete
+worker-deadline regression tests and three write-accounting tests are included
+(70 expected total); the historical 64- and 67-test results are not evidence for
+the new revision. It includes a complete
 synthetic 5,340-second clock window with 64 forced arm checks, exact serialized
 line boundaries, maximum uint64/PSI/role fixtures, missing values, identity drift,
 clock discontinuity, full-cap reservation before reads and no-retry failures.

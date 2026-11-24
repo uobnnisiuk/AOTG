@@ -1,6 +1,6 @@
 --- a/field-worker.py
 +++ b/field-worker.py
-@@ -28,0 +29,543 @@
+@@ -28,0 +29,552 @@
 +
 +from dataclasses import dataclass
 +
@@ -399,6 +399,7 @@
 +        self._last_clock=origin;self._last_sample=None;self._pending=None
 +        self._forced=0;self._selected=None;self._last_started=None
 +        self._attempts=0;self._reserved_rows=0;self._reserved_bytes=0
++        self._flush_confirmed_rows=0;self._flush_confirmed_bytes=0
 +
 +    def clock(self, now, *, io=False):
 +        if type(now) not in (int,float) or not math.isfinite(now):self._stop('nonfinite-clock')
@@ -422,6 +423,9 @@
 +        except BaseException:
 +            if self.stopped_reason is None:self.stopped_reason='observation-write-failed'
 +            raise
++        # Admission remains charged even if write/flush failed. Only a full
++        # write followed by successful flush is confirmed, not fsync durability.
++        self._flush_confirmed_rows+=1;self._flush_confirmed_bytes+=len(raw)
 +        return raw
 +
 +    def start(self, record, now):
@@ -538,21 +542,26 @@
 +
 +    def summary(self):
 +        return {**super().summary(),'adapter_version':1,'primary_hard_quota':MAX_PRIMARY_SAMPLES,
++                'admitted_rows':self.rows,'admitted_bytes':self.bytes,
++                'flush_confirmed_rows':self._flush_confirmed_rows,
++                'flush_confirmed_bytes':self._flush_confirmed_bytes,
++                'unconfirmed_admitted_rows':self.rows-self._flush_confirmed_rows,
++                'unconfirmed_admitted_bytes':self.bytes-self._flush_confirmed_bytes,
 +                'forced_samples':self._forced,'forced_hard_quota':MAX_FORCED_SAMPLES,
 +                'context_attempts':self._attempts,'context_hard_quota':MAX_CONTEXT_ATTEMPTS,
 +                'reserved_rows':self._reserved_rows,'reserved_bytes':self._reserved_bytes,
 +                'runtime_qualified':False}
 +
 +
-@@ -726,0 +1270,2 @@
+@@ -726,0 +1279,2 @@
 +        self.observation_budget = ObservationJournal(observation_stream, origin=self.started,
 +                                                     deadline=deadline, run_id=plan["run_id"])
-@@ -746,2 +1291,2 @@
+@@ -746,2 +1300,2 @@
 -    def record_observation(self, record):
 -        """Flush separate evidence; observation never implies guard acceptance."""
 +    def record_observation(self, record, *, at=None, force=False):
 +        """Reserve and flush pre-guard evidence; verdict is committed separately."""
-@@ -751,2 +1296,11 @@
+@@ -751,2 +1305,11 @@
 -            self.observation_stream.write(canonical(event) + "\n")
 -            self.observation_stream.flush()
 +            now = time.monotonic() if at is None else at
@@ -566,7 +575,7 @@
 +                raise BudgetStop("unknown-observation-phase")
 +        except BudgetStop as exc:
 +            raise StopTrial("Resource observation budget: " + str(exc)) from exc
-@@ -754,0 +1309,14 @@
+@@ -754,0 +1318,14 @@
 +
 +    def record_memory_context(self, owned, native_pid):
 +        def sample(clock):
@@ -581,18 +590,18 @@
 +            return self.observation_budget.context_after_primary_flush(sample, clock=time.monotonic)
 +        except BudgetStop as exc:
 +            raise StopTrial("Resource context budget: " + str(exc)) from exc
-@@ -773 +1341 @@
+@@ -773 +1350 @@
 -                                     "guard_verdict": "not-evaluated"})
 +                                     "guard_verdict": "not-evaluated"}, at=now, force=force)
-@@ -795 +1363 @@
+@@ -795 +1372 @@
 -                                             "reason": str(exc), "error_type": type(exc).__name__})
 +                                             "reason": str(exc), "error_type": type(exc).__name__}, at=now)
-@@ -801 +1369,5 @@
+@@ -801 +1378,5 @@
 -            self.stream.write(canonical(sample) + "\n")
 +            try:
 +                resource_line = self.observation_budget.bounded_resource_line(sample)
 +            except BudgetStop as exc:
 +                raise StopTrial("Resource record budget: " + str(exc)) from exc
 +            self.stream.write(resource_line)
-@@ -803,0 +1376 @@
+@@ -803,0 +1385 @@
 +            self.record_memory_context(owned, native_pid)
