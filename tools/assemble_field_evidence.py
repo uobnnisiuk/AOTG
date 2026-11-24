@@ -639,7 +639,7 @@ def assemble(spec, reader, authority_value=None):
     ksummary = optional(kroot / "summary.json", global_errors)
     samples = optional(eroot / "resources.jsonl", global_errors, "jsonl")
     kernel = optional(eroot / "kernel-final.json", global_errors)
-    global_ok = capture_bound = worker_capture_bound = client_capture_bound = False
+    global_ok = worker_capture_bound = client_capture_bound = False
     try:
         need(esummary is not None and esummary["artifact"] == "aotg-evo-worker-result" and esummary["version"] == 1
              and esummary["run_id"] == worker["run_id"] and esummary["plan_sha256"] == spec["worker_plan"]["sha256"],
@@ -668,7 +668,6 @@ def assemble(spec, reader, authority_value=None):
              and authority_value["client_summary_sha256"] == reader.files[str(kroot / "summary.json")]["sha256"]
              and authority_value["worker_source_sha256"] == identity["worker_sha256"]
              and authority_value["client_source_sha256"] == client["runner_sha256"], "external_execution_binding_mismatch")
-        capture_bound = True
         need(esummary["status"] == ksummary["status"] == COMPLETE and ksummary["cleanup_errors"] == []
              and ksummary["total_deadline_exceeded"] is False and "final_kernel_scan_error" not in esummary, "run_completion_failed")
         jobs_gate(reader, authority, client, spec)
@@ -722,7 +721,7 @@ def assemble(spec, reader, authority_value=None):
             arm_context(er, esummary, row, profile, values["config"],
                         reader.files[str(paths["config"])]["sha256"], expected_config)
             if er["status"] in ("stopped", "cleanup-failed"):
-                need(esummary["status"] == "stopped" and isinstance(er.get("stop_reason"), str)
+                need(esummary["status"] in ("stopped", er["status"]) and isinstance(er.get("stop_reason"), str)
                      and 0 < len(er["stop_reason"]) <= 1024, "worker_failure_reason_missing")
                 runtime_failures.append("worker_" + er["status"].replace("-", "_"))
                 provenance["worker_failure"] = {"recorded_reason": er["stop_reason"],
@@ -730,6 +729,10 @@ def assemble(spec, reader, authority_value=None):
                     "arm_result_sha256": reader.files[str(paths["eresult"])]["sha256"],
                     "config_sha256": reader.files[str(paths["config"])]["sha256"],
                     "worker_sha256": identity["worker_sha256"], "profile_sha256": profile["profile_sha256"]}
+        except (OSError, ValueError, KeyError, TypeError, IndexError) as error:
+            errors.append({"reason": str(error) if isinstance(error, EvidenceError) else type(error).__name__, "stage": "worker_failure_observation"})
+        # A bound client refusal does not require a worker arm to have survived.
+        try:
             if client_capture_bound and values["kresult"] is not None and requests is not None:
                 kr = values["kresult"]
                 need(all(type(kr.get(key)) is type(value) and kr[key] == value for key, value in row.items())
@@ -747,7 +750,7 @@ def assemble(spec, reader, authority_value=None):
                         "client_result_sha256": reader.files[str(paths["kresult"])]["sha256"],
                         "request_records": len(attempts), "rejections": rejections}
         except (OSError, ValueError, KeyError, TypeError, IndexError) as error:
-            errors.append({"reason": str(error) if isinstance(error, EvidenceError) else type(error).__name__, "stage": "failure_observation"})
+            errors.append({"reason": str(error) if isinstance(error, EvidenceError) else type(error).__name__, "stage": "client_failure_observation"})
         if runtime_failures:
             entry["observation_class"] = "verified_runtime_failure"
             entry["runtime_failures"] = list(runtime_failures)
@@ -857,7 +860,7 @@ def assemble(spec, reader, authority_value=None):
                       checks=checks, source_review=receipt) if receipt is not None else None
             observed(complete, "execution_terminal_failure")
             if runtime_failures:
-                need(capture_bound, "runtime_failure_not_bound_to_independent_capture")
+                need(worker_capture_bound and client_capture_bound, "runtime_failure_not_bound_to_independent_capture")
                 entry["runtime_failures"] = runtime_failures
                 entry["observation_class"] = "verified_runtime_failure"
                 # A bound failure is known, but the fixed run stop policy has
@@ -868,6 +871,10 @@ def assemble(spec, reader, authority_value=None):
                           checks=checks, source_review=receipt) if receipt is not None else None
             else:
                 entry["observation_class"] = "verified_trial" if global_ok and not errors else "assessment_incomplete"
+            # Preserve a verified failure in the ledger even when the raw
+            # elapsed value cannot be represented by the comparison schema.
+            # Never replace zero (or a sub-minimum value) with a positive time.
+            need(coding["seconds"] >= 1e-9, "wall_seconds_below_comparison_minimum")
             passed = global_ok and not errors and not runtime_failures and all(v is True for v in checks.values())
             trial = {"index": index, "candidate_id": row["candidate_id"], "workload_id": row["workload_id"],
                      "identity_sha256": field["identity_sha256"], "profile_sha256": er["profile_sha256"], "source_sha256": source_sha,

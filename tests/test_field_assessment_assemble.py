@@ -410,6 +410,103 @@ class AssemblyTests(unittest.TestCase):
         self.assertEqual(result["observation_counts"]["verified_runtime_failure"], 0)
         self.assertEqual(result["decision"]["status"], "incomplete")
 
+
+    def test_missing_kernel_scan_preserves_bound_resource_failure(self):
+        f = self.f
+        i = f.failure_index
+        (f.e / "kernel-final.json").unlink()
+        for sample in f.samples[i * 10:(i + 1) * 10 + 1]:
+            sample["pswpout"] += 1
+        f.write_samples()
+        f.refresh_capture()
+        result = f.run()
+        entry = result["ledger"][i]
+        self.assertTrue(entry["normalized"], entry)
+        self.assertEqual(entry["observation_class"], "verified_runtime_failure")
+        self.assertIn("swapout_change_or_reset", entry["runtime_failures"])
+        self.assertEqual(result["observation_decision"]["verified_failure_arms"], 1)
+        self.assertEqual(result["decision"]["status"], "incomplete")
+        self.assertIsNone(result["observation_decision"]["selected_candidate_id"])
+        # A missing scan is not a license to trust an unbound resource sample.
+        f.samples[i * 10]["pswpout"] += 1
+        f.write_samples()
+        result = f.run()
+        self.assertNotEqual(result["ledger"][i]["observation_class"], "verified_runtime_failure")
+        self.assertEqual(result["decision"]["status"], "incomplete")
+
+    def test_missing_worker_arm_does_not_erase_bound_client_refusal(self):
+        f = self.f
+        i = f.failure_index
+        rows = deepcopy(f.kr[i]["requests"])
+        rows.insert(2, {"kind": "aotg-proxy-rejection-v2", "status": "rejected", "http_status": 409,
+                        "reason": "concurrent_request_rejected", "method": "POST", "event_sequence": 2})
+        rows[-1].update(event_sequence=3, rejected_total=1, rejections_by_reason={"concurrent_request_rejected": 1})
+        f.rebind_arm(i, requests=rows)
+        (f.e / ("arm-%03d/result.json" % i)).unlink()
+        f.refresh_capture()
+        result = f.run()
+        entry = result["ledger"][i]
+        self.assertEqual(entry["observation_class"], "verified_runtime_failure")
+        self.assertFalse(entry["normalized"])
+        self.assertIn("proxy_requests_rejected", entry["runtime_failures"])
+        capture = entry["provenance"]["request_failure_capture"]
+        self.assertEqual(capture["capture_sha256"], a.sha((f.k / ("arm-%02d/requests.jsonl" % i)).read_bytes()))
+        self.assertEqual(result["observation_decision"]["verified_failure_arms"], 1)
+        self.assertEqual(result["decision"]["status"], "incomplete")
+        self.assertIsNone(result["observation_decision"]["selected_candidate_id"])
+        # Alter the bytes without renewing the independent inventory.
+        (f.k / ("arm-%02d/requests.jsonl" % i)).write_bytes(b"")
+        result = f.run()
+        self.assertEqual(result["ledger"][i]["observation_class"], "missing_or_conflicting")
+        self.assertEqual(result["observation_decision"]["verified_failure_arms"], 0)
+        self.assertEqual(result["decision"]["status"], "incomplete")
+
+    def test_zero_elapsed_failure_is_retained_without_comparison_trial(self):
+        f = self.f
+        i = f.failure_index
+        coding = json.loads((f.k / ("arm-%02d/coding/result.json" % i)).read_text())
+        f.rebind_arm(i, coding={**coding, "seconds": 0})
+        result = f.run()
+        entry = result["ledger"][i]
+        self.assertFalse(entry["normalized"])
+        self.assertEqual(entry["observation_class"], "verified_runtime_failure")
+        self.assertIn("client_bounds_failed", entry["runtime_failures"])
+        self.assertIn("wall_seconds_below_comparison_minimum", str(entry["missing_or_conflicting"]))
+        self.assertNotIn(i, [row["index"] for row in result["run"]["trials"]])
+        self.assertEqual(result["decision"]["status"], "incomplete")
+        observation = result["observation_decision"]
+        self.assertEqual(observation["scheduled_arms"], len(f.field["schedule"]))
+        self.assertEqual(observation["verified_failure_arms"], 1)
+        self.assertIsNone(observation["selected_candidate_id"])
+        result = f.run(authority=False)
+        self.assertNotEqual(result["ledger"][i]["observation_class"], "verified_runtime_failure")
+        self.assertEqual(result["decision"]["status"], "incomplete")
+
+    def test_cleanup_failed_summary_retains_bound_worker_reason(self):
+        er = self.startup_failure()
+        f = self.f
+        er.update(status="cleanup-failed", stop_reason="synthetic cleanup failure")
+        f.esummary.update(status="cleanup-failed", stop_reason=er["stop_reason"])
+        f.put(f.e / "arm-000/result.json", er)
+        f.authority["worker_summary_sha256"] = f.put(f.e / "summary.json", f.esummary)["sha256"]
+        f.refresh_capture()
+        result = f.run()
+        observation = result["observation_decision"]
+        self.assertEqual(observation["verified_failure_arms"], 1)
+        self.assertEqual(observation["failures"][0]["reasons"], ["worker_cleanup_failed"])
+        self.assertEqual(observation["failures"][0]["worker_recorded_reason"], er["stop_reason"])
+        self.assertFalse(observation["failures"][0]["normalized"])
+        self.assertEqual(observation["scheduled_arms"], len(f.field["schedule"]))
+        self.assertEqual(result["decision"]["status"], "incomplete")
+        self.assertIsNone(observation["selected_candidate_id"])
+        # A conflicting summary and arm must not be promoted.
+        f.esummary["status"] = a.COMPLETE
+        f.authority["worker_summary_sha256"] = f.put(f.e / "summary.json", f.esummary)["sha256"]
+        f.refresh_capture()
+        result = f.run()
+        self.assertEqual(result["observation_decision"]["verified_failure_arms"], 0)
+        self.assertEqual(result["decision"]["status"], "incomplete")
+
     def test_complete_synthetic_join_uses_real_wall_only(self):
         result = self.f.run()
         self.assertEqual(result["global_errors"], [])
