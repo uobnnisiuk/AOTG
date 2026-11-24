@@ -50,6 +50,8 @@ class MeasurementProxy(ThreadingHTTPServer):
         self.audit_closed = False
         self.audit_failed = False
         self.active_handlers = 0
+        self._handlers_idle = threading.Event()
+        self._handlers_idle.set()
         self.request_records = 0
         self.rejection_counts = Counter()
         self.rejection_record_limit = 128
@@ -103,19 +105,36 @@ class MeasurementProxy(ThreadingHTTPServer):
                 self.shutdown_request(request)
                 return
             self.active_handlers += 1
+            self._handlers_idle.clear()
         try:
             super().process_request(request, client_address)
         except BaseException:
-            with self.audit_lock:
-                self.active_handlers -= 1
+            self._handler_finished()
             raise
+
+    def _handler_finished(self):
+        with self.audit_lock:
+            self.active_handlers -= 1
+            if self.active_handlers == 0:
+                self._handlers_idle.set()
 
     def process_request_thread(self, request, client_address):
         try:
             super().process_request_thread(request, client_address)
         finally:
-            with self.audit_lock:
-                self.active_handlers -= 1
+            self._handler_finished()
+
+    def wait_for_handlers(self, timeout_seconds=None):
+        """After shutdown, wait for handlers only within the existing deadline.
+
+        This does not close or certify the capture. A shorter caller budget
+        may be supplied. No audit lock is held while waiting for a writer.
+        Always call server_close and check the closing record afterwards.
+        """
+        remaining = self.deadline - time.monotonic()
+        if timeout_seconds is not None:
+            remaining = min(remaining, timeout_seconds)
+        return self._handlers_idle.wait(max(0, remaining))
 
     def server_close(self):
         super().server_close()

@@ -71,8 +71,8 @@ class ProxyTests(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError) as error:
                 urllib.request.urlopen(request, timeout=3)
             self.assertEqual(error.exception.code, 400)
-        self.proxy.shutdown()
-        self.proxy.server_close()
+            self.assertTrue(self.proxy.wait_for_handlers())
+        self.close_capture()
         attempts, rejections = request_capture(self.records, 4)
         self.assertEqual(len(attempts), 2)
         self.assertEqual(rejections["rejected_total"], 0)
@@ -87,6 +87,7 @@ class ProxyTests(unittest.TestCase):
 
     def test_fixed_sampling_streaming_metrics_and_request_cap(self):
         self.assertIn(b"[DONE]", self.send())
+        self.assertTrue(self.proxy.wait_for_handlers())
         self.assertEqual(len(self.forwarded), 1)
         self.assertEqual(self.forwarded[0]["seed"], 4242)
         self.assertEqual(self.forwarded[0]["temperature"], 0)
@@ -124,10 +125,12 @@ class ProxyTests(unittest.TestCase):
             with self.subTest(extra=extra), self.assertRaises(urllib.error.HTTPError) as error:
                 self.send(extra=extra)
             self.assertEqual(error.exception.code, 400)
+            self.assertTrue(self.proxy.wait_for_handlers())
         self.assertEqual(self.forwarded, [])
 
     def close_capture(self):
         self.proxy.shutdown()
+        self.assertTrue(self.proxy.wait_for_handlers())
         self.proxy.server_close()
         self.assertEqual([r["event_sequence"] for r in self.records], list(range(len(self.records))))
         self.assertEqual(self.records[-1]["phase"], "closed")
@@ -195,6 +198,7 @@ class ProxyTests(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError) as error:
                 self.send(model="wrong")
             self.assertEqual(error.exception.code, 400)
+            self.assertTrue(self.proxy.wait_for_handlers())
         with self.assertRaises(urllib.error.HTTPError) as error:
             self.send()
         self.assertEqual(error.exception.code, 429)
@@ -226,6 +230,46 @@ class ProxyTests(unittest.TestCase):
         self.assertEqual(final["rejections_by_reason"], {"http_protocol_rejected": 1})
         self.assertNotIn("private-secret", json.dumps(self.records))
 
+    def test_response_can_precede_record_and_bounded_drain_completes_capture(self):
+        entered, release = threading.Event(), threading.Event()
+        original_record = self.proxy.record
+
+        def delayed_record(row):
+            entered.set()
+            if not release.wait(3):
+                raise OSError("synthetic record did not release")
+            original_record(row)
+
+        self.proxy.record = delayed_record
+        try:
+            with self.assertRaises(urllib.error.HTTPError) as error:
+                self.send(model="wrong")
+            self.assertEqual(error.exception.code, 400)
+            self.assertTrue(entered.wait(2))
+            self.proxy.shutdown()
+            self.assertFalse(self.proxy.wait_for_handlers(0))
+            self.assertEqual(len(self.records), 1)
+            original_wait = self.proxy._handlers_idle.wait
+
+            def release_on_wait(timeout):
+                self.assertFalse(self.proxy._handlers_idle.is_set())
+                release.set()
+                return original_wait(timeout)
+
+            self.proxy._handlers_idle.wait = Mock(side_effect=release_on_wait)
+            self.assertTrue(self.proxy.wait_for_handlers())
+            self.proxy._handlers_idle.wait.assert_called_once()
+            self.proxy.server_close()
+            attempts, rejected = request_capture(self.records, 4)
+            self.assertEqual(len(attempts), 1)
+            self.assertEqual(attempts[0]["status"], "failed")
+            self.assertEqual(rejected["rejected_total"], 0)
+            self.assertEqual(self.records[-1]["active_handlers"], 0)
+            self.assertEqual(self.records[-1]["status"], "complete")
+            self.assertEqual(self.forwarded, [])
+        finally:
+            release.set()
+
     def test_active_handler_closure_cannot_certify_complete_or_emit_late_success(self):
         self.upstream_release.clear()
         self.proxy.handle_error = Mock()
@@ -241,6 +285,7 @@ class ProxyTests(unittest.TestCase):
         thread.start()
         self.assertTrue(self.upstream_entered.wait(2))
         self.proxy.shutdown()
+        self.assertFalse(self.proxy.wait_for_handlers(0))
         self.proxy.server_close()
         before = list(self.records)
         self.assertEqual(before[-1]["status"], "incomplete")

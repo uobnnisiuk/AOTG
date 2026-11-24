@@ -114,9 +114,13 @@ individual records; further rejections use one overflow marker and bounded
 per-reason counters in the closing summary. Missing sequence numbers, inconsistent
 counters, absent closure, active handlers at closure, or a callback write failure
 cannot certify complete capture. Once closed, no late event is appended. The
-caller must stop accepting requests and drain handlers before freezing evidence;
-`server_close()` records incomplete capture if handlers remain. This is not a
-claim that an arbitrary callback is bounded or crash-durable.
+caller must stop accepting requests (`shutdown()`), then explicitly call
+`wait_for_handlers()` before `server_close()`. The wait uses the remaining
+original proxy deadline (or a shorter caller budget), never an unbounded
+thread join. A false result is not successful cleanup; the caller must still
+close and check the closing record. `server_close()` itself retains immediate
+fail-closed behavior if handlers remain. This is not a claim that an arbitrary
+callback or the closing record write is bounded or crash-durable.
 
 The assembler checks the entire capture and requires zero refusals for a passing
 arm. A client that retries a 409 and eventually completes cannot hide that refusal
