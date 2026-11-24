@@ -1,0 +1,1863 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-11-18",
+  "sourceCheckedAt": "2026-11-21",
+  "title": "AOTG 高速化技術トラッカー",
+  "sources": {
+    "repo": "https://github.com/uobnnisiuk/AOTG",
+    "linear": "https://linear.app/uobnnisiuk/issue/UOB-80",
+    "catalog": "https://github.com/uobnnisiuk/AOTG/issues/34"
+  },
+  "records": [
+    {
+      "id": "SPD-0001",
+      "name": "FlashAttention-2｜warp間通信と非matmul処理の削減",
+      "category": "GPUカーネル",
+      "source": "https://proceedings.iclr.cc/paper_files/paper/2024/hash/98ed250b203d1ac6b24bbcf263e3d4a7-Abstract-Conference.html",
+      "mechanism": "非matmul FLOPs削減、head内のthread block分散、warp間shared-memory通信削減",
+      "bottleneck": "GPU占有率とshared-memory通信",
+      "claim": "A100のカーネルで初代比約2倍。モデル全工程ではない",
+      "env": "NVIDIA A100",
+      "status": "一次資料",
+      "evidence": "査読論文／上流値",
+      "app": "GPU形状別kernel比較",
+      "next": "ROCmへの直用不可／未確認",
+      "constraints": "カーネルshapeと対応GPUを照合する",
+      "publicDate": "CUDA固有条件をEVO/R9700へ外挿しない",
+      "checkedDate": "2026-11-18",
+      "kind": "2024",
+      "metrics": [
+        {
+          "label": "カーネル速度",
+          "value": "約2",
+          "unit": "倍",
+          "origin": "公表値",
+          "condition": "A100、初代FlashAttention比較",
+          "before": "",
+          "after": "",
+          "note": ""
+        }
+      ],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "scheduling-parallelism",
+        "memory-transfer"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "prefill / attention",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0002",
+      "name": "vLLM｜PagedAttention / continuous batching",
+      "category": "推論エンジン",
+      "source": "https://docs.vllm.ai/en/stable/",
+      "mechanism": "KV cacheのページ管理とリクエスト継続batch化",
+      "bottleneck": "KVメモリ断片化・予約の無駄／並行待機",
+      "claim": "特定倍率なし",
+      "env": "高並列serving",
+      "status": "一次資料",
+      "evidence": "公式文書",
+      "app": "複数request時に限る候補",
+      "next": "単発OpenCodeの完了時間を改善するとは限らない",
+      "constraints": "単発／並列負荷を分けて測る",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "cache-reuse",
+        "scheduling-parallelism"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "並列serving",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0003",
+      "name": "llama.cpp / EAGLE-3｜投機的decode",
+      "category": "モデル・アルゴリズム",
+      "source": "https://github.com/ggml-org/llama.cpp/blob/master/docs/speculative.md",
+      "mechanism": "draftが複数tokenを提案し、targetで一括検証する",
+      "bottleneck": "targetの1 tokenずつの逐次計算",
+      "claim": "採択率とdraft費用に依存、実機倍率未確認",
+      "env": "llama.cpp／EAGLE-3",
+      "status": "一次資料",
+      "evidence": "公式実装文書",
+      "app": "DFlash系の候補比較",
+      "next": "draft/target互換、追加VRAM、品質同等性が条件",
+      "constraints": "accepted tokensとKV占有を照合する",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "speculative-decoding"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/vllm-project/speculators/blob/main/docs/user_guide/algorithms/eagle3.md",
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0004",
+      "name": "ROCm AITER｜演算融合・専用kernel",
+      "category": "GPUカーネル",
+      "source": "https://github.com/ROCm/aiter",
+      "mechanism": "Triton/CK/HIP/ASMによるGEMM/Attention/MoE/norm/RoPEの最適化",
+      "bottleneck": "小粒演算のlaunchと中間メモリ転送",
+      "claim": "gfx1151 / gfx1201はExperimental（確認時資料）",
+      "env": "AMD／主にInstinct、一部実験的RDNA",
+      "status": "一次資料",
+      "evidence": "公式リポジトリ",
+      "app": "GPU互換性調査",
+      "next": "CDNAとRDNAではカーネル互換を仮定しない",
+      "constraints": "対象gfxのサポート行列と版を確認する",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "kernel-fusion",
+        "scheduling-parallelism"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0005",
+      "name": "hipBLASLt Stream-K｜GEMM負荷分散",
+      "category": "GPUカーネル",
+      "source": "https://rocmdocs.amd.com/projects/hipBLASLt/en/develop/what-is-hipBLASLt.html",
+      "mechanism": "GEMM内積反復をCUへ均等に割り当てる",
+      "bottleneck": "細長い行列などでCUが遊休",
+      "claim": "定量値未確認",
+      "env": "AMD ROCm / GEMM",
+      "status": "一次資料",
+      "evidence": "AMD公式文書",
+      "app": "shape別のGEMM候補探索",
+      "next": "gfx1151/gfx1201性能未確認",
+      "constraints": "実際のGEMM行列形状を先に収集する",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "scheduling-parallelism"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0006",
+      "name": "FlashInfer｜JIT特殊化 / paged KV",
+      "category": "GPUカーネル",
+      "source": "https://github.com/flashinfer-ai/flashinfer",
+      "mechanism": "入力shapeに応じたJIT、sparse/paged KV、inspector-executor",
+      "bottleneck": "汎用kernelのshape不一致・余分なKV処理",
+      "claim": "定量値は環境依存",
+      "env": "主にCUDA",
+      "status": "一次資料",
+      "evidence": "公式実装",
+      "app": "shape→kernel選択の考え方",
+      "next": "RDNAへそのまま適用できる保証なし",
+      "constraints": "CUDA依存部と一般化できる原理を分離する",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "compiler-graph",
+        "cache-reuse"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0007",
+      "name": "FlashMLA｜fused attention / 低精度KV",
+      "category": "GPUカーネル",
+      "source": "https://github.com/deepseek-ai/FlashMLA",
+      "mechanism": "norm/RoPE/attention/cast融合、モデル専用attention形状とFP8/FP4",
+      "bottleneck": "中間転送・launch・KV帯域",
+      "claim": "ベンダー公表値をAMDへ外挿できない",
+      "env": "主にNVIDIA B200ほか",
+      "status": "一次資料",
+      "evidence": "公式実装",
+      "app": "モデル・kernel分離の設計参考",
+      "next": "対象GPU世代・モデル・KV形式に破壊的変更あり",
+      "constraints": "固定版と対応GPUを確認する",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "kernel-fusion",
+        "quantization"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0008",
+      "name": "Agent prefix固定｜compaction後の再計算回避",
+      "category": "クライアント／Harness",
+      "source": "https://github.com/sgl-project/sglang/discussions/46590",
+      "mechanism": "token-identicalな共通prefixを保存しcache hitを維持",
+      "bottleneck": "要約checkpoint除去によるprefix cache失効",
+      "claim": "第三者報告: hit 10.1→99.6%、TTFT 206.9→3.1秒",
+      "env": "SGLang実例、OpenCode適合未確認",
+      "status": "未確認",
+      "evidence": "第三者の再現報告（独立未確認）",
+      "app": "OpenCode compactionの静的診断",
+      "next": "記事条件に依存、品質・token一致が必要",
+      "constraints": "compaction前後のprefix hashを比較",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [
+        {
+          "label": "TTFT",
+          "value": "206.9→3.1",
+          "unit": "秒",
+          "origin": "公表値",
+          "condition": "特定のprefix cache事例",
+          "before": "206.9",
+          "after": "3.1",
+          "note": ""
+        },
+        {
+          "label": "cache hit",
+          "value": "10.1→99.6",
+          "unit": "%",
+          "origin": "公表値",
+          "condition": "特定の事例",
+          "before": "10.1",
+          "after": "99.6",
+          "note": ""
+        }
+      ],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "agent-workflow",
+        "cache-reuse"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0009",
+      "name": "zllm｜GPU argmaxでCPU readback削減",
+      "category": "GPUカーネル",
+      "source": "https://github.com/fankh/zllm/blob/f32312685deb45c153c38c2596f52f00e90ecd88/BENCHMARKS.md",
+      "mechanism": "GPUでargmaxしlogits全体の転送をインデックス4 byteへ置換",
+      "bottleneck": "tokenごとのGPU→CPU logits readback約513KB",
+      "claim": "作者測定: サーバ経路59→114 tok/s",
+      "env": "8060S / Win11 / Vulkan / Llama-3.2-1B系",
+      "status": "一次資料",
+      "evidence": "上流実装＋著者実測",
+      "app": "GPU→CPU同期診断",
+      "next": "sampling/grammar/tie条件で結果が変わり得る",
+      "constraints": "実装が既にGPU sampling済みでないか確認",
+      "publicDate": "2026-07",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [
+        {
+          "label": "decode",
+          "value": "59→114",
+          "unit": "tok/s",
+          "origin": "公表値",
+          "condition": "作者サーバ経路 8060S Vulkan",
+          "before": "59",
+          "after": "114",
+          "note": ""
+        }
+      ],
+      "quality": "greedy 24/24（作者報告）",
+      "memory": "",
+      "stability": "",
+      "reproduction": "固定commit f323126、モデル/quant/context/buildの不足条件を埋めたAB比較",
+      "tags": [
+        "memory-transfer",
+        "kernel-fusion"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0010",
+      "name": "zllm｜SDPA spillとhead/KV並列化",
+      "category": "GPUカーネル",
+      "source": "https://github.com/fankh/zllm/blob/f32312685deb45c153c38c2596f52f00e90ecd88/BENCHMARKS.md",
+      "mechanism": "head per 1 threadからworkgroup分散、KV blockのonline softmax部分統合",
+      "bottleneck": "GPU低占有とregister spill、長文KV逐次走査",
+      "claim": "作者ベンチ: prefill 1363→1928、ctx2048単体decode 31→162 tok/s",
+      "env": "8060S / Win11 / Vulkan",
+      "status": "一次資料",
+      "evidence": "上流実装＋著者実測",
+      "app": "occupancyとspill診断",
+      "next": "浮動小数点加算順序、barrier削除はrace危険",
+      "constraints": "shape別にspill/占有率を測る",
+      "publicDate": "2026-07",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [
+        {
+          "label": "prefill",
+          "value": "1363→1928",
+          "unit": "tok/s",
+          "origin": "公表値",
+          "condition": "8060S、作者ベンチ",
+          "before": "1363",
+          "after": "1928",
+          "note": ""
+        },
+        {
+          "label": "decode-forward",
+          "value": "31→162",
+          "unit": "tok/s",
+          "origin": "公表値",
+          "condition": "ctx2048、kernel段階",
+          "before": "31",
+          "after": "162",
+          "note": ""
+        }
+      ],
+      "quality": "CPU参照誤差報告あり、独立再現なし",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "scheduling-parallelism",
+        "memory-transfer"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0011",
+      "name": "R9700｜GQA full-foldによるKV再読込削減",
+      "category": "GPUカーネル",
+      "source": "https://github.com/ggml-org/llama.cpp/issues/28867",
+      "mechanism": "GQA headをまとめ同じKV load/dequantを再利用、round-robin分割",
+      "bottleneck": "狭いverify幅で同一KVを繰り返し読み出し",
+      "claim": "公表: MTP decode 28.20→36.03 tok/s、別条件の移植では24.5→25.9",
+      "env": "R9700 gfx1201 / llama.cpp / Qwen3.8-27B",
+      "status": "反証",
+      "evidence": "上流実験＋別人の限定追試",
+      "app": "R9700 long-KV kernel候補",
+      "next": "幅1やMTPなしで悪化、未統合patch、数値精度に注意",
+      "constraints": "GQA ratio・KV format・n_qとgreedyを照合",
+      "publicDate": "2026-09",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [
+        {
+          "label": "MTP decode",
+          "value": "28.20→36.03",
+          "unit": "tok/s",
+          "origin": "公表値",
+          "condition": "R9700 ctx110K、作者の実験",
+          "before": "28.20",
+          "after": "36.03",
+          "note": ""
+        },
+        {
+          "label": "別条件移植",
+          "value": "24.5→25.9",
+          "unit": "tok/s",
+          "origin": "公表値",
+          "condition": "ctx115K、別実験者",
+          "before": "24.5",
+          "after": "25.9",
+          "note": ""
+        }
+      ],
+      "quality": "初期版token差、改訂版限定一致試験あり",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "cache-reuse",
+        "scheduling-parallelism"
+      ],
+      "counter": "width=1等で悪化、別試験の閾値変更は4–5%低速化",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0012",
+      "name": "FlashOffloading｜長文KVのCPU DRAM tiering",
+      "category": "システム／メモリ",
+      "source": "https://arxiv.org/abs/2611.07542",
+      "mechanism": "KVをhostへ置き、必要な転送を計算と重畳する",
+      "bottleneck": "長文時HBM容量上限とoffload転送待ち",
+      "claim": "Ascend条件の論文値。ROCm効果は未確認",
+      "env": "vLLM-Ascend / Ascend NPU",
+      "status": "一次資料",
+      "evidence": "論文",
+      "app": "長文KV容量と転送重畳の仮説",
+      "next": "ROCm/AMD用完成実装とは限らない",
+      "constraints": "実装アーキテクチャと測定条件を読む",
+      "publicDate": "2026-11-05",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "memory-transfer",
+        "cache-reuse",
+        "memory-tiering"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "長文 / capacity",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0013",
+      "name": "8060S Vulkan/RADV｜HIPからbackend切替",
+      "category": "環境固有ハック",
+      "source": "https://github.com/ggml-org/llama.cpp/discussions/20856",
+      "mechanism": "同じgfx1151でHIPからVulkan/RADVへ推論backend切替",
+      "bottleneck": "特定decode workloadでHIPのkernel選択が遅い",
+      "claim": "コミュニティ測定: decode47.7→60.9 tok/s（+28%）",
+      "env": "8060S gfx1151 / Ubuntu24.04",
+      "status": "一次資料",
+      "evidence": "コミュニティ上流報告",
+      "app": "設定候補・backend AB",
+      "next": "prefillは逆にROCm優位との報告／版の整合要",
+      "constraints": "完全一致のモデル・GPU・driver版を特定する",
+      "publicDate": "2026-07-23",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [
+        {
+          "label": "decode",
+          "value": "47.7→60.9",
+          "unit": "tok/s",
+          "origin": "公表値",
+          "condition": "gfx1151 同一host ある条件",
+          "before": "47.7",
+          "after": "60.9",
+          "note": ""
+        }
+      ],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "environment-hack",
+        "backend-switch"
+      ],
+      "counter": "別測定ではprefillはROCmが上回る",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0014",
+      "name": "gfx1151 HIP_LAUNCH_BLOCKING｜正しさの回避策",
+      "category": "環境固有ハック",
+      "source": "https://github.com/ggml-org/llama.cpp/issues/27579",
+      "mechanism": "HIP kernel起動を同期し出力破損の報告を回避",
+      "bottleneck": "特定構成の非同期race／誤出力",
+      "claim": "高速化の根拠なし（正しさの修正）",
+      "env": "8060S gfx1151 / ROCm-HIP",
+      "status": "反証",
+      "evidence": "上流Issue報告",
+      "app": "品質退行の反例",
+      "next": "同期化で遅くなる可能性、保護解除は不可",
+      "constraints": "上流修正と再現条件を読取確認する",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "environment-hack",
+        "device-quirk",
+        "correctness-workaround"
+      ],
+      "counter": "fasterではなくcorrectness-workaround",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0015",
+      "name": "gpu-unlock｜既存tensor演算能力の制限解除",
+      "category": "ハードウェア制約",
+      "source": "https://github.com/Zagitta/gpu-unlock",
+      "mechanism": "特定GeForce世代の製品区分制限にかかわる演算能力を変更する非公式研究",
+      "bottleneck": "FP16/BF16/TF32演算スループットのSKU制限",
+      "claim": "著者報告で対象GPU matmul約1.6–2倍、decodeは効果薄",
+      "env": "NVIDIA GeForce RTX20/30/40系の一部、Linux",
+      "status": "保留",
+      "evidence": "開発者実装／測定",
+      "app": "原理調査のみ",
+      "next": "低レベル起動処理、保証/安定性/電力/セキュリティの高リスク",
+      "constraints": "AMDで同等制限があるという根拠を別途探す",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [
+        {
+          "label": "BF16 matmul",
+          "value": "約1.6–2",
+          "unit": "倍",
+          "origin": "公表値",
+          "condition": "対象NVIDIA GPU、演算単体",
+          "before": "",
+          "after": "",
+          "note": ""
+        }
+      ],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "hw-compute-unlock"
+      ],
+      "counter": "Radeonには該当性がなく採用不可",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0016",
+      "name": "Ryzen AI Max UMA｜GPU可視RAMの再配分",
+      "category": "ハードウェア制約",
+      "source": "https://rocm.blogs.amd.com/artificial-intelligence/ryzen-uma-llm/README.html",
+      "mechanism": "既存128GB共有RAMのうちGPUから扱える容量を再配分",
+      "bottleneck": "GPU可視枠の上限とCPU側RAM競合",
+      "claim": "容量改善の可能性。物理RAM総量は増えない",
+      "env": "Ryzen AI Max+ 395 / Radeon 8060S",
+      "status": "保留",
+      "evidence": "AMD公式解説",
+      "app": "EVOの容量設計を資料調査",
+      "next": "CPU残RAMの減少、swap/PSI保護必須",
+      "constraints": "BIOS/OS/ROCmで使える方式を文書照合する",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "hw-resource-reallocation",
+        "UMA",
+        "capacity-vs-speed"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "容量 / memory",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0017",
+      "name": "llama.cpp｜multi-GPU split / CPU offload",
+      "category": "ハードウェア制約",
+      "source": "https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md",
+      "mechanism": "複数GPU、CPUへのlayer/tensor/MoE分割で単一VRAMの収容上限を越える",
+      "bottleneck": "モデルとKVのVRAM容量不足",
+      "claim": "ロード可否拡大、必ずしも高速化せず",
+      "env": "R9700 32GB / 8060S共有RAM／K8は別構成",
+      "status": "保留",
+      "evidence": "上流公式文書",
+      "app": "容量と転送の交換条件を評価",
+      "next": "異種GPU同時利用の互換性不明、転送/同期コスト",
+      "constraints": "同一モデルの単GPU・CPU offload条件を設計する",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "memory-tiering",
+        "hw-physical-addition"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "容量 / memory",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0018",
+      "name": "Harness / Code Mode｜tool定義と中間結果を外へ",
+      "category": "クライアント／Harness",
+      "source": "https://www.anthropic.com/research/code-execution-with-mcp",
+      "mechanism": "必要なtoolを遅延ロードし、sandbox内コードで複数API処理を合成",
+      "bottleneck": "tool schema/巨大な中間結果のcontext流入、往復",
+      "claim": "150,000→2,000 tokensはAnthropicの特定例の入力削減",
+      "env": "MCP / OpenCode等、provider固有",
+      "status": "一次資料",
+      "evidence": "公式研究記事＋実装説明",
+      "app": "OpenCodeツール呼出しE2Eに応用",
+      "next": "権限分離・サンドボックス・副作用管理必須",
+      "constraints": "tool数、token、API回数、E2E、失敗率を同条件比較",
+      "publicDate": "2025-11-04",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [
+        {
+          "label": "context投入",
+          "value": "150000→2000",
+          "unit": "tokens",
+          "origin": "公表値",
+          "condition": "Anthropic Google Drive→Salesforceの特定例",
+          "before": "150000",
+          "after": "2000",
+          "note": ""
+        }
+      ],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "agent-workflow",
+        "code-mode",
+        "tool-lazy-loading"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "agent E2E",
+      "sourceRefs": [
+        "https://blog.cloudflare.com/code-mode-mcp/",
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0019",
+      "name": "llama.cpp SWA KV｜層ごとのcache精度分離",
+      "category": "システム／メモリ",
+      "source": "https://github.com/ggml-org/llama.cpp/pull/32240",
+      "mechanism": "boundedなSWAと増えるfull-attention KVに異なるdtypeを割当",
+      "bottleneck": "同一KV dtypeによるメモリ浪費・近似誤差",
+      "claim": "著者測定: KV tensor 111→66 MiB（全体RAMでない）。速度未測定",
+      "env": "Gemma 3 270M / Ryzen7 8845HS CPU",
+      "status": "保留",
+      "evidence": "未マージPR＋著者メモリ測定",
+      "app": "適合モデルなら設定候補",
+      "next": "SWA対応が必要、近似量子化の品質低下",
+      "constraints": "PR統合とGPU支持、長文品質を確認",
+      "publicDate": "2026-11-14",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [
+        {
+          "label": "KV tensor",
+          "value": "111→66",
+          "unit": "MiB",
+          "origin": "公表値",
+          "condition": "K8同系CPU、ctx32768。GPU未測定",
+          "before": "111",
+          "after": "66",
+          "note": ""
+        }
+      ],
+      "quality": "混合精度はf16完全同等でない",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "quantization",
+        "cache-reuse"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0020",
+      "name": "Origami gfx1151｜GEMM性能モデルの補正",
+      "category": "コンパイラ",
+      "source": "https://github.com/ROCm/rocm-libraries/pull/16178",
+      "mechanism": "実workgroup mapping/DRAM待機/clock比を予測器へ反映",
+      "bottleneck": "GEMMのメモリ時間予測が実測と乖離",
+      "claim": "予測値の比 2.01→1.03、実カーネル高速化の証拠なし",
+      "env": "8060S gfx1151 / ROCm PR（未マージ）",
+      "status": "保留",
+      "evidence": "未マージPR＋開発者測定",
+      "app": "候補探索の性能予測改善",
+      "next": "同データでフィットと評価、過適合リスク",
+      "constraints": "別形状・別周波数で予測誤差を評価",
+      "publicDate": "2026-11-17",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [
+        {
+          "label": "予測/実測 倍率",
+          "value": "2.01→1.03",
+          "unit": "倍",
+          "origin": "公表値",
+          "condition": "9測定点にfitした予測モデル",
+          "before": "2.01",
+          "after": "1.03",
+          "note": ""
+        }
+      ],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "compiler-graph",
+        "performance-model"
+      ],
+      "counter": "本番kernel速度未改善・未提示",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0021",
+      "name": "llama.cpp hybrid-prefill｜phase別GPU分割",
+      "category": "システム／スケジューリング",
+      "source": "https://github.com/ggml-org/llama.cpp/pull/32508",
+      "mechanism": "prefillはlayer、decodeはtensor配置へ切替。切替費用しきい値で判断",
+      "bottleneck": "単一分割方式ではprefillとdecodeを両立できない",
+      "claim": "作者概算でprefill700→1500 tok/s、切替約1秒",
+      "env": "CUDA 2GPU / Qwen3.8-27B（未マージ試作）",
+      "status": "保留",
+      "evidence": "未マージ試作＋著者主張",
+      "app": "phase別切替コストの一般原理",
+      "next": "作者自身がallocation問題を指摘。AMD直接適用不可",
+      "constraints": "PR修正／独立ベンチ後に再評価",
+      "publicDate": "2026-11-18",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [
+        {
+          "label": "prefill",
+          "value": "約700→1500",
+          "unit": "tok/s",
+          "origin": "公表値",
+          "condition": "CUDA 2GPU、詳細測定統計欠測",
+          "before": "700",
+          "after": "1500",
+          "note": ""
+        }
+      ],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "scheduling-parallelism",
+        "environment-hack"
+      ],
+      "counter": "現状のままマージ不可、E2E値欠測",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0022",
+      "name": "SGLang KV hints｜他workerのKV再利用土台",
+      "category": "システム／キャッシュ",
+      "source": "https://github.com/sgl-project/sglang/pull/51088",
+      "mechanism": "要求ごとのKV hintをstorageへ渡しworker間で再利用可能にする",
+      "bottleneck": "別workerで同じprefixを再計算する",
+      "claim": "速度ベンチなし。標準backendではopt-in未実装",
+      "env": "SGLang分散serving / 未マージPR",
+      "status": "保留",
+      "evidence": "上流実装差分",
+      "app": "複数worker化した将来の設計知識",
+      "next": "単一EVOは対象外、認可・名前空間検証必須",
+      "constraints": "PRにベンチ/opt-in backendが追加されたら確認",
+      "publicDate": "2026-11-17",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "cache-reuse",
+        "agent-workflow"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "複数worker",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "SPD-0023",
+      "name": "mezura｜64B SIMD bitmask・I/O削減",
+      "category": "環境固有ハック",
+      "source": "https://petros-papatheodorou.dev/writing/mezura/counting-the-linux-kernel/",
+      "mechanism": "対象データ形状を見て64B SIMD bitmaskを利用し処理とI/Oを削減",
+      "bottleneck": "一般化された解析処理の無駄と下限を測らない設計",
+      "claim": "作者測定はAOTG再現ではない",
+      "env": "Linux kernel LoC集計 / mezura 3.5.0",
+      "status": "未確認",
+      "evidence": "作者技術ノート＋公開コード",
+      "app": "同種のパス処理とcache/bitmaskへの一般化",
+      "next": "AOTGのコード修正完了時間への外挿不可",
+      "constraints": "linebenchと計測条件・数値の再現性を確認",
+      "publicDate": "2026-11-16",
+      "checkedDate": "2026-11-18",
+      "kind": "手法",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "simd",
+        "io-reduction",
+        "environment-hack"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "単体推論",
+      "sourceRefs": [
+        "https://github.com/subamanis/mezura",
+        "https://github.com/loc-conformance/linebench",
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "status": "反証",
+      "evidence": "論文・公式コード・作者ベンチ（当方未再現）",
+      "app": "重み共有・activation寿命管理の設計研究。既存GGUFへの直接patch候補ではない",
+      "next": "decode・同品質E2E、実VRAM・重み除外head、実行深さの公正比較を検証",
+      "constraints": "既存Qwen/FlashNextを設定のみで転用できない。H100の結果はROCmへ外挿不可",
+      "publicDate": "2026-11-04",
+      "checkedDate": "2026-11-18",
+      "kind": "新規モデル設計",
+      "metrics": [
+        {
+          "label": "374M H100 prefill",
+          "value": "492k→352k",
+          "unit": "tok/s",
+          "origin": "公表値（当方未実測）",
+          "condition": "H100 bf16、batch8×4096、KVなし",
+          "before": "492k",
+          "after": "352k",
+          "note": "速度0.72倍（遅化）"
+        }
+      ],
+      "quality": "Validation loss改善の著者評価。HumanEval/MBPPの多くはteacher-forced lossで生成コード実行合格ではない",
+      "memory": "374M prefill peak 2.1→3.0 GiBへ増加。学習時activation開放最適化は別",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "model-architecture",
+        "weight-sharing",
+        "depth-memory",
+        "negative-result"
+      ],
+      "counter": "既存モデルの単純高速化ではない。191M/778Mもprefill遅化",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "新モデル学習／prefill",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34#issuecomment-6977946256",
+        "https://github.com/yancyou/Loopback/commit/663cdc865b884b07014cee6b3c414360ec518f42"
+      ],
+      "id": "SPD-0024",
+      "name": "Loopback Transformer｜共有重みと深さ方向の履歴更新",
+      "category": "モデル・アーキテクチャ",
+      "source": "https://arxiv.org/abs/2611.07226",
+      "bottleneck": "重み反復時の差分蓄積と履歴更新の重複計上",
+      "mechanism": "h0を保持し各反復deltaを分離、幾何減衰＋attentionで更新量を配分し共有stackを利用",
+      "claim": "Transformer部分の重み40〜75%へ削減という作者報告。ただしH100 prefillは374Mで492k→352k tok/sに悪化",
+      "env": "H100 BF16 / ClimbMix / 191M〜3Bの専用学習モデル"
+    },
+    {
+      "status": "一次資料",
+      "evidence": "開発者patch＋作者・別利用者の条件付きA/B",
+      "app": "MoE/dense別にMMQ形状を絞る研究候補。UOB-52/54限定patch",
+      "next": "MMQのみと近似intrinsicsを分離し、dense対照・精度・作業E2Eを測る",
+      "constraints": "llama.cpp上流PR #21344は未マージのまま終了。全機種に強制適用しない",
+      "publicDate": "2026-04-02",
+      "checkedDate": "2026-11-19",
+      "kind": "上流実装候補",
+      "metrics": [
+        {
+          "label": "MoE pp512",
+          "value": "1151.66→1432.97",
+          "unit": "tok/s",
+          "origin": "公表値（当方未実測）",
+          "condition": "35B-A3B Q4、作者一括patch",
+          "before": "1151.66",
+          "after": "1432.97",
+          "note": ""
+        },
+        {
+          "label": "dense pp2048",
+          "value": "322.5→309.8",
+          "unit": "tok/s",
+          "origin": "公表値（当方未実測）",
+          "condition": "別利用者のMMQ-only試験、27B Q4",
+          "before": "322.5",
+          "after": "309.8",
+          "note": "逆効果"
+        }
+      ],
+      "quality": "高速exp等を含む一括patchの同出力品質は未確認",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "environment-hack",
+        "kernel-tiling",
+        "register-pressure",
+        "shape-specialization"
+      ],
+      "counter": "dense pp512でも333.5→311.5 tok/sへ悪化",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "MoE prefill / HIP kernel",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34#issuecomment-6998023146",
+        "https://github.com/ggml-org/llama.cpp/pull/21344",
+        "https://gist.github.com/pedapudi/183f337e687630a43eacb293e157c9bd"
+      ],
+      "id": "SPD-0025",
+      "name": "gfx1151 MoE MMQ｜小タイル化でVGPR圧迫回避",
+      "category": "環境固有ハック",
+      "source": "https://github.com/ggml-org/llama.cpp/issues/21284",
+      "bottleneck": "MoE小shapeでMMQの128×128/8-warpsがレジスタ占有・spillを増やす",
+      "mechanism": "gfx1151でMMQ tileを48×64/4-warpsへ縮小、MoE特有の形状に合わせる。元パッチは他のintrinsics変更も含む",
+      "claim": "35B-A3B pp512 1151.66→1432.97 tok/s（作者一括差分）。別のMMQ限定比較ではMoE改善、denseは悪化",
+      "env": "8060S gfx1151 / ROCm / Qwen3.5・3.6 MoE Q4。R9700未検証"
+    },
+    {
+      "status": "一次資料",
+      "evidence": "上流commit＋Issueユーザー測定（修復commit単体のA/Bではない）",
+      "app": "GPU世代の正しいkernel選択とビルド成果の整合点検",
+      "next": "現行backendで再現条件が残るか、同品質・長文・他gfx影響を確認",
+      "constraints": "gfx1201/R9700で同じ性能改善とは限らない。kernelの生成可否を併せて検査",
+      "publicDate": "2026-06-13",
+      "checkedDate": "2026-11-19",
+      "kind": "性能回帰の修復",
+      "metrics": [
+        {
+          "label": "FA ON vs OFF pp8192",
+          "value": "419.31 vs 705.49",
+          "unit": "tok/s",
+          "origin": "公表値（当方未実測）",
+          "condition": "旧コードのフラグ比較 / gfx1151",
+          "before": "419.31",
+          "after": "705.49",
+          "note": "修復commit自身の前後値ではない"
+        }
+      ],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "environment-hack",
+        "backend-dispatch",
+        "kernel-availability",
+        "negative-result"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "prefill / dispatch",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34#issuecomment-6998023146",
+        "https://github.com/ggml-org/llama.cpp/issues/24437"
+      ],
+      "id": "SPD-0026",
+      "name": "RDNA3.5 rocWMMA｜誤dispatchとビルド時kernel除外を修正",
+      "category": "環境固有ハック",
+      "source": "https://github.com/ggml-org/llama.cpp/commit/96ecb0f82abfb3efad5ef322f12024e5bd88ace6",
+      "bottleneck": "RDNA3.0とRDNA3.5を同じ条件で判別し、gfx1151で遅いrocWMMA経路を選ぶ",
+      "mechanism": "ランタイムをRDNA3.0専用分岐にし、同時にRDNA3.5用tile kernelのビルド除外条件も修正",
+      "claim": "旧コードのON/OFF比較: gfx1151 pp8192 419.31 vs 705.49 tok/s（ONが約40.6%遅い）",
+      "env": "gfx1151 / ROCm 7.2.1 / Qwen3.6 35B Q8_0 / llama.cpp build9586"
+    },
+    {
+      "status": "一次資料",
+      "evidence": "利用者patch＋条件限定A/B（第三者再現なし）",
+      "app": "CPU→GPU転送対再計算の閾値をワークロード別に評価",
+      "next": "競合なしのOpenCodeでも効くか、負荷・公平性・E2E・キャッシュの整合性を検証",
+      "constraints": "長いKV hitや低優先ジョブに無条件適用しない。ROCm/llama.cppで同APIは未確認",
+      "publicDate": "2026-11-02",
+      "checkedDate": "2026-11-19",
+      "kind": "スケジューラ限定patch",
+      "metrics": [
+        {
+          "label": "voice TTFT p50",
+          "value": "226→160",
+          "unit": "ms",
+          "origin": "公表値（当方未実測）",
+          "condition": "2 voice＋12 coding agent、作者のEAGLE条件",
+          "before": "226",
+          "after": "160",
+          "note": ""
+        }
+      ],
+      "quality": "変更後のコーディング成功率・出力一致は未検証",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "cache-reuse",
+        "speculative-decoding",
+        "memory-transfer",
+        "scheduler"
+      ],
+      "counter": "SpecなしのTTFT p50 139ms、spec有無で後続token速度も異なる",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "TTFT / agent E2E候補",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34#issuecomment-6998023146",
+        "https://github.com/StevenWang-CY/flatshare/blob/v1.15/python/flatshare_vllm/src/flatshare_vllm/make-room/variant.patch"
+      ],
+      "id": "SPD-0027",
+      "name": "vLLM EAGLE×CPU KV｜小さいhitは転送せず再計算",
+      "category": "システム／メモリ",
+      "source": "https://github.com/vllm-project/vllm/issues/65161",
+      "bottleneck": "EAGLEで削った16-token blockをCPUから再ロードすると2〜3 scheduler step（平均120ms）待つ",
+      "mechanism": "priority0の小さなCPU KV hitでは256-token閾値を用い、オフロードreadより対象tokenを再計算",
+      "claim": "利用者報告: CPU-tier load待ちvoice turnが68/71→4/70、TTFT p50 226→160ms",
+      "env": "RTX5060Ti / vLLM0.32 / Qwen3-4B FP8+EAGLE-3 / 2 voice+12 coding agents"
+    },
+    {
+      "status": "一次資料",
+      "evidence": "上流Issue＋公開table・著者実測（当方未検証）",
+      "app": "欠損shapeの診断→有限探索→危険候補拒否→小Mも含む比較",
+      "next": "kernelブラックリスト、GEMM形状、同品質・温度・安定性、version固定を確認",
+      "constraints": "特定kernelでGPU停止・ハング/内部エラー、small-Mでは悪化。勝者binを無審査再構築しない",
+      "publicDate": "2026-11-14",
+      "checkedDate": "2026-11-20",
+      "kind": "条件付き実装候補",
+      "metrics": [
+        {
+          "label": "FP32 NN4096³",
+          "value": "2.374→7.946",
+          "unit": "TFLOPS",
+          "origin": "公表値（当方未実測）",
+          "condition": "gfx1151、作者FP32 PyTorch dispatch",
+          "before": "2.374",
+          "after": "7.946",
+          "note": ""
+        },
+        {
+          "label": "FP32 0.5B decode",
+          "value": "34.74→36.57",
+          "unit": "tok/s",
+          "origin": "公表値（当方未実測）",
+          "condition": "Qwen2.5-0.5B FP32、作者実測",
+          "before": "34.74",
+          "after": "36.57",
+          "note": ""
+        }
+      ],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "environment-hack",
+        "kernel-specialization",
+        "compiler-graph",
+        "fp32-gemm"
+      ],
+      "counter": "small Mで34.4→24.1 tok/sへ悪化。危険候補pool index 1162084410",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "FP32 GEMM / 小M decode",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34#issuecomment-7029331504",
+        "https://github.com/hrabanazviking/RuneForgeAI-ASUS-z13-Linux-Fixes/blob/main/fixes/tensile-fp32-tables/NOTES.md"
+      ],
+      "id": "SPD-0028",
+      "name": "rocBLAS gfx1151｜欠けたFP32 Tensile解をshape別補完",
+      "category": "環境固有ハック",
+      "source": "https://github.com/ROCm/TheRock/issues/9970",
+      "bottleneck": "gfx1151のFP32 SGEMMに各転置32×32の単一Tensile解しかなく大shapeに不適合",
+      "mechanism": "gfx1100の候補をgfx1151へ移植し、4転置×shape別に361候補から実機探索。小Mと危険kernelを別扱い",
+      "claim": "作者実測: NN4096³ 2.374→7.946 TFLOPS。ただし0.5B fp32 decodeは34.74→36.57 tok/sのみ",
+      "env": "gfx1151 / TheRock nightly ROCm7.13 / FP32 SGEMM（BF16/FP16ではない）"
+    },
+    {
+      "status": "未確認",
+      "evidence": "作者のコード・数値報告（独立の数値出典未確認）",
+      "app": "エンジンAPIで専用拡張をpinし、演算単体と同品質E2Eを分ける参考",
+      "next": "テストの公開根拠、モデルrevision差、出力同一性、OpenCode成功率を独立確認",
+      "constraints": "Gufo専用。llama.cpp/DFlash2への直接適用不可。gfx1201/K8未検証",
+      "publicDate": "2026-11-12",
+      "checkedDate": "2026-11-20",
+      "kind": "外部拡張候補",
+      "metrics": [
+        {
+          "label": "作者開発版 prefill",
+          "value": "406→1530",
+          "unit": "tok/s",
+          "origin": "公表値（当方未実測）",
+          "condition": "UD3.1、cold174K、2 sessions（変更因子未分離）",
+          "before": "406",
+          "after": "1530",
+          "note": "公開READMEで同数値の独立照合未達"
+        }
+      ],
+      "quality": "著者のcosine/RMSE等は未確認、トークン列同一・コード品質未証明",
+      "memory": "約80.8GiBデバイスメモリという作者説明、当方検証なし",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "kernel-specialization",
+        "quantization",
+        "kernel-fusion",
+        "prefill"
+      ],
+      "counter": "別量子化・ランタイムとの差から18%改善と結論できない",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "prefill / 量子化互換",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34#issuecomment-7029331504",
+        "https://github.com/storm1er/flash-next-iq-gufo-extension/blob/main/extension.json",
+        "https://github.com/uobnnisiuk/AOTG/issues/34#issuecomment-7031407892"
+      ],
+      "id": "SPD-0029",
+      "name": "Flash-Next IQ拡張｜gfx1151専用量子化decodeとF16 GEMM",
+      "category": "環境固有ハック",
+      "source": "https://github.com/storm1er/flash-next-iq-gufo-extension",
+      "bottleneck": "GufoのFlash-Nextが特定IQ experts形式未対応で遅いMMQ経路や誤復号が残る",
+      "mechanism": "IQ2/IQ3/IQ4専用dequantとQ6_K F16 matrix-core GEMMを外部拡張で実装。IQ4_XS table復号誤りも修正",
+      "claim": "作者の開発途中→修正後: 174K prefill 406→1530 tok/s。変更因子ごとの効果は分離されていない",
+      "env": "gfx1151 / Gufo0.34 / 128GiB / UD3.1 IQ4_XS / cold174K / 2 sessions"
+    },
+    {
+      "status": "一次資料",
+      "evidence": "上流Issue/PR差分・作者テスト申告",
+      "app": "再送token/費用を減らす小さなHarness修正候補",
+      "next": "元tool引数への可逆参照、必要情報欠落・再修正・E2Eと正答率を評価",
+      "constraints": "切り詰めが後続の修復文脈を削る可能性。旧PR状態を最新と断言しない",
+      "publicDate": "2026-11-16",
+      "checkedDate": "2026-11-20",
+      "kind": "限定ソース修正案",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "agent-workflow",
+        "context-compaction",
+        "cache-reuse",
+        "compute-reduction"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "tool / prefill / E2E",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34#issuecomment-7029331504",
+        "https://github.com/anomalyco/opencode/issues/64279"
+      ],
+      "id": "SPD-0030",
+      "name": "OpenCode compaction｜巨大tool入力の再送を有界化",
+      "category": "クライアント／Harness",
+      "source": "https://github.com/anomalyco/opencode/pull/64291",
+      "bottleneck": "圧縮後recent-contextのtool結果は切詰めるがtool入力は大文字列を毎回再送",
+      "mechanism": "tool callのinputにも既存truncateToolOutputを適用。繰返しのcontext再送を削る",
+      "claim": "5,000文字のテスト追加は作者申告。実際のtoken/TTFT/総作業時間改善は未測定",
+      "env": "OpenCode v2.2.7 / recent-text.ts（2026-11-20時点PR未マージ）"
+    },
+    {
+      "status": "一次資料",
+      "evidence": "RFC＋作者実装・適応的探索測定（固定holdoutではない）",
+      "app": "tool待機長とcache missが支配的な場合だけ比較候補",
+      "next": "自然trace（30秒超約1%）、CPU pool・公平性・TTFT・E2Eを固定別条件で検証",
+      "constraints": "client hint信頼性/tenant公平性、CPU容量/帯域、低競合環境では利益がない可能性",
+      "publicDate": "2026-11-17",
+      "checkedDate": "2026-11-21",
+      "kind": "条件付き提案",
+      "metrics": [
+        {
+          "label": "再prefill比率",
+          "value": "11.3→1.5",
+          "unit": "%",
+          "origin": "公表値（当方未実測）",
+          "condition": "戻るヒント付きsession、3GiB pool、40%長時間tool待ち",
+          "before": "11.3",
+          "after": "1.5",
+          "note": "低い方が良い。gen tok/sではない"
+        }
+      ],
+      "quality": "",
+      "memory": "CPU KV pool3GiB、GPU KV約55k tokens",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "cache-reuse",
+        "agent-workflow",
+        "memory-tiering",
+        "scheduling-parallelism"
+      ],
+      "counter": "15% long-wait mixで最初のゲート不合格。4GiBの1seedではLRUも0%",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "prefill / cache / agent E2E候補",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34#issuecomment-7056653741",
+        "https://github.com/philippesic/wait-hint-kv/blob/main/FINDINGS.md"
+      ],
+      "id": "SPD-0031",
+      "name": "vLLM CPU KV offload｜ツール待機ヒントでcache evictionを制御",
+      "category": "システム／メモリ",
+      "source": "https://github.com/vllm-project/vllm/issues/68079",
+      "bottleneck": "エージェントのtool待機中に使えるprefixがLRUで退避/消失し、復帰時に再prefill",
+      "mechanism": "toolの推定待機時間・終了状態・必要token範囲をserver cache policyへ送りCPU KVの優先保持と解放に使う",
+      "claim": "作者の人工的40%長時間待機条件で、再prefillになる再利用可能token比率11.3%→1.5%。速度倍率ではない",
+      "env": "RTX2080Ti / Qwen2.5-7B AWQ / 9 sessions / CPU pool3GiB / 5 paired seeds"
+    },
+    {
+      "status": "一次資料",
+      "evidence": "RFC＋arXiv＋作者実装、一般E2E未実測",
+      "app": "数式で同一成分を確かめたモデルだけにKV冗長性除去を検討",
+      "next": "品質/430件ではなく432件の2差、prefix、長文、allocator/throughput、他GPU可否を確認",
+      "constraints": "他モデルへの一般適用不可。現行vLLM main未移植。FP8・品質・TP/FA4未確認",
+      "publicDate": "2026-11-19",
+      "checkedDate": "2026-11-21",
+      "kind": "モデル固有patch候補",
+      "metrics": [
+        {
+          "label": "32K KV pool blocks",
+          "value": "1349→1008",
+          "unit": "blocks",
+          "origin": "公表値（当方未実測）",
+          "condition": "A100 80GiB / Gemma4 31B BF16",
+          "before": "1349",
+          "after": "1008",
+          "note": "同じbatchのeager stepは4〜9%遅化"
+        }
+      ],
+      "quality": "stockとの432件最終回答比較で2件差（独立記録訂正）。品質完全同一ではない",
+      "memory": "K/V 1024→640値；64K block数2373→1690",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "cache-reuse",
+        "memory-transfer",
+        "model-architecture",
+        "scheduling-parallelism"
+      ],
+      "counter": "64K同時decode数は2→2で増えず、同じbatchのeager stepは遅くなる",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "KV容量 / decode並列",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34#issuecomment-7056653741",
+        "https://arxiv.org/abs/2611.23035",
+        "https://github.com/uobnnisiuk/AOTG/issues/34#issuecomment-7070969170"
+      ],
+      "id": "SPD-0032",
+      "name": "Gemma 4｜K/Vの共通次元を重ねてKV footprint圧縮",
+      "category": "モデル・アーキテクチャ",
+      "source": "https://github.com/vllm-project/vllm/issues/68778",
+      "bottleneck": "Gemma4 global attentionのK/Vで同じ384次元を重複保存しKV poolを消費",
+      "mechanism": "[K_rot128|V_unrot384|V_rot128]に1024→640値へ畳み、既存paged attentionを共有ビューで使用",
+      "claim": "作者A100測定: 32KのKV blocks 1349→1008、容量効率1.338倍。eager同一batchは4〜9%遅化",
+      "env": "Gemma4 31B BF16 / A100 80GiB / vLLM0.33dev / 15GiB KV pool"
+    },
+    {
+      "status": "反証",
+      "evidence": "上流PR差分・author訂正・レビュー側指摘",
+      "app": "GPU memory property/driver/drircを先に診断する反例。patch採用見送り",
+      "next": "標準kernelと独自設定、drirc、HOST_CACHEDの有無を区別した再現を確認",
+      "constraints": "作者説明は独自kernel構成から/etc/drircへ更新されており確定原因ではない。安全設定を変えない",
+      "publicDate": "2026-11-20",
+      "checkedDate": "2026-11-21",
+      "kind": "否定的事例",
+      "metrics": [
+        {
+          "label": "作者 server decode",
+          "value": "47.0→86.4",
+          "unit": "tok/s",
+          "origin": "公表値（当方未実測）",
+          "condition": "特殊構成BC-250、作者計測、上流採用なし",
+          "before": "47.0",
+          "after": "86.4",
+          "note": "通常gfx1151/1201に外挿不可"
+        }
+      ],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "environment-hack",
+        "memory-transfer",
+        "device-quirk",
+        "negative-result"
+      ],
+      "counter": "llama-bench tg128は94.0→93.3 tok/sで改善せず。PR未マージ",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "host readback / server decode",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34#issuecomment-7056653741",
+        "https://github.com/ggml-org/llama.cpp/pull/32634#issuecomment-7038035539",
+        "https://github.com/uobnnisiuk/AOTG/issues/34#issuecomment-7070969170"
+      ],
+      "id": "SPD-0033",
+      "name": "llama.cpp Vulkan UMA｜HOST_CACHED欠落の一般化を撤回",
+      "category": "環境固有ハック",
+      "source": "https://github.com/ggml-org/llama.cpp/pull/32634",
+      "bottleneck": "BC-250特殊環境でCPUがWC host-visible logitsを遅く読む",
+      "mechanism": "movntdqa/stagingとexternal host memory importでcached copyを試作したが環境構成差に起因する可能性",
+      "claim": "作者server 47.0→86.4 tok/s報告、benchは94.0→93.3。PRは同日未マージで閉鎖、一般上流改善主張は撤回",
+      "env": "BC-250 gfx1013 / Mesa26.1.6 / kernel7.2.10（gfx1151の実測なし）"
+    },
+    {
+      "id": "REF-SYBIL-OPT-001",
+      "name": "inference-optimisation-skill｜実測と失敗記録の技法集",
+      "category": "調査資料集",
+      "source": "https://github.com/sybil-solutions/inference-optimisation-skill",
+      "mechanism": "control→candidate→control、理論上限・再現ログ・fail-closedと候補選別を調査する資料集",
+      "bottleneck": "不公平な測定・上限未推定・再現できない改善",
+      "claim": "作者READMEの別GPU例はAOTG実測ではない",
+      "env": "Intel Arc / NVIDIAの公開例、AMD未再現",
+      "status": "一次資料",
+      "evidence": "GitHub資料集",
+      "app": "評価設計へ抽出（丸ごと採用しない）",
+      "next": "ceiling.py/bench.py/queue.shの失敗・上限の監査必要",
+      "constraints": "関連リポジトリの新しい差分・失敗例を監視",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "資料集",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "research-source",
+        "measurement-method"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "benchmark",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34#issuecomment-6952056324"
+      ]
+    },
+    {
+      "id": "REF-YASAKANI-001",
+      "name": "YASAKANI / 八尺瓊系｜推論ランタイム調査",
+      "category": "推論エンジン",
+      "source": "https://github.com/sahenjp/yasaheni",
+      "mechanism": "GGUF互換fork等の設計を比較（実装機構は未精査）",
+      "bottleneck": "非標準runtime/量子化互換と運用性能の未把握",
+      "claim": "数値・有効性未確認",
+      "env": "EVO-X3 8060S / R9700への互換性未確認",
+      "status": "未確認",
+      "evidence": "ソース参照先（未精査）",
+      "app": "read-onlyの設計比較候補",
+      "next": "名称・実装差・対応モデル・ライセンスを要確認",
+      "constraints": "上流README/commit/対応形式を読み、重複実装を照合",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "資料集",
+      "metrics": [],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "runtime",
+        "gguf"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "client/engine",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "status": "未確認",
+      "evidence": "公開コード・作者測定のみ、当方実機なし",
+      "app": "量子化とexpertの因子分解。まず省略なしR10を評価する研究候補",
+      "next": "品質・実行時間・GPU/CPU offload・AMD HIPでの適合、固定モデルrevision",
+      "constraints": "CUDA/HIP差・独自形式・AMD同期/誤出力注意。省略ありのR4/R7は同品質ではない",
+      "publicDate": "2026-11-19",
+      "checkedDate": "2026-11-19",
+      "kind": "参考資料",
+      "metrics": [
+        {
+          "label": "Sync-S decode R10",
+          "value": "104.6",
+          "unit": "tok/s",
+          "origin": "公表値（当方未実測）",
+          "condition": "作者jbench thinking off / RTX3080",
+          "before": "",
+          "after": "",
+          "note": ""
+        }
+      ],
+      "quality": "R4/R7のexpert省略による近似差あり、作者KLはコーディング成功率を示さない",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "quantization",
+        "memory-tiering",
+        "environment-hack"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "decode / expert offload",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34#issuecomment-7001306343"
+      ],
+      "id": "REF-SYNC-STRATA-001",
+      "name": "Sync-Strata｜量子化・expert配置・tail-skipの技法集",
+      "category": "参考資料",
+      "source": "https://github.com/hiruhiru2005/sync-strata",
+      "bottleneck": "expert weight転送・復号とCPU/GPU/SSD配置のコスト",
+      "mechanism": "重み復元の表引きを整数操作へ置き換え、Strata由来のexpert caching・転送重畳・tail skipと組み合わせる",
+      "claim": "作者RTX3080 Sync-S decode R10=104.6 tok/s。R4/R7はexpert省略による品質変更がある",
+      "env": "RTX3080 12GB / Win11 / Sync-Strata0.1.0 / Sync-S"
+    },
+    {
+      "status": "一次資料",
+      "evidence": "論文／上流値（当方未再現）",
+      "app": "CPU待ち・起動同期・転送を測り、GPU制御部分と追加DPU要件を切り分ける",
+      "next": "コード公開、採用baseline条件、独立追試、OpenCode単発への有効性を確認",
+      "constraints": "CUDA/DPU固有のためgfx1151/gfx1201へ直用不可",
+      "publicDate": "2026-04-08",
+      "checkedDate": "2026-11-19",
+      "kind": "参考論文",
+      "metrics": [
+        {
+          "label": "P99 TTFT 最大比較",
+          "value": "最大8.47",
+          "unit": "倍",
+          "origin": "公表値（当方未実測）",
+          "condition": "論文の高並列負荷範囲、H100＋BlueField-3",
+          "before": "",
+          "after": "",
+          "note": "単発decodeの速度倍率ではない"
+        }
+      ],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "scheduling-parallelism",
+        "compiler-graph",
+        "memory-transfer"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "serving / TTFT",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34#issuecomment-7008915271"
+      ],
+      "id": "REF-BLINK-001",
+      "name": "Blink｜GPU常駐schedulerとSmartNIC/DPUによるCPU制御回避",
+      "category": "参考資料",
+      "source": "https://arxiv.org/abs/2604.07609",
+      "bottleneck": "定常推論のCPU側scheduler／launch／ネットワーク連携の待機",
+      "mechanism": "GPU常駐schedulerとdevice graph launch、DPU/SmartNICへのサーバ制御移管を組み合わせる",
+      "claim": "論文の最大8.47倍は負荷範囲で比較したP99 TTFTであり、decode一般倍率ではない",
+      "env": "H100＋BlueField-3 / CUDA / 高並列serving"
+    },
+    {
+      "status": "未確認",
+      "evidence": "企業発表／設計時評価（独立実チップ測定なし）",
+      "app": "候補高速評価→正確なRTL検証→補正という探索プロセスの参考",
+      "next": "RTL/ISA/ベンチ公開と実チップ・独立評価、性能/電力と性能/面積を別々に確認",
+      "constraints": "専用CPU設計でありAMD既存GPUに移植不可。仕様検証と実際の有用性は別",
+      "publicDate": "2026-11-18",
+      "checkedDate": "2026-11-19",
+      "kind": "参考資料",
+      "metrics": [
+        {
+          "label": "電力あたり性能 幾何平均",
+          "value": "4.59",
+          "unit": "倍",
+          "origin": "公表値（当方未実測）",
+          "condition": "製造前25課題、企業公表、対in-order CPU",
+          "before": "",
+          "after": "",
+          "note": "設計未使用15課題では3.83倍"
+        }
+      ],
+      "quality": "",
+      "memory": "",
+      "stability": "",
+      "reproduction": "",
+      "tags": [
+        "compiler-graph",
+        "scheduling-parallelism",
+        "agent-workflow"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "ハードウェア設計／探索",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34#issuecomment-7009417286",
+        "https://vine.dev/"
+      ],
+      "id": "REF-FROSTBITE-001",
+      "name": "Frostbite｜Interaction Net CPUと形式検証を伴う設計探索",
+      "category": "参考資料",
+      "source": "https://architectlabs.com/blog/frostbite",
+      "bottleneck": "CPUの命令配列とデータ運搬・同期、設計探索時の高価なRTL評価",
+      "mechanism": "相互作用ネットを基礎にタイルへ仕事を配置、AIがコンパイラ/ISA/回路案を探索し仕様検証・評価モデルで絞る",
+      "claim": "企業による製造前の電力あたり性能比較で25課題幾何平均4.59倍。実チップ計測ではない",
+      "env": "Frostbite4 tiles＋L3 対匿名2-issue in-order CPU（比較条件限定）"
+    },
+    {
+      "id": "LOC-001",
+      "name": "FlashNext / Dynamic V3.1｜8060S実測メモ",
+      "category": "モデル・アルゴリズム",
+      "source": "https://github.com/uobnnisiuk/AOTG/issues/34",
+      "mechanism": "FlashNextの投機推論とDynamic V3.1の構成差を同じ開発作業で比較（実装差分の追認未了）",
+      "bottleneck": "27B比較ではtoken生成と作業完了時間が長い",
+      "claim": "既存メモ: FlashNext IQ3_S+DFlash2 45.2 tok/s・C++47秒、Dynamic V3.1 45.5 tok/s・47.07秒、27B 10.95 tok/s・162秒",
+      "env": "EVO-X3 / Radeon 8060S gfx1151",
+      "status": "未確認",
+      "evidence": "既存実測メモ（原ログ未照合）",
+      "app": "高優先・正式ベンチの候補",
+      "next": "量子化/モデル品質が異なるため単純な同品質加速とは呼べない",
+      "constraints": "原試行のrun ID/モデル版/計測ログとquality判定を固定",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "環境別評価",
+      "metrics": [
+        {
+          "label": "decode",
+          "value": "45.2",
+          "unit": "tok/s",
+          "origin": "既存計測メモ",
+          "condition": "FlashNext IQ3_S + DFlash2 / 8060S",
+          "before": "",
+          "after": "",
+          "note": ""
+        },
+        {
+          "label": "C++作業完了",
+          "value": "47",
+          "unit": "秒",
+          "origin": "既存計測メモ",
+          "condition": "FlashNext / 8060S",
+          "before": "",
+          "after": "",
+          "note": ""
+        },
+        {
+          "label": "decode",
+          "value": "45.5",
+          "unit": "tok/s",
+          "origin": "既存計測メモ",
+          "condition": "Dynamic V3.1 / 8060S",
+          "before": "",
+          "after": "",
+          "note": ""
+        },
+        {
+          "label": "C++作業完了",
+          "value": "47.07",
+          "unit": "秒",
+          "origin": "既存計測メモ",
+          "condition": "Dynamic V3.1 / 8060S",
+          "before": "",
+          "after": "",
+          "note": ""
+        },
+        {
+          "label": "decode",
+          "value": "10.95",
+          "unit": "tok/s",
+          "origin": "既存計測メモ",
+          "condition": "Qwen3.8-27B / 8060S",
+          "before": "",
+          "after": "",
+          "note": ""
+        },
+        {
+          "label": "C++作業完了",
+          "value": "162",
+          "unit": "秒",
+          "origin": "既存計測メモ",
+          "condition": "Qwen3.8-27B / 8060S",
+          "before": "",
+          "after": "",
+          "note": ""
+        }
+      ],
+      "quality": "長文113,989 tokensで全問正答と報告。C++1,010/C#27件テスト合格の既存メモあり、原ログ再照合待ち",
+      "memory": "8060S共有RAM、正確なpeak RAM/PSI未記録",
+      "stability": "長時間試験は原ログ照合待ち",
+      "reproduction": "model SHA／GGUF SHA／llama.cpp版／GPU clock／context／OpenCode設定、同一課題を3回以上ABABで比較",
+      "tags": [
+        "speculative-decoding",
+        "local-note"
+      ],
+      "counter": "",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "OpenCode E2E",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    },
+    {
+      "id": "LOC-002",
+      "name": "R9700 vs 8060S｜速度・swap保護の比較メモ",
+      "category": "環境別比較",
+      "source": "https://github.com/uobnnisiuk/AOTG/issues/34",
+      "mechanism": "R9700単独と8060Sの速度・長文・全工程時間を分けて比較",
+      "bottleneck": "単一decodeの速さが長文やコード修正の完了時間に直結しない",
+      "claim": "既存メモ: R9700短文32K 77.6 tok/s／OpenCode C++は8060Sより約1.96倍遅く、128Kでswap保護により中断",
+      "env": "R9700 gfx1201 32GB VRAM / EVO-X3 8060S UMA",
+      "status": "反証",
+      "evidence": "既存実測メモ（原ログ未照合）",
+      "app": "R9700は限定的な32K短文補助候補",
+      "next": "測定対象の異なる値を棒グラフで直接比較しない",
+      "constraints": "中断ログ／VRAMピーク／swap protection／E2E工程を確認",
+      "publicDate": "",
+      "checkedDate": "2026-11-18",
+      "kind": "環境別評価",
+      "metrics": [
+        {
+          "label": "decode",
+          "value": "77.6",
+          "unit": "tok/s",
+          "origin": "既存計測メモ",
+          "condition": "R9700 32K短文（中央値）",
+          "before": "",
+          "after": "",
+          "note": ""
+        },
+        {
+          "label": "OpenCode C++相対完了時間",
+          "value": "約1.96",
+          "unit": "倍（遅い）",
+          "origin": "既存計測メモ",
+          "condition": "R9700対8060S、条件差再照合",
+          "before": "",
+          "after": "",
+          "note": ""
+        }
+      ],
+      "quality": "長文/一部C#は中断したため採点不可。完了率を分母に含める必要",
+      "memory": "R9700単体32GB。128K試行はswap保護で中断",
+      "stability": "swap保護発動＝安全停止。閾値を緩和せず中断を記録",
+      "reproduction": "32K/128Kで同一model/quant/engine/context、swap watchdogを維持し計測（要承認）",
+      "tags": [
+        "memory-tiering",
+        "local-note"
+      ],
+      "counter": "decode速度が高くてもOpenCodeのE2Eは悪化",
+      "version": "",
+      "verification": "AOTG未検証",
+      "scope": "OpenCode E2E",
+      "sourceRefs": [
+        "https://github.com/uobnnisiuk/AOTG/issues/34"
+      ]
+    }
+  ],
+  "workflow": {
+    "cadence": "未指定",
+    "siteSync": "無効（未承認）",
+    "externalChanges": "禁止",
+    "existingTask": "既存のAOTG高速化技術収集タスクは毎日12:00 JST（この画面から変更しない）",
+    "updatedAt": ""
+  },
+  "approvals": [
+    {
+      "id": "AP-01",
+      "task": "Sitesでの自動調査頻度を設定",
+      "reason": "新しいワークフローの実行時刻／頻度は未指定",
+      "status": "承認待ち",
+      "risk": "運用変更"
+    },
+    {
+      "id": "AP-02",
+      "task": "EVO-X3 / K8 Plus / GPUの実機ベンチ",
+      "reason": "事前の実験窓、負荷、swap保護、rollback条件が必要",
+      "status": "承認待ち",
+      "risk": "実機変更"
+    },
+    {
+      "id": "AP-03",
+      "task": "AOTG実装への候補追加／PR作成",
+      "reason": "UOB-52/53/54/71と独立レビューの受入条件が必要",
+      "status": "承認待ち",
+      "risk": "ソース変更"
+    },
+    {
+      "id": "AP-04",
+      "task": "GitHub #34 / Linear UOB-80への書込み同期",
+      "reason": "このトラッカーは既存原本とは別。重複排除と書込み権限の確認が必要",
+      "status": "承認待ち",
+      "risk": "外部書込み"
+    },
+    {
+      "id": "AP-05",
+      "task": "既存の自動実行タスクの変更",
+      "reason": "既存の日次タスクは維持。変更する場合のみ個別承認",
+      "status": "承認待ち",
+      "risk": "運用変更"
+    }
+  ],
+  "audit": [
+    {
+      "at": "2026-11-18",
+      "type": "Seed",
+      "text": "GitHub AOTG #34のSPD-0001〜0023とREF-SYBIL-OPT-001を参照して初期化。サイトは原本を変更しない。"
+    },
+    {
+      "at": "2026-11-18",
+      "type": "Caveat",
+      "text": "LOC-001/LOC-002は過去の実測メモとして追加。原ログ、SHA、計測条件は再照合待ち。"
+    },
+    {
+      "at": "2026-11-22",
+      "type": "SeedUpdate",
+      "text": "Issue #34の公開済みSPD-0024〜0033、REF-SYNC-STRATA/BLINK/FROSTBITEをDraft PR #35の静的トラッカーへ転記。一次資料・作者報告・反証・未検証を区別。#34原本、既存実機・実験・外部運用は不変。"
+    }
+  ]
+}
