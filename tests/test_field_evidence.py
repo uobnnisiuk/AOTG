@@ -437,6 +437,51 @@ class FieldEvidenceTests(unittest.TestCase):
             with self.assertRaisesRegex(ArtifactError, "integrity mismatch"):
                 verify_field_kit(kit, run, root=root)
 
+    def test_stopped_or_undeclared_nonwinner_cannot_select_or_verify_kit(self):
+        stop_reasons = (
+            "swapout_change_or_reset", "nvme_temperature_failed", "hardware_alarm_triggered",
+            "gpu_resource_limit", "swap_or_disk_limit", "worker_stopped",
+            "resource_temperature_limit", "resource_memory_limit",
+        )
+        run = example_run()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "run.py").write_text("pass\n", encoding="utf-8")
+            kwargs = {"root": root, "paths": ["run.py"],
+                      "operations": dict.fromkeys(("build", "start", "verify", "rollback"), "run.py"),
+                      "private_configuration_sha256": digest("private")}
+            kit = build_field_kit(run, **kwargs)
+            self.assertEqual(kit["selected_candidate_id"], "threads")
+            verified = verify_field_kit(kit, run, root=root)
+            self.assertTrue(verified["integrity_verified"])
+            self.assertFalse(verified["independent_rebuild_verified"])
+            self.assertFalse(verified["deployment_verified"])
+            cases = [(reason, {"status": "stopped", "reason": reason}, True)
+                     for reason in stop_reasons]
+            cases += [
+                ("unclassified_stop", {"status": "stopped", "reason": "assessment_incomplete"}, False),
+                ("undeclared_value", {"metrics": {"wall_seconds": 10, "ttft_seconds": 1.2}}, False),
+                ("undeclared_null", {"metrics": {"wall_seconds": 10, "ttft_seconds": None}}, False),
+            ]
+            for label, mutation, is_resource_stop in cases:
+                with self.subTest(case=label):
+                    changed = copy.deepcopy(run)
+                    trial = next(t for t in changed["trials"] if t["candidate_id"] == "batch")
+                    trial.update(mutation)
+                    index = trial["index"]
+                    result = compare_field_run(changed)
+                    self.assertTrue(result["baseline_valid"])
+                    self.assertEqual(result["comparisons"][0]["status"], "pass")
+                    self.assertEqual(result["status"], "incomplete")
+                    self.assertIsNone(result["selected_candidate_id"])
+                    self.assertEqual(result["global_resource_stop"], is_resource_stop)
+                    self.assertEqual(result["resource_stop_trial_indices"], [index] if is_resource_stop else [])
+                    self.assertEqual(result["comparisons"][1]["trial_reasons"][str(index)], trial["reason"])
+                    with self.assertRaisesRegex(ArtifactError, "Incomplete evidence"):
+                        build_field_kit(changed, **kwargs)
+                    with self.assertRaisesRegex(ArtifactError, "Incomplete evidence"):
+                        verify_field_kit(kit, changed, root=root)
+
     def test_incomplete_run_cannot_make_a_selected_kit(self):
         run = example_run()
         run["trials"] = []

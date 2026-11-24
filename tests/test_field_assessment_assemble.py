@@ -593,6 +593,8 @@ class AssemblyTests(unittest.TestCase):
                 self.assertEqual(entry["observation_class"], "verified_runtime_failure")
                 self.assertEqual(result["decision"]["status"], "incomplete")
                 self.assertIsNone(result["decision"]["selected_candidate_id"])
+                self.assertTrue(result["decision"]["global_resource_stop"])
+                self.assertIn(self.f.failure_index, result["decision"]["resource_stop_trial_indices"])
                 if mode == "swap":
                     self.assertIn("swapout_change_or_reset", entry["runtime_failures"])
                     trial = next(t for t in result["run"]["trials"] if t["index"] == self.f.failure_index)

@@ -37,6 +37,13 @@ RESOURCES = (
     "gpu_errors", "io_errors",
 )
 TERMINAL = ("passed", "failed", "stopped", "timed_out", "missing")
+# Explicit worker/assembler stop reasons may not be represented in RESOURCES.
+# Preserve the run-wide veto even if a scalar resource value is absent or safe.
+RESOURCE_STOP_REASONS = frozenset({
+    "swapout_change_or_reset", "nvme_temperature_failed", "hardware_alarm_triggered",
+    "gpu_resource_limit", "swap_or_disk_limit", "worker_stopped",
+    "resource_temperature_limit", "resource_memory_limit",
+})
 
 
 def _require(condition, message):
@@ -361,9 +368,12 @@ def compare_field_run(run):
     _require(run["elapsed_seconds"] + 0.000001 >= measured_seconds,
              "Elapsed time is shorter than sequential measured trials")
     total_violation = run["elapsed_seconds"] > plan["limits"]["total_seconds"]
-    resource_stop_indices = sorted(index for index, item in rows.items()
-                                   if any(reason.startswith("resource_") and reason.endswith("_limit")
-                                          for reason in item["errors"]))
+    resource_stop_indices = sorted(
+        index for index, item in rows.items()
+        if item["trial"]["reason"] in RESOURCE_STOP_REASONS
+        or any(reason.startswith("resource_") and reason.endswith("_limit")
+               for reason in item["errors"])
+    )
     baseline_rows = [row for row in plan["schedule"] if row["candidate_id"] == plan["baseline_id"]]
     baseline_valid = all(row["index"] in rows and not rows[row["index"]]["errors"]
                          for row in baseline_rows)
@@ -375,7 +385,8 @@ def compare_field_run(run):
         errors = {str(row["index"]): rows[row["index"]]["errors"]
                   if row["index"] in rows else ["trial_missing"] for row in selected}
         missing = any(any("missing" in reason or "mismatch" in reason
-                          or reason.endswith("not_independent") for reason in reasons)
+                          or reason.endswith(("not_independent", "_undeclared"))
+                          or reason == "trial_stopped" for reason in reasons)
                       for reasons in errors.values())
         failed = any(errors.values()) or total_violation
         pairs, metric_failures = [], []
