@@ -1,0 +1,238 @@
+"""First offline #29 closure stage; not a complete candidate or field run."""
+import importlib.util
+import os
+import sys
+import tempfile
+import unittest
+from copy import deepcopy
+from pathlib import Path
+
+import test_comparison_v2_quality_bridge as bridge
+
+# Exact source deltas from #29 95159f7c94840e9114a55efc52a494fde5a35be5.
+# Verify both the original archive and reconstructed Git blobs; no old pin is
+# modified, and this stage deliberately retains the archived assembler.
+OVERLAYS = {
+    "aotg/field_evidence.py": (
+        "06bdaef9fb7276679e8aa667937704d6b790a4be",
+        [
+            (
+                "TERMINAL = (\"passed\", \"failed\", \"stopped\", \"timed_out\", \"missing\")\n"
+                "\n"
+                ,
+                "TERMINAL = (\"passed\", \"failed\", \"stopped\", \"timed_out\", \"missing\")\n"
+                "# Explicit worker/assembler stop reasons may not be represented in RESOURCES.\n"
+                "# Preserve the run-wide veto even if a scalar resource value is absent or safe.\n"
+                "RESOURCE_STOP_REASONS = frozenset({\n"
+                "    \"swapout_change_or_reset\", \"nvme_temperature_failed\", \"hardware_alarm_triggered\",\n"
+                "    \"gpu_resource_limit\", \"swap_or_disk_limit\", \"worker_stopped\",\n"
+                "    \"resource_temperature_limit\", \"resource_memory_limit\",\n"
+                "})\n"
+                "\n"
+                ,
+            ),
+            (
+                "    total_violation = run[\"elapsed_seconds\"] > plan[\"limits\"][\"total_seconds\"]\n"
+                "    resource_stop_indices = sorted(index for index, item in rows.items()\n"
+                "                                   if any(reason.startswith(\"resource_\") and reason.endswith(\"_limit\")\n"
+                "                                          for reason in item[\"errors\"]))\n"
+                "    baseline_rows = [row for row in plan[\"schedule\"] if row[\"candidate_id\"] == plan[\"baseline_id\"]]\n"
+                ,
+                "    total_violation = run[\"elapsed_seconds\"] > plan[\"limits\"][\"total_seconds\"]\n"
+                "    resource_stop_indices = sorted(\n"
+                "        index for index, item in rows.items()\n"
+                "        if item[\"trial\"][\"reason\"] in RESOURCE_STOP_REASONS\n"
+                "        or any(reason.startswith(\"resource_\") and reason.endswith(\"_limit\")\n"
+                "               for reason in item[\"errors\"])\n"
+                "    )\n"
+                "    baseline_rows = [row for row in plan[\"schedule\"] if row[\"candidate_id\"] == plan[\"baseline_id\"]]\n"
+                ,
+            ),
+            (
+                "        missing = any(any(\"missing\" in reason or \"mismatch\" in reason\n"
+                "                          or reason.endswith(\"not_independent\") for reason in reasons)\n"
+                "                      for reasons in errors.values())\n"
+                ,
+                "        missing = any(any(\"missing\" in reason or \"mismatch\" in reason\n"
+                "                          or reason.endswith((\"not_independent\", \"_undeclared\"))\n"
+                "                          or reason == \"trial_stopped\" for reason in reasons)\n"
+                "                      for reasons in errors.values())\n"
+                ,
+            ),
+        ],
+    ),
+    "aotg/field_proxy.py": (
+        "3cd5678a70b533b17f41a8348fa479e5c835cbdc",
+        [
+            (
+                "        self.active_handlers = 0\n"
+                "        self.request_records = 0\n"
+                ,
+                "        self.active_handlers = 0\n"
+                "        self._handlers_idle = threading.Event()\n"
+                "        self._handlers_idle.set()\n"
+                "        self.request_records = 0\n"
+                ,
+            ),
+            (
+                "                self._emit({\"kind\": \"aotg-proxy-rejection-v2\", \"status\": \"rejected\",\n"
+                "                            \"http_status\": status, \"reason\": reason,\n"
+                "                            \"method\": method if method in (\"GET\", \"POST\") else \"OTHER\"})\n"
+                ,
+                "                self._emit({\"kind\": \"aotg-proxy-rejection-v2\", \"status\": \"rejected\",\n"
+                "                            \"http_status\": int(status), \"reason\": reason,\n"
+                "                            \"method\": method if method in (\"GET\", \"POST\") else \"OTHER\"})\n"
+                ,
+            ),
+            (
+                "            self.active_handlers += 1\n"
+                "        try:\n"
+                "            super().process_request(request, client_address)\n"
+                "        except BaseException:\n"
+                "            with self.audit_lock:\n"
+                "                self.active_handlers -= 1\n"
+                "            raise\n"
+                "\n"
+                ,
+                "            self.active_handlers += 1\n"
+                "            self._handlers_idle.clear()\n"
+                "        try:\n"
+                "            super().process_request(request, client_address)\n"
+                "        except BaseException:\n"
+                "            self._handler_finished()\n"
+                "            raise\n"
+                "\n"
+                "    def _handler_finished(self):\n"
+                "        with self.audit_lock:\n"
+                "            self.active_handlers -= 1\n"
+                "            if self.active_handlers == 0:\n"
+                "                self._handlers_idle.set()\n"
+                "\n"
+                ,
+            ),
+            (
+                "        finally:\n"
+                "            with self.audit_lock:\n"
+                "                self.active_handlers -= 1\n"
+                "\n"
+                ,
+                "        finally:\n"
+                "            self._handler_finished()\n"
+                "\n"
+                "    def wait_for_handlers(self, timeout_seconds=None):\n"
+                "        \"\"\"After shutdown, wait for handlers only within the existing deadline.\n"
+                "\n"
+                "        This does not close or certify the capture. A shorter caller budget\n"
+                "        may be supplied. No audit lock is held while waiting for a writer.\n"
+                "        Always call server_close and check the closing record afterwards.\n"
+                "        \"\"\"\n"
+                "        remaining = self.deadline - time.monotonic()\n"
+                "        if timeout_seconds is not None:\n"
+                "            remaining = min(remaining, timeout_seconds)\n"
+                "        return self._handlers_idle.wait(max(0, remaining))\n"
+                "\n"
+                ,
+            ),
+        ],
+    ),
+}
+
+
+@unittest.skipUnless(
+    sys.platform == "linux" and hasattr(os, "O_NOFOLLOW") and os.open in os.supports_dir_fd,
+    "The archived assessment reader requires POSIX directory descriptors",
+)
+class StagedClosureTests(unittest.TestCase):
+    def test_pinned_evaluator_and_proxy_with_archive_assembler(self):
+        with tempfile.TemporaryDirectory(prefix="aotg-staged-closure-") as tmp:
+            scratch = Path(tmp)
+            staged = scratch / "candidate"
+            for relative, pin in bridge.PINS.items():
+                raw = (bridge.ARCHIVE / relative).read_bytes()
+                self.assertEqual(bridge.git_blob(raw), pin, relative)
+                target = staged / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if relative in OVERLAYS:
+                    new_pin, edits = OVERLAYS[relative]
+                    for old, new in edits:
+                        before, after = old.encode(), new.encode()
+                        self.assertEqual(raw.count(before), 1, relative)
+                        raw = raw.replace(before, after, 1)
+                    self.assertEqual(bridge.git_blob(raw), new_pin, relative)
+                target.write_bytes(raw)
+            for relative, pin in bridge.MAIN_INPUTS.items():
+                raw = (bridge.ROOT / relative).read_bytes()
+                self.assertEqual(bridge.git_blob(raw), pin, relative)
+                (staged / relative).write_bytes(raw)
+            old_modules = dict(sys.modules)
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "_aotg_staged_closure_fixture", staged / "tests/test_field_assessment_assemble.py"
+                )
+                fixture = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(fixture)
+                # The helper creates fresh identities/plan/authority before
+                # trials, then checks mixed 64 positive and semantic negatives.
+                bridge.ArchiveQualityBridgeTests.check_mixed_synthetic_assembly(
+                    self, fixture, scratch / "mixed"
+                )
+                root = scratch / "failure-controls"
+                root.mkdir()
+                f = fixture.Fixture(root)
+                positive = f.run()
+                self.assertEqual(positive["global_errors"], [])
+                self.assertEqual(positive["decision"]["status"], "adopt")
+                self.assertFalse(positive["goal_complete"])
+                api = f.api.evidence
+                run = positive["run"]
+                alternative = next(t["index"] for t in run["trials"]
+                                   if t["candidate_id"] != f.field["baseline_id"])
+                # All scalar resources remain unchanged; an explicit stop
+                # alone must veto adoption of even the other alternative.
+                for reason in sorted(api.RESOURCE_STOP_REASONS):
+                    with self.subTest(stop=reason):
+                        changed = deepcopy(run)
+                        trial = next(t for t in changed["trials"] if t["index"] == alternative)
+                        trial.update(status="stopped", reason=reason)
+                        decision = api.compare_field_run(changed)
+                        self.assertEqual(decision["status"], "incomplete")
+                        self.assertIsNone(decision["selected_candidate_id"])
+                        self.assertTrue(decision["global_resource_stop"])
+                        self.assertEqual(decision["resource_stop_trial_indices"], [alternative])
+                changed = deepcopy(run)
+                trial = next(t for t in changed["trials"] if t["index"] == alternative)
+                trial["metrics"]["ttft_seconds"] = 0.01
+                decision = api.compare_field_run(changed)
+                self.assertEqual(decision["status"], "incomplete")
+                self.assertIsNone(decision["selected_candidate_id"])
+                self.assertFalse(decision["global_resource_stop"])
+                # Independently bound summaries remain present; deleting one
+                # required job receipt must invalidate global completion.
+                receipt = Path(f.authority["jobs"][0]["receipt"]["path"])
+                original = receipt.read_bytes()
+                summaries = [(p, p.read_bytes()) for p in (f.k / "summary.json", f.e / "summary.json")]
+                receipt.unlink()
+                rejected = f.run()
+                self.assertTrue(rejected["global_errors"])
+                self.assertEqual(rejected["decision"]["status"], "incomplete")
+                self.assertIsNone(rejected["decision"]["selected_candidate_id"])
+                self.assertFalse(rejected["goal_complete"])
+                for path, raw in summaries:
+                    self.assertEqual(path.read_bytes(), raw)
+                receipt.write_bytes(original)
+                restored = f.run()
+                self.assertEqual(restored["global_errors"], [])
+                self.assertEqual(restored["decision"]["status"], "adopt")
+                self.assertFalse(restored["measurement_generated"])
+                self.assertFalse(restored["goal_complete"])
+            finally:
+                for name in list(sys.modules):
+                    if name.startswith("_aotg_private_assessment"):
+                        if name in old_modules:
+                            sys.modules[name] = old_modules[name]
+                        else:
+                            del sys.modules[name]
+
+
+if __name__ == "__main__":
+    unittest.main()
