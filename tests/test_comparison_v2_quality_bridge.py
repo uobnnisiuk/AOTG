@@ -126,11 +126,14 @@ class ArchiveQualityBridgeTests(unittest.TestCase):
                 # Keep independent authority fixed. Rebind the raw report and its
                 # synthetic outer stdout together so the identity gate itself is tested.
                 arm = f.authority["arms"]["0"]
-                authority = a.Authority(a.Reader(), f.authority, f.t, [f.k, f.e])
                 expected = {"driver": f.driver, "source_name": "intervals.cpp",
                             "modules": f.identity["aotg_modules"]}
 
-                def gate():
+                def gate(authority=None):
+                    # Every independent control has its own immutable-read history.
+                    # Only the explicit mutation control below shares a Reader.
+                    if authority is None:
+                        authority = a.Authority(a.Reader(), f.authority, f.t, [f.k, f.e])
                     return a.quality_gate(
                         f.api, authority, arm, a.sha(f.source), fixture.CASE,
                         f.field["verifier_sha256"], f.catalog_d["sha256"], f.catalog, expected,
@@ -163,6 +166,18 @@ class ArchiveQualityBridgeTests(unittest.TestCase):
                 bind_report(0, changed, update_outer=False)
                 with self.assertRaisesRegex(a.EvidenceError, "outer_stdout_quality_mismatch"):
                     gate()
+                bind_report(0, reports[0])
+                self.assertTrue(gate()[0])
+
+                # Preserve the separate read-history guard: the very same Reader
+                # must reject a changed file, even with an updated descriptor.
+                authority = a.Authority(a.Reader(), f.authority, f.t, [f.k, f.e])
+                self.assertTrue(gate(authority)[0])
+                changed = deepcopy(reports[0])
+                changed["overflow_preflight"]["attempts"]["ubsan"]["compile"]["seconds"] += 1
+                bind_report(0, changed)
+                with self.assertRaisesRegex(a.EvidenceError, "input_changed_between_reads"):
+                    gate(authority)
                 bind_report(0, reports[0])
                 self.assertTrue(gate()[0])
             finally:
