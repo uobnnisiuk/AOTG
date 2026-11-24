@@ -76,3 +76,66 @@ const duplicate25=deep(moe25.metrics);for(const key of ['label','unit','origin',
 assert.throws(()=>applyMetricEdit(duplicate25,metricLines(duplicate25).replace('1151.66→1432.97','1151.67→1432.97')),/同一性/);
 
 console.log('OK: 27-to-40 migration, lossless edits, safe imports, safe CSV, provenance-safe reorder and value edits, generated HTML');
+
+
+// Exercise the actual editor rendering and submit handler in a minimal DOM fixture.
+// The browser's selected option is modelled explicitly; this is not a browser test.
+const editorStart=template.indexOf('const editSpec=');
+const editorEnd=template.indexOf("\ne('addTop')",editorStart);
+const escStart=template.indexOf('function esc(s)');
+const escEnd=template.indexOf('\nfunction link(',escStart);
+assert.ok(editorStart>=0&&editorEnd>editorStart&&escStart>=0&&escEnd>escStart);
+const editor=new Function('SEED','FormData',template.slice(begin,end)+template.slice(escStart,escEnd)+
+  '\nlet state=deep(SEED),editId="",selected=new Set();const elements=new Map();'+
+  'function e(id){if(!elements.has(id))elements.set(id,{classList:{add(){},remove(){}},addEventListener(type,fn){this[type]=fn}});return elements.get(id)}'+
+  'function byId(id){return state.records.find(r=>r.id===id)}function persist(){}function renderAll(){}function toast(message){if(message!=="ローカル台帳に保存しました。外部への反映はありません。")throw Error(message)}\n'+
+  template.slice(editorStart,editorEnd)+
+  '\nreturn {state,openEditor,editSpec,markup:()=>e("editFields").innerHTML,submit:values=>e("editForm").submit({preventDefault(){},target:values})}'
+)(seed,class{constructor(values){this.values=values}get(key){return this.values[key]??null}});
+function kindSelect(markup){
+ const select=markup.match(/<select id="edit-kind" name="kind">([\s\S]*?)<\/select>/);
+ assert.ok(select);
+ const options=[...select[1].matchAll(/<option value="([^"]*)" ([^>]*)>([\s\S]*?)<\/option>/g)];
+ assert.ok(options.length>=3);
+ const chosen=options.filter(x=>x[2]==='selected');
+ assert.equal(chosen.length,1);
+ return {value:chosen[0][1],values:options.map(x=>x[1]),html:select[1]};
+}
+function editorValues(record,kind){
+ return Object.fromEntries(editor.editSpec.map(([key])=>[key,key==='kind'?kind:key==='metrics'?metricLines(record.metrics):key==='tags'?(record.tags||[]).join(', '):key==='sourceRefs'?(record.sourceRefs||[]).join('\n'):record[key]??'']));
+}
+for(const id of ['SPD-0025','SPD-0024','SPD-0001']){
+ const previous=deep(editor.state.records.find(r=>r.id===id));
+ editor.openEditor(id);
+ const select=kindSelect(editor.markup());
+ assert.equal(select.value,previous.kind);
+ assert.equal(select.values.filter(x=>x===previous.kind).length,1);
+ const values=editorValues(previous,select.value);values.name+=' edited';
+ editor.submit(values);
+ const updated=editor.state.records.find(r=>r.id===id);
+ assert.equal(updated.kind,previous.kind);
+ assert.deepEqual(updated.metrics,previous.metrics);
+ assert.deepEqual(updated.sourceRefs,previous.sourceRefs);
+ assert.equal(editor.state.audit[0].text,id+' をローカル編集');
+}
+const exported=JSON.parse(JSON.stringify(editor.state));
+const reimported=mergeImported(editor.state,exported,'2026-11-24').next;
+assert.deepEqual(reimported.records,exported.records);
+assert.deepEqual(reimported.audit.slice(1),exported.audit);
+const standard=deep(editor.state.records.find(r=>r.kind==='手法'));
+editor.openEditor(standard.id);
+assert.deepEqual(kindSelect(editor.markup()).values,['手法','資料集','環境別評価']);
+editor.submit(editorValues(standard,'資料集'));
+assert.equal(editor.state.records.find(r=>r.id===standard.id).kind,'資料集');
+editor.openEditor();
+assert.equal(kindSelect(editor.markup()).value,'手法');
+editor.submit(editorValues({id:'NEW-TEST-KIND',name:'new test',category:'test',checkedDate:'2026-11-24',status:'未確認'},'環境別評価'));
+assert.equal(editor.state.records.find(r=>r.id==='NEW-TEST-KIND').kind,'環境別評価');
+// An imported value is displayed safely and not silently coerced to a standard kind.
+const custom=editor.state.records.find(r=>r.id==='SPD-0025');
+custom.kind=' custom <kind> & "quote" ';
+editor.openEditor(custom.id);
+assert.equal(kindSelect(editor.markup()).value,' custom &lt;kind&gt; &amp; &quot;quote&quot; ');
+editor.submit(editorValues(custom,custom.kind));
+assert.equal(editor.state.records.find(r=>r.id===custom.id).kind,' custom <kind> & "quote" ');
+console.log('OK: editor kind preservation, escaped imported kinds, JSON round-trip, intentional standard/new edits');
