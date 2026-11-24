@@ -93,7 +93,7 @@ class MeasurementProxy(ThreadingHTTPServer):
             total = sum(self.rejection_counts.values())
             if total <= self.rejection_record_limit:
                 self._emit({"kind": "aotg-proxy-rejection-v2", "status": "rejected",
-                            "http_status": status, "reason": reason,
+                            "http_status": int(status), "reason": reason,
                             "method": method if method in ("GET", "POST") else "OTHER"})
             elif total == self.rejection_record_limit + 1:
                 self._emit({"kind": "aotg-proxy-rejection-overflow-v2", "status": "rejected",

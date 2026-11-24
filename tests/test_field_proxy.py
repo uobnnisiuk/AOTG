@@ -223,12 +223,51 @@ class ProxyTests(unittest.TestCase):
         self.assertTrue(self.records[-1]["record_error"])
 
     def test_protocol_refusal_is_counted_without_raw_request(self):
-        with socket.create_connection(self.proxy.server_address, timeout=2) as sock:
-            sock.sendall(b"PUT /private-secret HTTP/1.0\r\n\r\n")
-            self.assertIn(b"501", sock.recv(1024))
+        cases = (
+            (b"PUT /private-secret HTTP/1.0\r\n\r\n", 501),
+            (b"GET /private-secret HTTP/2.0\r\n\r\n", 505),
+            (b"GET /private-secret extra HTTP/1.0\r\n\r\n", 400),
+        )
+        for raw, status in cases:
+            with self.subTest(status=status):
+                with socket.create_connection(self.proxy.server_address, timeout=2) as sock:
+                    sock.sendall(raw)
+                    sock.shutdown(socket.SHUT_WR)
+                    response = b""
+                    while chunk := sock.recv(1024):
+                        response += chunk
+                    # The version rejection may precede HTTP/1.x header setup.
+                    if status != 505:
+                        self.assertIn(str(status).encode(), response)
+                self.assertTrue(self.proxy.wait_for_handlers())
         final = self.close_capture()
-        self.assertEqual(final["rejections_by_reason"], {"http_protocol_rejected": 1})
+        self.assertEqual(final["rejections_by_reason"], {"http_protocol_rejected": 3})
         self.assertNotIn("private-secret", json.dumps(self.records))
+        self.assertEqual(self.forwarded, [])
+        rows = self.records[1:-1]
+        self.assertEqual([row["http_status"] for row in rows], [501, 505, 400])
+        self.assertTrue(all(type(row["http_status"]) is int for row in rows))
+        self.assertTrue(all(row["reason"] == "http_protocol_rejected" for row in rows))
+        self.assertEqual([row["event_sequence"] for row in rows], [1, 2, 3])
+        jsonl = "\n".join(json.dumps(row) for row in self.records)
+        decoded = [json.loads(line) for line in jsonl.splitlines()]
+        for records in (self.records, decoded):
+            attempts, rejected = request_capture(records, 4)
+            self.assertEqual(attempts, [])
+            self.assertEqual(rejected["rejected_total"], 3)
+            self.assertEqual(rejected["rejections_by_reason"], {"http_protocol_rejected": 3})
+        for invalid in (True, "501", 501.0, 200):
+            with self.subTest(invalid=invalid):
+                bad = [dict(row) for row in self.records]
+                bad[1]["http_status"] = invalid
+                with self.assertRaisesRegex(EvidenceError, "proxy_rejection_record_invalid"):
+                    request_capture(bad, 4)
+        bad = [dict(row) for row in self.records]
+        del bad[1]["http_status"]
+        with self.assertRaisesRegex(EvidenceError, "proxy_rejection_record_invalid"):
+            request_capture(bad, 4)
+        with self.assertRaisesRegex(EvidenceError, "request_capture_sequence_invalid"):
+            request_capture(self.records[:1] + self.records[2:], 4)
 
     def test_response_can_precede_record_and_bounded_drain_completes_capture(self):
         entered, release = threading.Event(), threading.Event()
