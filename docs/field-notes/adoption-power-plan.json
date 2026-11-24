@@ -1,0 +1,46 @@
+{
+  "artifact": "aotg-adoption-power-simulation-plan",
+  "version": 1,
+  "evaluator_git_blob": "06bdaef9fb7276679e8aa667937704d6b790a4be",
+  "artifacts_git_blob": "84676ce8435b28b7ff52c835815bfecd8d0bbf4d",
+  "blocks": 4,
+  "block_order": [
+    "abba",
+    "baab",
+    "baab",
+    "abba"
+  ],
+  "workloads": 2,
+  "alternatives": 2,
+  "trials_per_run": 64,
+  "minimum_improvement": 0.05,
+  "metric_gates": {},
+  "wall_median_seconds": 10,
+  "model": "independent lognormal observations; candidate threads median multiplied by 1-effect; batch and baseline null; equal effect in both workloads; synthetic quality/resource success",
+  "effect_percent": [
+    0,
+    10,
+    15,
+    20,
+    30,
+    40,
+    50
+  ],
+  "log_sigma": [
+    0.02,
+    0.05,
+    0.1,
+    0.2
+  ],
+  "repetitions_per_case": 300,
+  "seed_base": 20261125001300,
+  "seed_formula": "seed_base + 100 * sigma_index + effect_index; zero-based in listed order; Python random.Random.gauss(0,sigma) per trial in frozen order",
+  "maximum_evaluator_calls": 8401,
+  "maximum_wall_seconds": 300,
+  "minimum_detected_fraction": 0.8,
+  "positive_control": "sigma=0.05, effect=0.5, seed=20261125001999; one noisy run must adopt threads; separate from grid",
+  "summary": "counts of true adoption, other adoption, retain_baseline, incomplete, other; minimal tested positive effect reaching 80% per sigma or null; empirical fractions only; no host variance inference",
+  "hardware_execution": false,
+  "preregistered_before_execution": true,
+  "thresholds_or_seeds_tuned_after_results": false
+}

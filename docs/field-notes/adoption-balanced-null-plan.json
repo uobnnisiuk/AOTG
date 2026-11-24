@@ -1,0 +1,75 @@
+{
+  "artifact": "aotg-adoption-null-simulation-plan",
+  "block_order": [
+    "abba",
+    "baab",
+    "baab",
+    "abba"
+  ],
+  "blocks": 4,
+  "hardware_execution": false,
+  "iid_cases": [
+    {
+      "alternatives": 2,
+      "log_sigma": 0.05,
+      "seed": 20261116002401
+    },
+    {
+      "alternatives": 2,
+      "log_sigma": 0.1,
+      "seed": 20261116002402
+    },
+    {
+      "alternatives": 2,
+      "log_sigma": 0.2,
+      "seed": 20261116002403
+    },
+    {
+      "alternatives": 8,
+      "log_sigma": 0.05,
+      "seed": 20261116002404
+    },
+    {
+      "alternatives": 8,
+      "log_sigma": 0.1,
+      "seed": 20261116002405
+    },
+    {
+      "alternatives": 8,
+      "log_sigma": 0.2,
+      "seed": 20261116002406
+    }
+  ],
+  "iid_max_false_adoption_fraction": 0.01,
+  "iid_repetitions_per_case": 4000,
+  "mechanism_revision": "two ABBA and two BAAB blocks; same physical outer/inner order effect",
+  "metric_gates": {},
+  "minimum_improvement": 0.05,
+  "non_iid_cases": [
+    {
+      "alternatives": 8,
+      "block_log_sigma": 0.2,
+      "model": "shared-block-drift",
+      "observation_log_sigma": 0.01,
+      "seed": 20261116002407
+    },
+    {
+      "alternatives": 8,
+      "inner_position_log_offset": -0.1,
+      "model": "arm-position-confound",
+      "observation_log_sigma": 0.01,
+      "outer_position_log_offset": 0.1,
+      "seed": 20261116002408
+    }
+  ],
+  "non_iid_excluded_from_calibrated_bound": true,
+  "non_iid_repetitions_per_case": 500,
+  "preregistered_before_execution": true,
+  "previous_failed_stress_parameters_sha256": "5df8b6973c56e7a580b3ac62e44ccc72a0de275b5c4dd4d017198ae06c20682e",
+  "previous_failed_stress_result_sha256": "ab46a860ccd78206bbf21598c2bf92b7a22cb425bd9028cfe2c858ab93d90e69",
+  "purpose": "Synthetic false-adoption check of v2; no real-machine independence claim",
+  "thresholds_or_seeds_tuned_after_results": false,
+  "version": 2,
+  "wall_median_seconds": 10.0,
+  "workloads": 1
+}

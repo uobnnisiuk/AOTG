@@ -67,7 +67,8 @@ speculation counters are not inferred.
 
 ## Incomplete results and validation limits
 
-In the local absence check against the prepared first-machine inputs, assembly
+In the historical local absence check using the original frozen v1 evaluator
+against the prepared first-machine inputs, assembly
 retained all 16 scheduled ledger entries, produced zero normalized trials and
 left the comparison unavailable (`decision: null`): no run evidence or worker
 elapsed measurement existed. This checks missing-data handling only.
@@ -78,7 +79,7 @@ times. Where the comparator can run, incomplete evidence remains `incomplete`,
 not a claim that optimization produced no improvement. Post-restoration checks
 are separate from the frozen comparison schedule.
 
-Run the 14 synthetic adapter tests with:
+Run the synthetic adapter tests with:
 
 ```sh
 python3 -B -m unittest discover -s tests -p test_field_assessment_assemble.py
@@ -90,3 +91,86 @@ measurements or accepted owner receipts. Assembly always records
 `measurement_generated`, `deployment_verified` and `goal_complete` as false.
 This source archive does not establish a real baseline, independent native
 quality, a reproducible deployed kit, restoration or Goal completion.
+
+
+## Observation contract v2 (ADV-10 / ADV-11)
+
+The new assembler accepts `aotg-field-assessment-inputs` version 2 only. A version-1
+input requires its original frozen evaluator; existing plans, reports, hashes and
+historical observations are not rewritten. The new frozen client plan must state
+`proxy_capture_version: 2`, and the identity must pin `aotg/field_proxy.py` to the
+exact supplied source. These are new execution inputs, not inferred defaults.
+
+A v2 proxy capture starts with an opened event and ends with a closed event.
+Every emitted record has one monotonically increasing `event_sequence`. Ordinary
+inference attempt records retain their request `index`, timings, sampling and
+content hashes. Admitted attempts, including malformed payloads, consume the
+finite request budget. Concurrent requests, exhausted limits, authentication,
+route/protocol, and HTTP parser rejections have fixed reason codes and status
+numbers; paths, bodies, headers and credentials are not included.
+
+Callbacks and sequence allocation are serialized. The first 128 rejections have
+individual records; further rejections use one overflow marker and bounded
+per-reason counters in the closing summary. Missing sequence numbers, inconsistent
+counters, absent closure, active handlers at closure, or a callback write failure
+cannot certify complete capture. Once closed, no late event is appended. The
+caller must stop accepting requests (`shutdown()`), then explicitly call
+`wait_for_handlers()` before `server_close()`. The wait uses the remaining
+original proxy deadline (or a shorter caller budget), never an unbounded
+thread join. A false result is not successful cleanup; the caller must still
+close and check the closing record. `server_close()` itself retains immediate
+fail-closed behavior if handlers remain. This is not a claim that an arbitrary
+callback or the closing record write is bounded or crash-durable.
+
+The assembler checks the entire capture and requires zero refusals for a passing
+arm. A client that retries a 409 and eventually completes cannot hide that refusal
+behind a list of successful requests. Request-only historical logs cannot prove
+that zero rejections occurred and are not accepted by this contract.
+
+For ADV-10, identity, scheduling and capture inventory bindings remain mandatory.
+When a real source and the remaining required artifacts exist, a well-formed,
+independently bound runtime failure is normalized with
+its actual source hash, terminal status and fixed reason, and classified as
+`verified_runtime_failure`. Client completion failures, timeouts, proxy refusals,
+and observed resource guard violations are distinct from `missing_or_conflicting`.
+The report preserves the scheduled denominator and counts each classification.
+The v2 comparison dependency also retains each observed trial's reason in
+`comparisons[].trial_reasons`.
+
+This narrow change intentionally keeps the whole comparison incomplete after a
+runtime failure: the fixed operational stop policy has not certified a continued
+experiment. In particular, a swap/NVMe/GPU stop never permits adopting a different
+candidate merely because that candidate's observed arms look good. Missing
+stability is explicit. Unknown metrics remain null, and a pswpout mismatch is not
+converted into invented swap bytes. Resource observations compare pswpout against
+the first saved sample, preserving that anchor and the observed range; this is not
+a recovered value for a previously unsaved trigger.
+
+A worker stop before readiness can be independently observed without a source,
+client result, resources or kernel scan: the captured worker summary and source,
+unique exact schedule row, arm result, frozen profile and recomputed configuration
+must all bind. Its original stop reason is retained. A closed, independently bound
+request failure before payload validation may have no request hash or fixed
+sampling; only a failed/timed-out result with no response bytes and an empty
+response hash can use that form. Completed requests still require every exact
+sampling field and content hash.
+
+Such observations remain outside `run.trials` when source or required metrics are
+absent. `observation_decision` preserves the scheduled denominator, verified
+failure count and per-index reasons, bound to the ledger and canonical comparison
+digests. Consumers must display it alongside the canonical `decision`, whose
+missing-source trial remains missing. It cannot adopt after any verified runtime
+failure. Corruption, duplicate schedule rows, profile/config conflicts or absent
+authority cannot certify the failure; missing data is not guessed successful.
+The assembler never invents a source hash to force a row into `run.trials`. A bound
+failure means its recorded bytes and execution identity were checked; the program
+still does not authenticate the external reviewer's identity or guarantee their
+attestation is truthful.
+
+Verification uses synthetic fixtures and local loopback HTTP stubs only. The
+private K8 runner must be adapted to retain the new capture events and closing
+summary, and new plans/source hashes must be frozen before use. This source change
+has not been applied to the private runtime or an inference host. ADV-8/9 adoption
+policy is integrated in the same change; ADV-4 grading remains a separate dependency. New plan,
+quality and timing contracts require combined review and testing. No existing
+real trial has been made successful or retried by this implementation.
