@@ -180,6 +180,10 @@ class ArchiveQualityBridgeTests(unittest.TestCase):
                     gate(authority)
                 bind_report(0, reports[0])
                 self.assertTrue(gate()[0])
+
+                # Separate C# adapter control: the native report, toolchain and
+                # outer receipt below are synthetic, not a .NET execution.
+                self.check_synthetic_csharp_gate(f, a)
             finally:
                 # The archive loader uses its own module namespace. Restore only
                 # modules it added/replaced so other test suites cannot see it.
@@ -189,6 +193,113 @@ class ArchiveQualityBridgeTests(unittest.TestCase):
                             sys.modules[name] = old_modules[name]
                         else:
                             del sys.modules[name]
+
+
+    def check_synthetic_csharp_gate(self, f, a):
+        """Bind C# report bytes to the fixed grader/driver and reject bad observations."""
+        case = "csharp-atomic-batch"
+        source_name = "BatchRegistry.cs"
+        source = b"// SYNTHETIC C# fixture; never compiled or executed\n"
+        source_sha = a.sha(source)
+        verifier = f.field["verifier_sha256"]
+        catalog_sha = f.catalog_d["sha256"]
+        prefix = "csharp-adapter-only"
+        arm = deepcopy(f.authority["arms"]["0"])
+        old_review = arm["source_review"]
+        old_source = arm["replay"]["staged_files"][0]
+        receipt = json.loads(Path(old_review["path"]).read_text())
+        receipt["source_sha256"] = source_sha
+        arm["source_review"] = f.trusted(f"{prefix}/source-review.json", receipt)
+        arm["review_record"] = f.trusted(f"{prefix}/review.txt", b"SYNTHETIC C# review; no native run")
+        source_d = f.trusted(f"{prefix}/{source_name}", source)
+        replay = arm["replay"]
+        replay.update(source_sha256=source_sha, source_review_sha256=arm["source_review"]["sha256"],
+                      argv=["/usr/bin/python3", "-I", "-S", "-B", "-c", f.driver,
+                            case, source_name, arm["isolation_reference"]])
+        replay["staged_files"] = [
+            source_d if item == old_source else arm["source_review"] if item == old_review else item
+            for item in replay["staged_files"]
+        ]
+        replay["execution_record"] = f.trusted(f"{prefix}/replay.txt", b"SYNTHETIC C#; no native execution")
+        report = json.loads(Path(arm["quality"]["path"]).read_text())
+        # The C++ report was genuinely graded in this test, but none of its
+        # native timings, toolchain or execution output are C# evidence.
+        phase = {"status": "ok", "exit_code": 0, "seconds": .01,
+                 "stdout": "", "stderr": "", "output_truncated": False}
+        toolchain = {"compiler_kind": "dotnet-csc", "compiler_sha256": a.sha(b"synthetic dotnet"),
+                     "runtime_sha256": None, "runtime_arguments": [],
+                     "dotnet_inputs": {"roslyn": a.sha(b"synthetic roslyn"),
+                                       "references": a.sha(b"synthetic references"),
+                                       "runtime": a.sha(b"synthetic runtime"),
+                                       "hostfxr": a.sha(b"synthetic hostfxr"),
+                                       "runtime_version": "8.0.30"},
+                     "os_shared_libraries_pinned": False}
+        f.authority["toolchains"][case] = deepcopy(toolchain)
+        harness, expected, suffix = f.api.quality._harness(
+            next(item for item in f.catalog["cases"] if item["id"] == case)
+        )
+        self.assertEqual(suffix, ".cs")
+        self.assertEqual(len(expected), 16)
+        lines = [f"AOTG:{i}:{str(value).lower()}" for i, value in enumerate(expected)]
+        stdout = "\n".join(lines) + "\n"
+        report = {"artifact": report["artifact"], "version": report["version"],
+                  "case_id": case, "source_sha256": source_sha, "grader_sha256": verifier,
+                  "catalog_sha256": catalog_sha, "harness_sha256": a.sha(harness.encode()),
+                  "status": "pass", "behavioral_status": "pass", "quality_accepted": True,
+                  "source_review": {"status": "accepted", "receipt": receipt,
+                                    "receipt_sha256": a.digest(receipt)},
+                  "toolchain": toolchain, "compile": phase, "execution": {**phase, "stdout": stdout},
+                  "grading": f.api.quality.grade_observations(stdout, expected),
+                  "isolation": {"evidence_reference": arm["isolation_reference"]}}
+        self.assertEqual(report["grading"]["status"], "pass")
+        outer = json.loads(Path(arm["isolation"]["path"]).read_text())
+        outer["command_sha256"] = a.digest(replay["argv"])
+        expected_replay = {"driver": f.driver, "source_name": source_name,
+                           "modules": f.identity["aotg_modules"]}
+
+        def bind(value):
+            arm["quality"] = f.trusted(f"{prefix}/quality.json", value)
+            isolated = {**outer, "stdout": base64.b64encode(zlib.compress(a.canonical(value))).decode()}
+            arm["isolation"] = f.trusted(f"{prefix}/isolation.json", isolated)
+
+        def gate():
+            authority = a.Authority(a.Reader(), f.authority, f.t, [f.k, f.e])
+            return a.quality_gate(f.api, authority, arm, source_sha, case, verifier,
+                                  catalog_sha, f.catalog, expected_replay)
+
+        bind(report)
+        self.assertTrue(gate()[0])
+        # Keep the claimed grading/pass intact: the assembler must recompute
+        # every observation, including the rollback and ordinal cases.
+        for i, value in enumerate(expected):
+            with self.subTest(csharp_observation=i):
+                changed = deepcopy(report)
+                wrong = list(lines)
+                wrong[i] = f"AOTG:{i}:{str(not value).lower()}"
+                changed["execution"]["stdout"] = "\n".join(wrong) + "\n"
+                self.assertEqual(f.api.quality.grade_observations(changed["execution"]["stdout"], expected)
+                                 ["mismatches"], [i])
+                bind(changed)
+                self.assertFalse(gate()[0])
+        for key in ("roslyn", "references", "runtime", "hostfxr", "runtime_version"):
+            with self.subTest(csharp_toolchain=key):
+                changed = deepcopy(report)
+                changed["toolchain"]["dotnet_inputs"][key] = "9.0.0" if key == "runtime_version" else "0" * 64
+                bind(changed)
+                with self.assertRaisesRegex(a.EvidenceError, "native_toolchain_drift"):
+                    gate()
+        changed = deepcopy(report)
+        changed["case_id"] = "cpp-half-open-interval"
+        bind(changed)
+        with self.assertRaisesRegex(a.EvidenceError, "native_grade_binding_mismatch"):
+            gate()
+        bind(report)
+        original_argv = replay["argv"]
+        replay["argv"] = [*original_argv[:-2], "intervals.cpp", original_argv[-1]]
+        with self.assertRaisesRegex(a.EvidenceError, "native_replay_argv_mismatch"):
+            gate()
+        replay["argv"] = original_argv
+        self.assertTrue(gate()[0])
 
 
 if __name__ == "__main__":
