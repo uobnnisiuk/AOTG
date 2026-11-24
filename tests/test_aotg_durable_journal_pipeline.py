@@ -154,6 +154,7 @@ class OfflineCollectorJournalChainTests(unittest.TestCase):
 
     def test_stopped_journal_and_summary_recovered_once_without_promotion(self):
         import importlib.util
+
         from observation_evidence_join import join_observation
 
         collector = _SOURCE.parent / "comparison-collector"
