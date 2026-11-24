@@ -178,6 +178,8 @@ class OfflineCollectorJournalChainTests(unittest.TestCase):
             ("consistent", "strict-chain-and-accounting-consistent"),
             ("producer-contradiction", "summary-unresolved-reservation"),
             ("summary-substituted", "summary-manifest-mismatch"),
+            ("log-cap-exact", "strict-chain-and-accounting-consistent"),
+            ("log-cap-over", "strict-chain-and-accounting-consistent"),
         ):
             with self.subTest(case=case):
                 fixture = module.Fixture()
@@ -225,9 +227,22 @@ class OfflineCollectorJournalChainTests(unittest.TestCase):
         for label, _, _ in protocol.inventory():
             if label.startswith(("task/arm-", "task/done-")):
                 fixture.path(label).unlink()
+        # Preserve evidence of a stopped run, even when either private log
+        # exceeds the collector's fixed per-file budget. Never truncate a log
+        # and treat the retained prefix as a complete capture.
+        log_bodies = {}
+        if case in ("log-cap-exact", "log-cap-over"):
+            caps = {label: cap for label, cap, _ in protocol.inventory()}
+            size = 262144 + int(case == "log-cap-over")
+            for name, fill in (("server-private.log", b"S"), ("engine-private.log", b"E")):
+                label = f"task/arm-000/logs/{name}"
+                self.assertEqual(caps[label], 262144)
+                log_bodies[label] = fill * size
+                fixture.path(label).write_bytes(log_bodies[label])
+                fixture.path(label).chmod(0o600)
         rows, remote = fixture.capture()
         self.assertEqual(remote["status"], "incomplete")
-        self.assertEqual(remote["complete_files"], 5)
+        self.assertEqual(remote["complete_files"], 5 + (len(log_bodies) if case == "log-cap-exact" else 0))
         self.assertEqual(remote["attempted_files"], 517)
         result = fixture.run_local(rows)
         self.assertEqual(result["transport_attempts"], 1)
@@ -251,6 +266,21 @@ class OfflineCollectorJournalChainTests(unittest.TestCase):
             self.assertEqual((len(raw), protocol.sha(raw)), (entry["bytes"], entry["sha256"]))
             return raw
 
+        for label, body in log_bodies.items():
+            self.assertEqual(fixture.path(label).read_bytes(), body)
+            entry = entries[label]
+            if case == "log-cap-exact":
+                self.assertEqual(recovered(label), body)
+                self.assertEqual(entry["read_bytes"], len(body))
+            else:
+                self.assertEqual(entry["status"], "incomplete")
+                self.assertEqual(entry["reason"], "file_byte_limit")
+                self.assertEqual((entry["read_bytes"], entry["bytes"]), (0, 0))
+                self.assertIsNone(entry["sha256"])
+                self.assertEqual(entry["partial_sha256"], protocol.sha(b""))
+                self.assertTrue(entry["local_file"].endswith(".partial"))
+                self.assertEqual((output / entry["local_file"]).read_bytes(), b"")
+
         received_journal = recovered("task/resource-observations.jsonl")
         received_outer = recovered("task/summary.json")
         self.assertEqual(received_journal, original)
@@ -267,7 +297,7 @@ class OfflineCollectorJournalChainTests(unittest.TestCase):
                       expected_plan_sha256=fixture.request["worker_plan_sha256"])
         self.assertEqual(joined["reason"], expected, joined)
         self.assertEqual(joined["status"], "joined-observation-consistent"
-                         if case == "consistent" else "incomplete")
+                         if expected == "strict-chain-and-accounting-consistent" else "incomplete")
         for key in ("runtime_qualified", "independent_restore_verified",
                     "quality_accepted", "authorizes_retry", "root_cause_proven"):
             self.assertIs(joined[key], False)
