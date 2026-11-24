@@ -23,9 +23,9 @@
       "sha256": "3f2d7cacf83111e14ea82a3ce434ffb6f777074f94070e69f59b1f15382f45e6"
     },
     {
-      "bytes": 9522,
+      "bytes": 9965,
       "path": "observation_journal.py",
-      "sha256": "528266a925a68f7fb10f3327b4966c361eb310cb28ad7d1a7f7127a0d83bd8ab"
+      "sha256": "8cedbdf6ae6daa07a14bf349058b309d1fb022d5ceef2d33e7d2c39af383b0d4"
     },
     {
       "bytes": 7956,
@@ -33,9 +33,9 @@
       "sha256": "ff0e41d2525a2ece7ad9002aa47b59688e85abf6fd14b71f522ce0cb5f8fe2f0"
     },
     {
-      "bytes": 13052,
+      "bytes": 15463,
       "path": "test_observation_journal.py",
-      "sha256": "f488bba91b9cedd9889b22b2c5effb4ad31e73d9299eb25acf3359f0c957441a"
+      "sha256": "6c6494864da56fa93380a178dbbbc969b3c89a717636ea0c1eee2da609f67967"
     },
     {
       "bytes": 10957,
@@ -43,14 +43,14 @@
       "sha256": "8bb4e4111a4ed6163f7f75ec876f279f9c9a45608a7d6e5829c1516f92452085"
     },
     {
-      "bytes": 30196,
+      "bytes": 30647,
       "path": "memory-context-integration.patch",
-      "sha256": "9a68de88ca4ce03f81ac30c231c5e0f1e3522324fefec16f074698f7af52720b"
+      "sha256": "f5902b598e6aacdeed5067c807e75066c461c669d347c2bf1f29f86280e75d53"
     },
     {
-      "bytes": 7563,
+      "bytes": 8072,
       "path": "README.md",
-      "sha256": "8607bdc62fe519aed7b8052fdba03adb105549f00ddd71fb1a7325a0266f2879"
+      "sha256": "81be6f4fb33b2e9077ba7cb10b1dc3edc05a2aaef3660bfafe49d8bfebf59a29"
     },
     {
       "bytes": 1055,
@@ -66,7 +66,8 @@
     "Compact reference reader authentication/duplicate/tamper qualification is not implemented.",
     "Additional accepted-tick overhead; blocked syscall preemption and fsync durability are not claimed.",
     "Run-bound embedded patch and source hashes updated offline; former private candidate hash and earlier synthetic test results refer to the previous revision. Trusted private candidate rebuild and independent retest remain required.",
-    "Private runner now verifies all three input snapshots before private import; rebuilt candidate digest and actual private execution remain unavailable and unqualified."
+    "Private runner now verifies all three input snapshots before private import; rebuilt candidate digest and actual private execution remain unavailable and unqualified.",
+    "Shared worker deadline checks after accepted-resource flush on skipped context and after selected context flush are source changes; three public regressions added. Private integration/overhead remains unqualified. Historical test counts are not current execution evidence."
   ],
   "observation_bytes_upper": 130394112,
   "observation_rows_upper": 59072,
@@ -88,5 +89,6 @@
   "previous_private_candidate_sha256": "d26162a6192a08644dbc6133c94bd0b3c0c0561b596b78df58297af7ac494557",
   "private_candidate_rebuild_required": true,
   "prior_synthetic_results_apply_to_current_source": false,
-  "prepared_from_isolated_commit": "215caaf62629e8793ef78eba2f15368342eff09a"
+  "prepared_from_isolated_commit": "215caaf62629e8793ef78eba2f15368342eff09a",
+  "public_deadline_regressions_added": 3
 }

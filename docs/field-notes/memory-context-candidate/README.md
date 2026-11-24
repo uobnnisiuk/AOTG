@@ -26,7 +26,11 @@ rollback/nonfinite/deadline, serialization, quota or write errors latch a stop.
 The selected attempt is consumed before the reader; no retry resets quota or
 clock state. A failure witness is attempted within its reserved line. Failed
 writes cannot be reported as completed capture. Post-call actual monotonic time
-is checked, including the shared worker deadline. Skip reasons/counts occupy the
+is checked, including the shared worker deadline. Passed ticks also check the
+shared worker deadline after accepted-resource flush when context is skipped,
+and after a selected context is serialized and flushed. The 50 ms reader budget
+is not a bound on the writer; late completed records can be retained but the
+tick must stop. No additional clock or sampler call is required on guard refusal. Skip reasons/counts occupy the
 existing guard row, not an extra row per skipped tick.
 
 Context reads are separated by at least two seconds between actual start times;
@@ -78,8 +82,10 @@ Linux/WSL, stdlib only, no downloads. From any working directory:
 python3 -I -S -B /path/to/candidate/test_observation_journal.py
 ```
 
-This runs 64 tests with no skips on Linux: 20 new adapter/boundary tests, the
-original 30 pure prototype tests and 14 helper tests. It includes a complete
+This suite previously ran 64 tests with no skips on Linux: 20 adapter/boundary
+tests, the original 30 pure prototype tests and 14 helper tests. Three additional
+worker-deadline regression tests are included (67 expected total); the historical
+64-test result is not evidence for the new revision. It includes a complete
 synthetic 5,340-second clock window with 64 forced arm checks, exact serialized
 line boundaries, maximum uint64/PSI/role fixtures, missing values, identity drift,
 clock discontinuity, full-cap reservation before reads and no-retry failures.

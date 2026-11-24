@@ -89,8 +89,48 @@ class JournalTests(unittest.TestCase):
         self.assertEqual(j._attempts,1)
     def test_no_headroom_skip_stored_without_extra_row(self):
         j,s=self.make(deadline=1);self.primary(j,.96,force=True)
-        self.assertIsNone(j.context_after_primary_flush(lambda c:self.fail('read')))
+        self.assertIsNone(j.context_after_primary_flush(lambda c:self.fail('read'),clock=lambda:.96))
         self.assertEqual(j.rows,3);self.assertEqual(json.loads(s.getvalue().splitlines()[-1])['context_schedule']['reason'],'deadline-headroom-skipped-no-context')
+    def test_headroom_skip_checks_deadline_after_resource_flush(self):
+        for end in (.99, 1.0, 1.01):
+            with self.subTest(end=end):
+                j,s=self.make(deadline=1);self.primary(j,.96,force=True)
+                no_read=lambda c:self.fail('read on headroom skip')
+                if end<1:
+                    self.assertIsNone(j.context_after_primary_flush(no_read,clock=lambda:end))
+                    self.assertIsNone(j.stopped_reason)
+                else:
+                    with self.assertRaisesRegex(B.BudgetStop,'worker-deadline'):
+                        j.context_after_primary_flush(no_read,clock=lambda:end)
+                    self.assertEqual(j.stopped_reason,'worker-deadline')
+                self.assertEqual(j.rows,3)
+    def test_interval_skip_checks_deadline_after_resource_flush(self):
+        j,s=self.make(deadline=1);self.primary(j,0,force=True)
+        j.context_after_primary_flush(lambda c:{},clock=lambda:0)
+        self.primary(j,.96,force=True)
+        with self.assertRaisesRegex(B.BudgetStop,'worker-deadline'):
+            j.context_after_primary_flush(lambda c:self.fail('read on interval skip'),clock=lambda:1)
+        self.assertEqual(j._attempts,1)
+        self.assertEqual(j.stopped_reason,'worker-deadline')
+    def test_selected_context_flush_checks_worker_deadline(self):
+        for end in (.99, 1.0, 1.01):
+            with self.subTest(end=end):
+                j,s=self.make(deadline=1);self.primary(j,.9,force=True)
+                now=[.9]
+                def sample(clock):
+                    now[0]=.92
+                    return {'status':'incomplete'}
+                with patch.object(s,'flush',side_effect=lambda:now.__setitem__(0,end)):
+                    if end<1:
+                        self.assertIsNotNone(j.context_after_primary_flush(sample,clock=lambda:now[0]))
+                        self.assertIsNone(j.stopped_reason)
+                    else:
+                        with self.assertRaisesRegex(B.BudgetStop,'worker-deadline'):
+                            j.context_after_primary_flush(sample,clock=lambda:now[0])
+                        self.assertEqual(j.stopped_reason,'worker-deadline')
+                self.assertEqual(j.context_ticks,1)
+                self.assertEqual(j.rows,4)
+                self.assertEqual(json.loads(s.getvalue().splitlines()[-1])['context']['status'],'incomplete')
     def test_reserves_full_context_before_sampler(self):
         j,s=self.make();j.bytes=j.limits.max_bytes-(2048+1024+16384)+1
         j.observed({'phase':'observed','sequence':0},0,force=True)

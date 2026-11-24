@@ -129,7 +129,12 @@ class ObservationJournal(SerializedBudget):
 
     def context_after_primary_flush(self, sample, *, clock=time.monotonic):
         selected=self._selected
-        if selected is None:return None
+        if selected is None:
+            # A passed tick still needs the shared deadline checked after
+            # accepted-resource flush, even without a scheduled context read.
+            if self.stopped_reason is None:
+                self.clock(clock(),io=True)
+            return None
         # Consume the selection before calling any external reader. Failure,
         # disappearance, or writer error can never be retried at this tick.
         self._selected=None
@@ -163,6 +168,9 @@ class ObservationJournal(SerializedBudget):
             raise
         self.context_ticks+=1
         if fault is not None:raise fault
+        # The reader's 50 ms budget is separate from the worker deadline.
+        # Serialization and write/flush must not permit a late successful tick.
+        self.clock(clock(),io=True)
         return raw
 
     def bounded_resource_line(self, sample):
