@@ -133,6 +133,68 @@ python -I -S -B tools/check_field_adoption_null.py \
   --output /absolute/new-synthetic-result.json
 ```
 
+## ADV-13: detection power under synthetic noise
+
+The [frozen plan](adoption-power-plan.json) was committed at
+`9cf2124ade1aef777fb03425b46f931a8d00d9af` before the
+[replay test](../../tests/test_field_adoption_power.py) at
+`00f0d70158487281df1a831bb1b461a3af8c3340`.
+The [complete result](adoption-power-result.json) is the exact
+`ADV13_RESULT` JSON payload emitted by the replay (plus a terminal LF).
+Its SHA-256 without that LF, i.e. the compact sorted JSON payload, is
+`f77625bf28a0a24f404f8fb9e3f8fb7bdc716e3bd71c55d0d6fef728ea32477f`.
+All four jobs in [CI run 45434739950](https://github.com/uobnnisiuk/AOTG/actions/runs/45434739950)
+emitted identical payloads and hashes:
+[Ubuntu 3.12](https://github.com/uobnnisiuk/AOTG/actions/runs/45434739950/job/138589364083),
+[Ubuntu 3.11](https://github.com/uobnnisiuk/AOTG/actions/runs/45434739950/job/138589364609),
+[Windows 3.12](https://github.com/uobnnisiuk/AOTG/actions/runs/45434739950/job/138589364630),
+and [Windows 3.11](https://github.com/uobnnisiuk/AOTG/actions/runs/45434739950/job/138589364694).
+These are same-seed reproducibility checks, not four independent sets of trials.
+
+The plan pins evaluator Git blob `06bdaef9fb7276679e8aa667937704d6b790a4be`,
+artifacts blob `84676ce8435b28b7ff52c835815bfecd8d0bbf4d`; the replay pins
+plan blob `5c8741dcd4ce1a95427b1349d8914dd11fd7b3ad` and fixture blob
+`367f3893f6976755fbdec48808ff8cdc9b453a6a`. Replay blob
+`bd832cd078e57347fef978b4f2b6fca7b9927169` and SHA-256 hashes of all five
+inputs are retained via the pinned commit and result.
+
+The grid uses two workloads, two alternatives, four balanced blocks (64
+observations per comparison), independent lognormal wall times with median
+10 seconds, and equal true wall-time reduction for the threads candidate in
+both workloads. Batch and baseline have no effect. Quality and resource success
+are synthetic fixtures; no non-wall performance gates are assessed.
+Seven effects and four log-standard deviations, 300 repetitions each, give
+8,400 comparisons plus one noisy positive control (8,401 evaluator calls).
+The 300-second replay bound is a cooperative check before and after each call,
+not a hard timeout.
+
+| Log sigma | Smallest tested wall-time reduction reaching 80% | Threads adoptions |
+| --- | --- | --- |
+| 0.02 | 15% | 300 / 300 |
+| 0.05 | 30% | 300 / 300 |
+| 0.10 | 40% | 284 / 300 |
+| 0.20 | Not reached (up to 50%) | 132 / 300 at 50% |
+
+The 0% cases had zero adoptions across 1,200 comparisons; the separate noisy
+positive control adopted threads. Other-candidate adoptions, incomplete and
+other decisions were zero throughout the grid. These empirical proportions
+are conditional on the simulated distributions; the minimum is a tested grid
+point, not an estimate of the exact 80% crossing. A retain_baseline/hold
+decision does not establish absence of improvement. Real-host variance,
+independence, detection power, non-wall performance, quality and speedup
+remain unknown. No threshold, seed, earlier null result, or adoption criterion
+was changed after observing these results.
+
+Offline replay in the pinned checkout with existing Python (no model or host
+operation):
+
+```sh
+python -m unittest discover -s tests -p test_field_adoption_power.py
+```
+
+Compare the emitted canonical payload and hash to the saved result. Changes to
+pinned sources require a distinct experiment, not edits to this evidence.
+
 ## Integration boundaries
 
 Two workloads and two alternatives now require 64 trials. The previous private
