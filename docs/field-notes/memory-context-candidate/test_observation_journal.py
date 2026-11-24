@@ -17,6 +17,7 @@ import diagnostic_triage as D
 import observation_journal as J
 import serialized_budget as B
 import test_resource_context as H
+from test_observation_reconciliation import ReconciliationTests
 
 class JournalTests(unittest.TestCase):
     def make(self, deadline=5340):
@@ -265,7 +266,7 @@ class JournalTests(unittest.TestCase):
 
 def suite():
     out=unittest.TestSuite();loader=unittest.defaultTestLoader
-    for cls in (JournalTests,E.EnvelopeTests,B.Tests,D.Tests,H.ContextTests,H.ReadOnlyFileTests):
+    for cls in (JournalTests,E.EnvelopeTests,B.Tests,D.Tests,H.ContextTests,H.ReadOnlyFileTests,ReconciliationTests):
         out.addTests(loader.loadTestsFromTestCase(cls))
     return out
 

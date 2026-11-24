@@ -16,6 +16,8 @@ _INDEXED = {
     "diagnostic_triage.py",
     "resource_context.py",
     "observation_journal.py",
+    "observation_reconciliation.py",
+    "test_observation_reconciliation.py",
     "test_resource_context.py",
     "test_observation_journal.py",
     "test_private_integration.py",
@@ -57,5 +59,5 @@ class PublicObservationSuiteTests(unittest.TestCase):
         print(result.stdout, flush=True)
         print(f"observation-suite exit={result.returncode}", flush=True)
         self.assertEqual(result.returncode, 0, result.stdout)
-        self.assertRegex(result.stdout, r"(?m)^Ran 70 tests in ")
+        self.assertRegex(result.stdout, r"(?m)^Ran 81 tests in ")
         self.assertRegex(result.stdout, r"(?m)^OK$")

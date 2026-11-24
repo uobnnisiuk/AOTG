@@ -33,9 +33,9 @@
       "sha256": "ff0e41d2525a2ece7ad9002aa47b59688e85abf6fd14b71f522ce0cb5f8fe2f0"
     },
     {
-      "bytes": 18385,
+      "bytes": 18469,
       "path": "test_observation_journal.py",
-      "sha256": "b7e7e9029316ab3a30058bcb1e32c6cfc1088f4f00ecc608134bfc0d3b47111c"
+      "sha256": "e0f365dfa57f6b42fc00ea117e6311c05a6e0e697c8d018329a02dee09d52d1a"
     },
     {
       "bytes": 10957,
@@ -48,14 +48,24 @@
       "sha256": "fe1a73162fcbbb9ce42c12ebae45d5ca3a64c7b4a0555e28dcbd00de5ae70d0c"
     },
     {
-      "bytes": 8608,
+      "bytes": 9563,
       "path": "README.md",
-      "sha256": "821d2b4e3ee2cb317ad8ec9c910804a445293493f9cf6550ef6d87e0da572749"
+      "sha256": "460cbb10b90a5d1a8299b34efea4505368d5fac90f88c5394949a4335c77e621"
     },
     {
       "bytes": 1055,
       "path": "capacity-result.json",
       "sha256": "e2de02049180cd51793511fa8d24b922f672a48144003063dd91564ac414c1f0"
+    },
+    {
+      "bytes": 5460,
+      "path": "observation_reconciliation.py",
+      "sha256": "c7197dd71630cefc08a320c91ca138ccc8f623acaf8540fd6a4ed427cc03e664"
+    },
+    {
+      "bytes": 5501,
+      "path": "test_observation_reconciliation.py",
+      "sha256": "0c5b18732a7bd983e025e0fef226d6b717b1f273874a27d3dad9505609603855"
     }
   ],
   "independent_restore_verified": false,
@@ -68,7 +78,8 @@
     "Run-bound embedded patch and source hashes updated offline; former private candidate hash and earlier synthetic test results refer to the previous revision. Trusted private candidate rebuild and independent retest remain required.",
     "Private runner now verifies all three input snapshots before private import; rebuilt candidate digest and actual private execution remain unavailable and unqualified.",
     "Shared worker deadline checks after accepted-resource flush on skipped context and after selected context flush are source changes; three public regressions added. Private integration/overhead remains unqualified. Historical test counts are not current execution evidence.",
-    "Adapter admission and flush-confirmation counters now differ on failed writes; physical persistence, private summary transport and whole-chain accounting remain unqualified."
+    "Adapter admission and flush-confirmation counters now differ on failed writes; physical persistence, private summary transport and whole-chain accounting remain unqualified.",
+    "Offline observation-only accounting reconciliation added; private summary transport, raw journal join, whole-producer accounting and runtime qualification remain absent."
   ],
   "observation_bytes_upper": 130394112,
   "observation_rows_upper": 59072,
@@ -92,5 +103,6 @@
   "prior_synthetic_results_apply_to_current_source": false,
   "prepared_from_isolated_commit": "215caaf62629e8793ef78eba2f15368342eff09a",
   "public_deadline_regressions_added": 3,
-  "public_write_accounting_regressions_added": 3
+  "public_write_accounting_regressions_added": 3,
+  "public_accounting_reconciliation_tests_added": 11
 }

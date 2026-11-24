@@ -99,6 +99,19 @@ line boundaries, maximum uint64/PSI/role fixtures, missing values, identity drif
 clock discontinuity, full-cap reservation before reads and no-retry failures.
 It uses no live proc/cgroup reads. The POSIX no-follow test uses temporary files.
 
+The new offline `observation_reconciliation.py` checks a separately transported
+adapter summary (at most 8 KiB) against a bounded recovered observation byte
+stream: exact confirmed prefix counts, canonical JSON object lines, run binding,
+and admission/confirmation arithmetic. Any uncertain admission stays incomplete,
+even when all its bytes are visible. Missing, malformed, oversized or inconsistent
+inputs stay incomplete. Eleven new controls use the actual public adapter and
+fake streams (81 public tests expected). `accounting-consistent` describes only
+accounting; it is never runtime qualification or quality acceptance, and even a
+guard-stopped run may have consistent accounting. A trusted caller must bind the
+summary to the same run; neither this check nor byte counts authenticate a
+same-length modification. The raw-journal join, private summary persistence,
+accepted-resource accounting and collector/restore integration are still absent.
+
 The full private worker is deliberately excluded from publication. With explicitly
 trusted private source and core-test files available:
 
