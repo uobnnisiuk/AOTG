@@ -1,0 +1,13 @@
+{
+  "algorithm": "sha256(ast.dump(node, include_attributes=False).encode()); omit empty type_params fields for Python 3.11/3.12 structural compatibility",
+  "artifact": "aotg-reviewed-worker-guard-fingerprints",
+  "baseline_raw_sha256": "cdac8769878976a784bc0008543e376133a86914653b4f0594d2338e3aef653e",
+  "definitions": {
+    "Monitor": "54de3042b5800819c091968322b1b5dfdef1ac7a83a90ea6f57a0bd610e227a1",
+    "OwnedProcesses": "7182c81fae6aeb120f8a6d2d03925b62500659caca9415af335c42a5e195e662",
+    "final_kernel_scan": "1de31d03216c7a2c5c14ce7534a7453c8295607b47c57e36b89799e56080565e",
+    "require_clean_cgroup": "c94126962bd51b3efd6a5f60f218db265c8f0ff632b16290c97512540c9c5606",
+    "resource_check": "ea65ae1181cef565b99ccb17b195ae6dfb4b528728a2db27379998ebd32b9d01"
+  },
+  "version": 1
+}

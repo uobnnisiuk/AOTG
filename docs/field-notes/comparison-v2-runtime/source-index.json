@@ -1,0 +1,529 @@
+{
+  "artifact": "aotg-comparison-v2-source-archive-index",
+  "files": [
+    {
+      "byte_identical": true,
+      "published_relative": "field-worker-v2.py",
+      "published_sha256": "96b2c3f77aeb11c131551e158f2eeab319a3293746a4d652395a2df19280d986",
+      "relocation_delta": null,
+      "source_relative": "field-worker-v2.py",
+      "source_sha256": "96b2c3f77aeb11c131551e158f2eeab319a3293746a4d652395a2df19280d986"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "k8-field-runner-v2.py",
+      "published_sha256": "094caf28e7c8fd652474b7100e86a1a58f799b915940cf6ed15e2c4b9e71e80a",
+      "relocation_delta": null,
+      "source_relative": "k8-field-runner-v2.py",
+      "source_sha256": "094caf28e7c8fd652474b7100e86a1a58f799b915940cf6ed15e2c4b9e71e80a"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "budget-policy.proposed.json",
+      "published_sha256": "d54648aba0e0c00d6b1ef20dba64a5677fe58651a8dd4d0f135f5bb7b690c9e1",
+      "relocation_delta": null,
+      "source_relative": "budget-policy.proposed.json",
+      "source_sha256": "d54648aba0e0c00d6b1ef20dba64a5677fe58651a8dd4d0f135f5bb7b690c9e1"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "runtime/aotg/field_maintenance.py",
+      "published_sha256": "c846d690d71b0e1854bf4af8b26645195f77c4a36d5b29a090c162da69323967",
+      "relocation_delta": null,
+      "source_relative": "runtime/aotg/field_maintenance.py",
+      "source_sha256": "c846d690d71b0e1854bf4af8b26645195f77c4a36d5b29a090c162da69323967"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "runtime/aotg/artifacts.py",
+      "published_sha256": "4b3def66e8d3fe1a65326930adfdbba970c40c70e5ead99c9330cd85562f60bc",
+      "relocation_delta": null,
+      "source_relative": "runtime/aotg/artifacts.py",
+      "source_sha256": "4b3def66e8d3fe1a65326930adfdbba970c40c70e5ead99c9330cd85562f60bc"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "runtime/aotg/field_proxy.py",
+      "published_sha256": "41ed09f04e168b96a24906fbf63e250ab553ea0d4cfee90cc592dc4606bc1657",
+      "relocation_delta": null,
+      "source_relative": "runtime/aotg/field_proxy.py",
+      "source_sha256": "41ed09f04e168b96a24906fbf63e250ab553ea0d4cfee90cc592dc4606bc1657"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "runtime/aotg/field_evidence.py",
+      "published_sha256": "3965ae8ead3e8c11fa513ba84a83105e1f5811d8a51b65c046b75b0ed6a888ac",
+      "relocation_delta": null,
+      "source_relative": "runtime/aotg/field_evidence.py",
+      "source_sha256": "3965ae8ead3e8c11fa513ba84a83105e1f5811d8a51b65c046b75b0ed6a888ac"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "runtime/aotg/field_selftest.py",
+      "published_sha256": "b46b07ea740449d41d580218dcdff58703e4ceb960fac963b945c34328f582f6",
+      "relocation_delta": null,
+      "source_relative": "runtime/aotg/field_selftest.py",
+      "source_sha256": "b46b07ea740449d41d580218dcdff58703e4ceb960fac963b945c34328f582f6"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "runtime/aotg/quality.py",
+      "published_sha256": "f8797a3a6ab7bad05995572e7bed306f372eb5cd8a356396bc8f0f4ac8f42e9c",
+      "relocation_delta": null,
+      "source_relative": "runtime/aotg/quality.py",
+      "source_sha256": "f8797a3a6ab7bad05995572e7bed306f372eb5cd8a356396bc8f0f4ac8f42e9c"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "runtime/aotg/__init__.py",
+      "published_sha256": "46c9e007176286ab74415bfc6c2e55b9452e710b42880b6af8d61d5901c2a4e9",
+      "relocation_delta": null,
+      "source_relative": "runtime/aotg/__init__.py",
+      "source_sha256": "46c9e007176286ab74415bfc6c2e55b9452e710b42880b6af8d61d5901c2a4e9"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "runtime/aotg/field_client.py",
+      "published_sha256": "d5b9ad960478449a5d442e15f65569209f3a572ff9315e94cc83c93b7f0068ee",
+      "relocation_delta": null,
+      "source_relative": "runtime/aotg/field_client.py",
+      "source_sha256": "d5b9ad960478449a5d442e15f65569209f3a572ff9315e94cc83c93b7f0068ee"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "runtime/aotg/field_sandbox.py",
+      "published_sha256": "bf72d199ae664628fcaaf65ada554f8310e36c4e840cfc42726df8f62a6098a3",
+      "relocation_delta": null,
+      "source_relative": "runtime/aotg/field_sandbox.py",
+      "source_sha256": "bf72d199ae664628fcaaf65ada554f8310e36c4e840cfc42726df8f62a6098a3"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "runtime/aotg/field_bench.py",
+      "published_sha256": "2ac42f3907ed467e6407f15daf6be719ec14a9173ed93cb3f22d70a6e9cc4f9b",
+      "relocation_delta": null,
+      "source_relative": "runtime/aotg/field_bench.py",
+      "source_sha256": "2ac42f3907ed467e6407f15daf6be719ec14a9173ed93cb3f22d70a6e9cc4f9b"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "runtime/tests/fixtures/benchmark/catalog.json",
+      "published_sha256": "277abb01f995890be289b2c3d2e679f8a3283a12040b54218991fc005c19c268",
+      "relocation_delta": null,
+      "source_relative": "runtime/tests/fixtures/benchmark/catalog.json",
+      "source_sha256": "277abb01f995890be289b2c3d2e679f8a3283a12040b54218991fc005c19c268"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "tests/test_comparison_maintenance.py",
+      "published_sha256": "956de7ff982216ee6fe9c32eed442a820a22d23b9f449a3cc09cce72c093d0bc",
+      "relocation_delta": null,
+      "source_relative": "tests/test_comparison_maintenance.py",
+      "source_sha256": "956de7ff982216ee6fe9c32eed442a820a22d23b9f449a3cc09cce72c093d0bc"
+    },
+    {
+      "byte_identical": false,
+      "published_relative": "tests/test_comparison_runtime.py",
+      "published_sha256": "36bab61b711b1e76e372bf3afa4c92afe3b3a5426dc8cc0f3217c12fc21ae958",
+      "relocation_delta": "Public-only fixture portability: replace sibling private baseline read with reviewed fixed AST fingerprints; update integration pin to the adapted test. Empty type_params normalization preserves Python 3.11/3.12 compatibility.",
+      "source_relative": "tests/test_comparison_runtime.py",
+      "source_sha256": "8cc256ea2099ade7acb843636e0421dce8da99425b29ca36c906b4b12435dda7"
+    },
+    {
+      "byte_identical": false,
+      "published_relative": "io-component/README.md",
+      "published_sha256": "1fa4e138fc6724fd162f1f34f39ebfc29230a3e26ecf83e2a324376119871a21",
+      "relocation_delta": "Documentation reference replaced by private receipt hash; no process identifiers or receipt copied.",
+      "source_relative": "io-component/README.md",
+      "source_sha256": "61400bc0342b5e4c754aaf30abb58def6cf07237afbf508ebee5c09a4f8f961f"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "io-component/WindowsIoJobV2.cs",
+      "published_sha256": "d7ec1ffbdfba21c41770288f618e4274395e989ceee59904009153a4c50bad3d",
+      "relocation_delta": null,
+      "source_relative": "io-component/WindowsIoJobV2.cs",
+      "source_sha256": "d7ec1ffbdfba21c41770288f618e4274395e989ceee59904009153a4c50bad3d"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "io-component/windows-io-job.ps1",
+      "published_sha256": "cae9d9d4800b566219779df1d48a6e9c9bb2121cea3d249e48db9ca1b47159aa",
+      "relocation_delta": null,
+      "source_relative": "io-component/windows-io-job.ps1",
+      "source_sha256": "cae9d9d4800b566219779df1d48a6e9c9bb2121cea3d249e48db9ca1b47159aa"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "io-component/supplemental-io-lifecycle-v2.py",
+      "published_sha256": "fd578d1d277ead2a1f15dfb1eb05441a49d0e6db0ca59f8fe3a32d13a21cd927",
+      "relocation_delta": null,
+      "source_relative": "io-component/supplemental-io-lifecycle-v2.py",
+      "source_sha256": "fd578d1d277ead2a1f15dfb1eb05441a49d0e6db0ca59f8fe3a32d13a21cd927"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "io-component/supplemental-io-sampler-v2.py",
+      "published_sha256": "7c2e9800e6470db78a026a71894087e1254ee3ec6e81c47a38ef8f52c9cbf53d",
+      "relocation_delta": null,
+      "source_relative": "io-component/supplemental-io-sampler-v2.py",
+      "source_sha256": "7c2e9800e6470db78a026a71894087e1254ee3ec6e81c47a38ef8f52c9cbf53d"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "io-component/test_io_component.py",
+      "published_sha256": "affaaa2ed6cc2b0cfc9302b154b2c42b2f04fa36c11fd548eade2cd18d82f2c4",
+      "relocation_delta": null,
+      "source_relative": "io-component/test_io_component.py",
+      "source_sha256": "affaaa2ed6cc2b0cfc9302b154b2c42b2f04fa36c11fd548eade2cd18d82f2c4"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "io-component/test_native_job.ps1",
+      "published_sha256": "584d71b49ea470420ff81ddf9bfd9a3916b697147d01031773d6ee813d02dd36",
+      "relocation_delta": null,
+      "source_relative": "io-component/test_native_job.ps1",
+      "source_sha256": "584d71b49ea470420ff81ddf9bfd9a3916b697147d01031773d6ee813d02dd36"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "io-component/baseline-inputs.json",
+      "published_sha256": "3b5f68d8b099fb0d85ff7b45dbc7d4b055738ed80ce33c7a2afdb80065f7637f",
+      "relocation_delta": null,
+      "source_relative": "io-component/baseline-inputs.json",
+      "source_sha256": "3b5f68d8b099fb0d85ff7b45dbc7d4b055738ed80ce33c7a2afdb80065f7637f"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "metrics-component/README.md",
+      "published_sha256": "17a56b5aea357719905cc1aed36a248f8bf127d83e129f4ee7f958a966729bd5",
+      "relocation_delta": null,
+      "source_relative": "metrics-component/README.md",
+      "source_sha256": "17a56b5aea357719905cc1aed36a248f8bf127d83e129f4ee7f958a966729bd5"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "metrics-component/IO-ASSOCIATION.md",
+      "published_sha256": "66d9ff14e48ac13e0d38057c8aad693957b645b8a2741d6d03943a7780be6a5a",
+      "relocation_delta": null,
+      "source_relative": "metrics-component/IO-ASSOCIATION.md",
+      "source_sha256": "66d9ff14e48ac13e0d38057c8aad693957b645b8a2741d6d03943a7780be6a5a"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "metrics-component/aotg/__init__.py",
+      "published_sha256": "46c9e007176286ab74415bfc6c2e55b9452e710b42880b6af8d61d5901c2a4e9",
+      "relocation_delta": null,
+      "source_relative": "metrics-component/aotg/__init__.py",
+      "source_sha256": "46c9e007176286ab74415bfc6c2e55b9452e710b42880b6af8d61d5901c2a4e9"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "metrics-component/aotg/field_proxy.py",
+      "published_sha256": "41ed09f04e168b96a24906fbf63e250ab553ea0d4cfee90cc592dc4606bc1657",
+      "relocation_delta": null,
+      "source_relative": "metrics-component/aotg/field_proxy.py",
+      "source_sha256": "41ed09f04e168b96a24906fbf63e250ab553ea0d4cfee90cc592dc4606bc1657"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "metrics-component/tools/assemble_field_evidence.py",
+      "published_sha256": "60dd858d1a5e08695f895cc7b41e700bfa9fecfe8a6223a226fc41b0ee44c5d2",
+      "relocation_delta": null,
+      "source_relative": "metrics-component/tools/assemble_field_evidence.py",
+      "source_sha256": "60dd858d1a5e08695f895cc7b41e700bfa9fecfe8a6223a226fc41b0ee44c5d2"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "metrics-component/tools/tool_roundtrip_diagnostics.py",
+      "published_sha256": "736366b7e10d9c9650873f7928c4f4284abbd183424034680a1de17e514b3ac4",
+      "relocation_delta": null,
+      "source_relative": "metrics-component/tools/tool_roundtrip_diagnostics.py",
+      "source_sha256": "736366b7e10d9c9650873f7928c4f4284abbd183424034680a1de17e514b3ac4"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "metrics-component/tools/io_capture_diagnostics.py",
+      "published_sha256": "d39c5f683fdf5ecf835e9dd7f367af24f41fc13e804d4f50d701e5053ea633f2",
+      "relocation_delta": null,
+      "source_relative": "metrics-component/tools/io_capture_diagnostics.py",
+      "source_sha256": "d39c5f683fdf5ecf835e9dd7f367af24f41fc13e804d4f50d701e5053ea633f2"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "metrics-component/tests/test_field_proxy.py",
+      "published_sha256": "fab22c1ec8754503a94cc9e48e07faa70ae4f1000d89024eb15d75a72736f192",
+      "relocation_delta": null,
+      "source_relative": "metrics-component/tests/test_field_proxy.py",
+      "source_sha256": "fab22c1ec8754503a94cc9e48e07faa70ae4f1000d89024eb15d75a72736f192"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "metrics-component/tests/test_proxy_tool_roundtrip.py",
+      "published_sha256": "ff292378280cf6617a65fca4bf2143ae327759a0ed142fdcc0b269f88b930d3b",
+      "relocation_delta": null,
+      "source_relative": "metrics-component/tests/test_proxy_tool_roundtrip.py",
+      "source_sha256": "ff292378280cf6617a65fca4bf2143ae327759a0ed142fdcc0b269f88b930d3b"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "metrics-component/tests/test_tool_roundtrip_diagnostics.py",
+      "published_sha256": "f5526dbb5e11311e3781ff351f3628ff2b6a805976c614ee06977cbe51779dce",
+      "relocation_delta": null,
+      "source_relative": "metrics-component/tests/test_tool_roundtrip_diagnostics.py",
+      "source_sha256": "f5526dbb5e11311e3781ff351f3628ff2b6a805976c614ee06977cbe51779dce"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "metrics-component/tests/test_io_capture_diagnostics.py",
+      "published_sha256": "f7f9a8b4c6e81b40b43cf36cceacedec8729bc51da1d9083531c03b86da65733",
+      "relocation_delta": null,
+      "source_relative": "metrics-component/tests/test_io_capture_diagnostics.py",
+      "source_sha256": "f7f9a8b4c6e81b40b43cf36cceacedec8729bc51da1d9083531c03b86da65733"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "assessment-component/tools/assemble_field_evidence.py",
+      "published_sha256": "2831343058b73a9c6dec42badcf69938dcefc4158b88be942e61c131ccbd4157",
+      "relocation_delta": null,
+      "source_relative": "assessment-component/tools/assemble_field_evidence.py",
+      "source_sha256": "2831343058b73a9c6dec42badcf69938dcefc4158b88be942e61c131ccbd4157"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "assessment-component/tools/tool_roundtrip_diagnostics.py",
+      "published_sha256": "736366b7e10d9c9650873f7928c4f4284abbd183424034680a1de17e514b3ac4",
+      "relocation_delta": null,
+      "source_relative": "assessment-component/tools/tool_roundtrip_diagnostics.py",
+      "source_sha256": "736366b7e10d9c9650873f7928c4f4284abbd183424034680a1de17e514b3ac4"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "assessment-component/tests/test_field_assessment_assemble.py",
+      "published_sha256": "0a60ad1bd652dd5860bd1a6fed53d4c57dbd4914b4c635db4da8d1e527f2bbfd",
+      "relocation_delta": null,
+      "source_relative": "assessment-component/tests/test_field_assessment_assemble.py",
+      "source_sha256": "0a60ad1bd652dd5860bd1a6fed53d4c57dbd4914b4c635db4da8d1e527f2bbfd"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "assessment-component/tests/fixtures/assessment/native-driver.md",
+      "published_sha256": "86aae9f3b28105dfb1957c6481383e83b586fcafa79cc34e2387dea84d28169f",
+      "relocation_delta": null,
+      "source_relative": "assessment-component/tests/fixtures/assessment/native-driver.md",
+      "source_sha256": "86aae9f3b28105dfb1957c6481383e83b586fcafa79cc34e2387dea84d28169f"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "assessment-component/aotg/__init__.py",
+      "published_sha256": "46c9e007176286ab74415bfc6c2e55b9452e710b42880b6af8d61d5901c2a4e9",
+      "relocation_delta": null,
+      "source_relative": "assessment-component/aotg/__init__.py",
+      "source_sha256": "46c9e007176286ab74415bfc6c2e55b9452e710b42880b6af8d61d5901c2a4e9"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "assessment-component/aotg/artifacts.py",
+      "published_sha256": "4b3def66e8d3fe1a65326930adfdbba970c40c70e5ead99c9330cd85562f60bc",
+      "relocation_delta": null,
+      "source_relative": "assessment-component/aotg/artifacts.py",
+      "source_sha256": "4b3def66e8d3fe1a65326930adfdbba970c40c70e5ead99c9330cd85562f60bc"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "assessment-component/aotg/field_evidence.py",
+      "published_sha256": "3965ae8ead3e8c11fa513ba84a83105e1f5811d8a51b65c046b75b0ed6a888ac",
+      "relocation_delta": null,
+      "source_relative": "assessment-component/aotg/field_evidence.py",
+      "source_sha256": "3965ae8ead3e8c11fa513ba84a83105e1f5811d8a51b65c046b75b0ed6a888ac"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "assessment-component/aotg/field_client.py",
+      "published_sha256": "d5b9ad960478449a5d442e15f65569209f3a572ff9315e94cc83c93b7f0068ee",
+      "relocation_delta": null,
+      "source_relative": "assessment-component/aotg/field_client.py",
+      "source_sha256": "d5b9ad960478449a5d442e15f65569209f3a572ff9315e94cc83c93b7f0068ee"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "assessment-component/aotg/quality.py",
+      "published_sha256": "bf3b875a04a57635c745b13dc734219c5112be20ccf3100646b64f6619a1ef21",
+      "relocation_delta": null,
+      "source_relative": "assessment-component/aotg/quality.py",
+      "source_sha256": "bf3b875a04a57635c745b13dc734219c5112be20ccf3100646b64f6619a1ef21"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "assessment-component/aotg/field_sandbox.py",
+      "published_sha256": "bf72d199ae664628fcaaf65ada554f8310e36c4e840cfc42726df8f62a6098a3",
+      "relocation_delta": null,
+      "source_relative": "assessment-component/aotg/field_sandbox.py",
+      "source_sha256": "bf72d199ae664628fcaaf65ada554f8310e36c4e840cfc42726df8f62a6098a3"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "assessment-component/aotg/field_selftest.py",
+      "published_sha256": "b46b07ea740449d41d580218dcdff58703e4ceb960fac963b945c34328f582f6",
+      "relocation_delta": null,
+      "source_relative": "assessment-component/aotg/field_selftest.py",
+      "source_sha256": "b46b07ea740449d41d580218dcdff58703e4ceb960fac963b945c34328f582f6"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "assessment-component/aotg/field_proxy.py",
+      "published_sha256": "30367863bdb50f83cbdd89e8a442c7c1e204490cfddc7ad60c10e30b43298952",
+      "relocation_delta": null,
+      "source_relative": "assessment-component/aotg/field_proxy.py",
+      "source_sha256": "30367863bdb50f83cbdd89e8a442c7c1e204490cfddc7ad60c10e30b43298952"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "assessment-component/tests/fixtures/benchmark/short-answer.txt",
+      "published_sha256": "de6624df21d06277ae9d35d37894fa192101939332dac2618b1a744297452cc5",
+      "relocation_delta": null,
+      "source_relative": "assessment-component/tests/fixtures/benchmark/short-answer.txt",
+      "source_sha256": "de6624df21d06277ae9d35d37894fa192101939332dac2618b1a744297452cc5"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "assessment-component/tests/fixtures/benchmark/BatchRegistry.cs",
+      "published_sha256": "172240ed2956b4e948f613bb4f2ee9debcf4cb6ee9bf37b91101fde56adecd09",
+      "relocation_delta": null,
+      "source_relative": "assessment-component/tests/fixtures/benchmark/BatchRegistry.cs",
+      "source_sha256": "172240ed2956b4e948f613bb4f2ee9debcf4cb6ee9bf37b91101fde56adecd09"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "assessment-component/tests/fixtures/benchmark/tool-roundtrip.txt",
+      "published_sha256": "4622f160468ee454f49ee1a7506f2318c1547efc1e1bd614d6715832a3dbeb90",
+      "relocation_delta": null,
+      "source_relative": "assessment-component/tests/fixtures/benchmark/tool-roundtrip.txt",
+      "source_sha256": "4622f160468ee454f49ee1a7506f2318c1547efc1e1bd614d6715832a3dbeb90"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "assessment-component/tests/fixtures/benchmark/csharp-batch-task.txt",
+      "published_sha256": "3d9f268aa66c2d29a6d0887453fd2e5b2b459ec16da6f2527126e1cc42e8ff6f",
+      "relocation_delta": null,
+      "source_relative": "assessment-component/tests/fixtures/benchmark/csharp-batch-task.txt",
+      "source_sha256": "3d9f268aa66c2d29a6d0887453fd2e5b2b459ec16da6f2527126e1cc42e8ff6f"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "assessment-component/tests/fixtures/benchmark/intervals.cpp",
+      "published_sha256": "08305d2f07353f3847c6907eb3499de078b191c602f3d67aff675ddbad73a337",
+      "relocation_delta": null,
+      "source_relative": "assessment-component/tests/fixtures/benchmark/intervals.cpp",
+      "source_sha256": "08305d2f07353f3847c6907eb3499de078b191c602f3d67aff675ddbad73a337"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "assessment-component/tests/fixtures/benchmark/mono-options-task.txt",
+      "published_sha256": "ef18216d274e911b6b1f7570befd3da4273d24e2e97e8dac9a3c939602f5de4e",
+      "relocation_delta": null,
+      "source_relative": "assessment-component/tests/fixtures/benchmark/mono-options-task.txt",
+      "source_sha256": "ef18216d274e911b6b1f7570befd3da4273d24e2e97e8dac9a3c939602f5de4e"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "assessment-component/tests/fixtures/benchmark/cpp-interval-task.txt",
+      "published_sha256": "3d37c650425c32a726a7f69bd6cffdd870f989a370a70db4cc93a91b8611d66d",
+      "relocation_delta": null,
+      "source_relative": "assessment-component/tests/fixtures/benchmark/cpp-interval-task.txt",
+      "source_sha256": "3d37c650425c32a726a7f69bd6cffdd870f989a370a70db4cc93a91b8611d66d"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "assessment-component/tests/fixtures/benchmark/catalog.json",
+      "published_sha256": "fed8c98ea87a273379ca5a8f14a6845bcb7bdf8e45ce02c01ed7dcf9c8ee7f21",
+      "relocation_delta": null,
+      "source_relative": "assessment-component/tests/fixtures/benchmark/catalog.json",
+      "source_sha256": "fed8c98ea87a273379ca5a8f14a6845bcb7bdf8e45ce02c01ed7dcf9c8ee7f21"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "integration-tests/README.md",
+      "published_sha256": "d65f0ae0209c79d0ee0feb06781bd38cd9eec7eaee892c3c22120c518333ccac",
+      "relocation_delta": null,
+      "source_relative": "integration-tests/README.md",
+      "source_sha256": "d65f0ae0209c79d0ee0feb06781bd38cd9eec7eaee892c3c22120c518333ccac"
+    },
+    {
+      "byte_identical": false,
+      "published_relative": "integration-tests/source-pins.json",
+      "published_sha256": "4acac290d8a804a4e4f9e94a7064fd68f457bdae3d12164021240da72e94071e",
+      "relocation_delta": "Public-only fixture portability: replace sibling private baseline read with reviewed fixed AST fingerprints; update integration pin to the adapted test. Empty type_params normalization preserves Python 3.11/3.12 compatibility.",
+      "source_relative": "integration-tests/source-pins.json",
+      "source_sha256": "80819d294ecd465887ace9aca3f7fb08090053e3f242e704dfd7a5d25ecfa490"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "integration-tests/test_cross_runtime.py",
+      "published_sha256": "6da86f23ce5d172fcf84d94e3b4f077ba70aaa54540642cc423636b9f750bbba",
+      "relocation_delta": null,
+      "source_relative": "integration-tests/test_cross_runtime.py",
+      "source_sha256": "6da86f23ce5d172fcf84d94e3b4f077ba70aaa54540642cc423636b9f750bbba"
+    },
+    {
+      "byte_identical": false,
+      "published_relative": "CORE-RUNTIME.md",
+      "published_sha256": "78d68e29473a2a8228e252726abe0d419ae2ef2ea3edd7de3dc3fe3e8dbc8950",
+      "relocation_delta": "Renamed core guide; private receipt locations replaced by archive index boundary. No runtime source change.",
+      "source_relative": "README.md",
+      "source_sha256": "5ea618af2581a5552a2146ddaecb7ceeef05b078bd461c190b8ba7f297523684"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "assessment-component/tools/io_capture_diagnostics.py",
+      "published_sha256": "d39c5f683fdf5ecf835e9dd7f367af24f41fc13e804d4f50d701e5053ea633f2",
+      "relocation_delta": null,
+      "source_relative": "assessment-component/tools/io_capture_diagnostics.py",
+      "source_sha256": "d39c5f683fdf5ecf835e9dd7f367af24f41fc13e804d4f50d701e5053ea633f2"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "assessment-component/README.md",
+      "published_sha256": "2d3fc16ce3959a8da395d953e5bfc336338777bc7601e111a3728b2456953dab",
+      "relocation_delta": null,
+      "source_relative": "assessment-component/README.md",
+      "source_sha256": "2d3fc16ce3959a8da395d953e5bfc336338777bc7601e111a3728b2456953dab"
+    },
+    {
+      "byte_identical": true,
+      "published_relative": "integration-tests/test_assessment_io_integration.py",
+      "published_sha256": "504d2162fd96e8aa035382f9f9b2ef688d4e8faae5d84d71f6fb0020da519228",
+      "relocation_delta": null,
+      "source_relative": "integration-tests/test_assessment_io_integration.py",
+      "source_sha256": "504d2162fd96e8aa035382f9f9b2ef688d4e8faae5d84d71f6fb0020da519228"
+    }
+  ],
+  "generated_public_artifacts": [
+    {
+      "path": "README.md",
+      "sha256": "3c287f30ecb80b36d6a1a0e5aa9df363064c719259d771fd5b0d4825bec35134"
+    },
+    {
+      "path": "tests/fixtures/guard-baseline-fingerprints.json",
+      "sha256": "7972cba0efe96407a2dec543266318938620c2b4501ebb857c94b79a090fc5c1"
+    }
+  ],
+  "live_plan_included": false,
+  "offline_validation": {
+    "controller_included": false,
+    "hardware_comparison_performed": false,
+    "status": "passed",
+    "suites": {
+      "assessment": 37,
+      "assessment_io": 7,
+      "core": 43,
+      "cross_runtime": 7,
+      "io_producer": 24,
+      "metrics_and_io_association": 57
+    },
+    "test_cases": 175
+  },
+  "runtime_execution_authorized": false,
+  "status": "SOURCE_ONLY_UNAPPROVED_NOT_DEPLOYED",
+  "version": 1
+}
