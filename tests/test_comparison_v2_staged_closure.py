@@ -518,12 +518,15 @@ class StagedClosureTests(unittest.TestCase):
                         proxy.wait_for_handlers(2)
                         serving.join(2)
                         if serving.is_alive():
-                            proxy.shutdown()
+                            stop = threading.Thread(target=proxy.shutdown, daemon=True)
+                            stop.start()
+                            stop.join(2)
                             serving.join(2)
                         proxy.server_close()
                         for connection in (left, right):
                             if connection is not None:
                                 connection.close()
+                        self.assertFalse(serving.is_alive(), "Synthetic listener did not exit")
 
 
 if __name__ == "__main__":
