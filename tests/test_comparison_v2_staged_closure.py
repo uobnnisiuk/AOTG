@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 import socket
+import subprocess
 import sys
 import tempfile
 import threading
@@ -14,6 +15,7 @@ import unittest
 import zlib
 from copy import deepcopy
 from pathlib import Path
+from unittest import mock
 
 import test_comparison_v2_quality_bridge as bridge
 
@@ -534,6 +536,23 @@ class StagedClosureTests(unittest.TestCase):
         The listener is ephemeral loopback only. The execute() path uses
         synthetic external boundaries; no upstream, model, SSH or Windows job.
         """
+        deadline_case = os.environ.get("AOTG_TEST_DEADLINE_CASE")
+        trace_path = os.environ.get("AOTG_TEST_DEADLINE_TRACE")
+        if deadline_case is not None:
+            self.assertIn(deadline_case, ("control", "close", "sink", "summary-fsync"))
+            self.assertTrue(trace_path)
+
+        def trace(value):
+            if deadline_case is not None:
+                with Path(trace_path).open("a", encoding="ascii") as stream:
+                    stream.write(value + "\n")
+
+        def stall(stage):
+            trace("stall:" + stage)
+            # Only reachable in a dedicated, synthetic subprocess.
+            # The parent must terminate it; do not release the stalled callback.
+            threading.Event().wait()
+
         archive = bridge.ARCHIVE.parent
         runner_raw = (archive / "k8-field-runner-v2.py").read_bytes()
         self.assertEqual(bridge.git_blob(runner_raw), "848d5ca3beebca933e215e2edf50ea9dac27afa4")
@@ -574,7 +593,9 @@ class StagedClosureTests(unittest.TestCase):
             validate = namespace["validate_capture"]
             validate_refusals = namespace["validate_connection_refusals"]
 
-            for mode in ("normal", "missing-close", "pre-http-refusal", "handler-timeout"):
+            direct_modes = (() if deadline_case is not None else
+                            ("normal", "missing-close", "pre-http-refusal", "handler-timeout"))
+            for mode in direct_modes:
                 with self.subTest(mode=mode):
                     records = []
 
@@ -660,7 +681,9 @@ class StagedClosureTests(unittest.TestCase):
             # Run the complete archived execute body, not a rewritten caller.
             # Only the external boundaries are faked. The actual caller owns
             # the evidence sink, cleanup, per-arm result and final summary.
-            for mode in ("normal", "missing-close", "relay-cleanup-error"):
+            execute_modes = (("normal",) if deadline_case is not None else
+                             ("normal", "missing-close", "relay-cleanup-error"))
+            for mode in execute_modes:
                 with self.subTest(execute_mode=mode):
                     root = Path(tmp) / mode
                     key_path = Path(tmp) / "synthetic-key"
@@ -707,11 +730,18 @@ class StagedClosureTests(unittest.TestCase):
                             sink = kwargs.pop("record")
 
                             def capture(value):
+                                if deadline_case == "sink" and value.get("phase") == "closed":
+                                    stall("sink")
                                 if mode != "missing-close" or value.get("phase") != "closed":
                                     sink(value)
 
                             super().__init__(("127.0.0.1", 0), record=capture, **kwargs)
                             proxies.append(self)
+
+                        def server_close(self):
+                            if deadline_case == "close":
+                                stall("close")
+                            super().server_close()
 
                     def synthetic_digest(value):
                         return hashlib.sha256(json.dumps(
@@ -720,10 +750,12 @@ class StagedClosureTests(unittest.TestCase):
 
                     def await_fake(_plan, row, *, deadline):
                         calls.append(("await", row["index"]))
+                        trace("await:" + str(row["index"]))
                         return {"index": row["index"]}
 
                     def finish_fake(_plan, ready, _outcome, succeeded, *, deadline):
                         calls.append(("finish", ready["index"], succeeded))
+                        trace("finish:" + str(ready["index"]))
                         return {"index": ready["index"], "succeeded": succeeded}
 
                     def coding_fake(**_kwargs):
@@ -746,6 +778,20 @@ class StagedClosureTests(unittest.TestCase):
                         "opencode": "not-executed", "workloads": {"synthetic": {}},
                         "tool_path": "not-executed", "max_steps": 1, "namespace_tools": [],
                     }
+                    if deadline_case == "summary-fsync":
+                        original_save = namespace["save"]
+
+                        def save_with_stalled_fsync(path, value):
+                            if Path(path).name == "summary.json":
+                                # Exercise the real save body through flush and
+                                # into fsync, not a fabricated summary.
+                                with mock.patch.object(os, "fsync",
+                                                       side_effect=lambda _fd: stall("summary-fsync")):
+                                    original_save(path, value)
+                            else:
+                                original_save(path, value)
+
+                        namespace["save"] = save_with_stalled_fsync
                     result = namespace["execute"](plan, synthetic_digest(plan))
                     self.assertEqual(json.loads((root / "summary.json").read_text()), result)
                     self.assertFalse(result["quality_accepted"])
@@ -786,6 +832,73 @@ class StagedClosureTests(unittest.TestCase):
                             validate(captured)
                             self.assertEqual(json.loads((arm / "done-receipt.json").read_text()),
                                              {"index": arm_result["index"], "succeeded": True})
+
+                    trace("returned")
+
+    def test_runtime_caller_external_deadline(self):
+        """A separate process, not a daemon-thread timeout, owns the verdict.
+
+        This is an offline containment experiment with only synthetic boundaries.
+        It is not a production process-tree or remote restoration guarantee.
+        """
+        with tempfile.TemporaryDirectory(prefix="aotg-deadline-") as tmp:
+            for case in ("control", "close", "sink", "summary-fsync"):
+                with self.subTest(case=case):
+                    scratch = Path(tmp) / case
+                    scratch.mkdir()
+                    trace_path = scratch / "trace.txt"
+                    env = dict(os.environ, TMPDIR=str(scratch),
+                               AOTG_TEST_DEADLINE_CASE=case,
+                               AOTG_TEST_DEADLINE_TRACE=str(trace_path))
+                    # Include process startup and the final durable save in
+                    # one fixed external budget. The child cannot extend it.
+                    deadline = time.monotonic() + 8
+                    proc = subprocess.Popen(
+                        [sys.executable, str(Path(__file__).resolve()),
+                         "StagedClosureTests.test_runtime_caller_closes_or_rejects_capture"],
+                        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    )
+                    timed_out = False
+                    try:
+                        try:
+                            _, stderr = proc.communicate(timeout=max(0, deadline - time.monotonic()))
+                            timed_out = time.monotonic() >= deadline
+                        except subprocess.TimeoutExpired:
+                            timed_out = True
+                            proc.kill()
+                            _, stderr = proc.communicate(timeout=2)
+                    finally:
+                        if proc.poll() is None:
+                            proc.kill()
+                            proc.wait(timeout=2)
+                    self.assertIsNotNone(proc.poll())
+                    trace = (trace_path.read_text(encoding="ascii").splitlines()
+                             if trace_path.exists() else [])
+                    # Never admit a summary merely because it exists or
+                    # contains a successful inner status after a timeout.
+                    accepted = not timed_out and proc.returncode == 0 and trace[-1:] == ["returned"]
+                    if case == "control":
+                        self.assertTrue(accepted, (trace, stderr.decode(errors="replace")))
+                        self.assertEqual(trace, ["await:1", "finish:1", "await:2", "finish:2", "returned"])
+                    else:
+                        self.assertTrue(timed_out, (trace, stderr.decode(errors="replace")))
+                        self.assertLess(proc.returncode, 0)
+                        self.assertFalse(accepted)
+                        self.assertNotIn("returned", trace)
+                        if case == "summary-fsync":
+                            self.assertEqual(trace, ["await:1", "finish:1", "await:2", "finish:2",
+                                                     "stall:summary-fsync"])
+                            # The inner summary can look complete even though
+                            # final fsync never returned. It remains unverified.
+                            summaries = list(scratch.rglob("summary.json"))
+                            self.assertEqual(len(summaries), 1)
+                            value = json.loads(summaries[0].read_text())
+                            self.assertEqual(value["status"], "completed-awaiting-independent-quality")
+                            self.assertFalse(value["total_deadline_exceeded"])
+                        else:
+                            self.assertEqual(trace, ["await:1", "stall:" + case])
+                            self.assertFalse(list(scratch.rglob("done-receipt.json")))
+                            self.assertFalse(list(scratch.rglob("arm-02")))
 
 
 if __name__ == "__main__":
