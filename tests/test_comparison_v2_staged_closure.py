@@ -536,11 +536,19 @@ class StagedClosureTests(unittest.TestCase):
         The listener is ephemeral loopback only. The execute() path uses
         synthetic external boundaries; no upstream, model, SSH or Windows job.
         """
-        deadline_case = os.environ.get("AOTG_TEST_DEADLINE_CASE")
-        trace_path = os.environ.get("AOTG_TEST_DEADLINE_TRACE")
+        self.assertEqual(self._exercise_runtime_caller(), (
+            ("normal", "missing-close", "pre-http-refusal", "handler-timeout"),
+            ("normal", "missing-close", "relay-cleanup-error"),
+        ))
+
+    def _exercise_runtime_caller(self, *, deadline_case=None, trace_path=None):
+        # Discoverable tests never choose injection based on inherited environment.
+        # Only the explicit synthetic child entry below supplies these arguments.
         if deadline_case is not None:
             self.assertIn(deadline_case, ("control", "close", "sink", "summary-fsync"))
             self.assertTrue(trace_path)
+        else:
+            self.assertIsNone(trace_path)
 
         def trace(value):
             if deadline_case is not None:
@@ -549,9 +557,11 @@ class StagedClosureTests(unittest.TestCase):
 
         def stall(stage):
             trace("stall:" + stage)
-            # Only reachable in a dedicated, synthetic subprocess.
-            # The parent must terminate it; do not release the stalled callback.
-            threading.Event().wait()
+            # The supervising test normally kills this child at eight seconds.
+            # A standalone invocation must also fail finitely, without ever
+            # resuming the stalled synthetic callback or accepting its summary.
+            threading.Event().wait(12)
+            os._exit(124)
 
         archive = bridge.ARCHIVE.parent
         runner_raw = (archive / "k8-field-runner-v2.py").read_bytes()
@@ -834,6 +844,41 @@ class StagedClosureTests(unittest.TestCase):
                                              {"index": arm_result["index"], "succeeded": True})
 
                     trace("returned")
+            return direct_modes, execute_modes
+
+    def test_runtime_caller_ignores_inherited_injection_environment(self):
+        with tempfile.TemporaryDirectory(prefix="aotg-deadline-env-") as tmp:
+            for case in ("control", "close", "sink", "summary-fsync"):
+                with self.subTest(case=case):
+                    scratch = Path(tmp) / case
+                    scratch.mkdir()
+                    trace_path = scratch / "unexpected-trace.txt"
+                    env = dict(os.environ, TMPDIR=str(scratch),
+                               AOTG_TEST_DEADLINE_CASE=case,
+                               AOTG_TEST_DEADLINE_TRACE=str(trace_path))
+                    result = subprocess.run(
+                        [sys.executable, str(Path(__file__).resolve()),
+                         "StagedClosureTests.test_runtime_caller_closes_or_rejects_capture"],
+                        env=env, capture_output=True, timeout=20,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
+                    self.assertIn(b"Ran 1 test", result.stderr)
+                    self.assertFalse(trace_path.exists())
+
+    def test_synthetic_deadline_child_fails_without_supervisor_kill(self):
+        with tempfile.TemporaryDirectory(prefix="aotg-deadline-orphan-") as tmp:
+            trace_path = Path(tmp) / "trace.txt"
+            result = subprocess.run(
+                [sys.executable, str(Path(__file__).resolve()),
+                 "--synthetic-deadline-child", "close", str(trace_path)],
+                env=dict(os.environ, TMPDIR=tmp), capture_output=True, timeout=25,
+            )
+            # This is the child's own fail-safe exit, not a parent's timeout.
+            self.assertEqual(result.returncode, 124, result.stderr.decode(errors="replace"))
+            self.assertEqual(trace_path.read_text(encoding="ascii").splitlines(),
+                             ["await:1", "stall:close"])
+            self.assertFalse(list(Path(tmp).rglob("done-receipt.json")))
+            self.assertFalse(list(Path(tmp).rglob("arm-02")))
 
     def test_runtime_caller_external_deadline(self):
         """A separate process, not a daemon-thread timeout, owns the verdict.
@@ -847,15 +892,13 @@ class StagedClosureTests(unittest.TestCase):
                     scratch = Path(tmp) / case
                     scratch.mkdir()
                     trace_path = scratch / "trace.txt"
-                    env = dict(os.environ, TMPDIR=str(scratch),
-                               AOTG_TEST_DEADLINE_CASE=case,
-                               AOTG_TEST_DEADLINE_TRACE=str(trace_path))
+                    env = dict(os.environ, TMPDIR=str(scratch))
                     # Include process startup and the final durable save in
                     # one fixed external budget. The child cannot extend it.
                     deadline = time.monotonic() + 8
                     proc = subprocess.Popen(
                         [sys.executable, str(Path(__file__).resolve()),
-                         "StagedClosureTests.test_runtime_caller_closes_or_rejects_capture"],
+                         "--synthetic-deadline-child", case, str(trace_path)],
                         env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                     )
                     timed_out = False
@@ -902,4 +945,14 @@ class StagedClosureTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    if sys.argv[1:2] == ["--synthetic-deadline-child"]:
+        if (len(sys.argv) != 4
+                or sys.argv[2] not in ("control", "close", "sink", "summary-fsync")
+                or sys.platform != "linux" or not hasattr(os, "O_NOFOLLOW")
+                or os.open not in os.supports_dir_fd):
+            raise SystemExit("invalid synthetic deadline child invocation")
+        StagedClosureTests()._exercise_runtime_caller(
+            deadline_case=sys.argv[2], trace_path=Path(sys.argv[3]),
+        )
+    else:
+        unittest.main()
