@@ -1,6 +1,7 @@
 """Offline #29 closure staging; not a complete candidate or field run."""
 import ast
 import base64
+import hashlib
 import importlib.util
 import json
 import os
@@ -530,8 +531,8 @@ class StagedClosureTests(unittest.TestCase):
     def test_runtime_caller_closes_or_rejects_capture(self):
         """Exercise actual archived caller definitions with the ported runtime proxy.
 
-        The listener is ephemeral loopback only; no upstream, model, SSH,
-        Windows job, or execute() path is entered.
+        The listener is ephemeral loopback only. The execute() path uses
+        synthetic external boundaries; no upstream, model, SSH or Windows job.
         """
         archive = bridge.ARCHIVE.parent
         runner_raw = (archive / "k8-field-runner-v2.py").read_bytes()
@@ -557,14 +558,16 @@ class StagedClosureTests(unittest.TestCase):
             names = {
                 "remaining", "describe", "require", "validate_capture",
                 "validate_connection_refusals", "ScopedConnections", "BoundedProxy",
-                "cleanup_server",
+                "cleanup_server", "cleanup_arm", "execute", "budget", "save", "CleanupUnverified",
             }
             tree = ast.parse(runner_raw)
             nodes = [node for node in tree.body
                      if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in names]
             self.assertEqual({node.name for node in nodes}, names)
             namespace = {"MeasurementProxy": module.MeasurementProxy, "threading": threading,
-                         "time": time, "socket": socket}
+                         "time": time, "socket": socket, "Path": Path, "os": os, "json": json,
+                         "CLIENT_OVERHEAD_SECONDS": 24, "ARM_CLEANUP_SECONDS": 60,
+                         "MARKER_SECONDS": 35, "WAIT_SECONDS": 180}
             exec(compile(ast.Module(body=nodes, type_ignores=[]), "<pinned-caller>", "exec"), namespace)
             proxy_class = namespace["BoundedProxy"]
             cleanup = namespace["cleanup_server"]
@@ -652,6 +655,137 @@ class StagedClosureTests(unittest.TestCase):
                             if connection is not None:
                                 connection.close()
                         self.assertFalse(serving.is_alive(), "Synthetic listener did not exit")
+
+
+            # Run the complete archived execute body, not a rewritten caller.
+            # Only the external boundaries are faked. The actual caller owns
+            # the evidence sink, cleanup, per-arm result and final summary.
+            for mode in ("normal", "missing-close", "relay-cleanup-error"):
+                with self.subTest(execute_mode=mode):
+                    root = Path(tmp) / mode
+                    key_path = Path(tmp) / "synthetic-key"
+                    key_path.write_text("synthetic", encoding="utf-8")
+                    profile = Path(tmp) / "synthetic-profile.json"
+                    profile.write_text(json.dumps({"provider": {"evo": {"options": {
+                        "apiKey": "{file:" + str(key_path) + "}",
+                    }}}}), encoding="utf-8")
+                    calls = []
+                    proxies = []
+                    relays = []
+
+                    class FakeRelay:
+                        def __init__(self, *_args, **_kwargs):
+                            self.done = threading.Event()
+                            self.stop_count = 0
+                            relays.append(self)
+
+                        def serve_forever(self, **_kwargs):
+                            self.done.wait(3)
+
+                        def open_admission(self):
+                            pass
+
+                        def close_admission(self):
+                            pass
+
+                        def stop_children(self, *, deadline):
+                            self.stop_count += 1
+                            if mode == "relay-cleanup-error" and self.stop_count == 1:
+                                raise RuntimeError("synthetic relay cleanup failure")
+
+                        def shutdown(self):
+                            self.done.set()
+
+                        def drain(self, *, deadline):
+                            pass
+
+                        def server_close(self):
+                            self.done.set()
+
+                    class EphemeralProxy(proxy_class):
+                        def __init__(self, _address, **kwargs):
+                            sink = kwargs.pop("record")
+
+                            def capture(value):
+                                if mode != "missing-close" or value.get("phase") != "closed":
+                                    sink(value)
+
+                            super().__init__(("127.0.0.1", 0), record=capture, **kwargs)
+                            proxies.append(self)
+
+                    def synthetic_digest(value):
+                        return hashlib.sha256(json.dumps(
+                            value, allow_nan=False, sort_keys=True, separators=(",", ":")
+                        ).encode("ascii")).hexdigest()
+
+                    def await_fake(_plan, row, *, deadline):
+                        calls.append(("await", row["index"]))
+                        return {"index": row["index"]}
+
+                    def finish_fake(_plan, ready, _outcome, succeeded, *, deadline):
+                        calls.append(("finish", ready["index"], succeeded))
+                        return {"index": ready["index"], "succeeded": succeeded}
+
+                    def coding_fake(**_kwargs):
+                        calls.append(("coding",))
+                        return {"status": "completed-awaiting-independent-quality", "seconds": 1}
+
+                    namespace.update(
+                        Relay=FakeRelay, BoundedProxy=EphemeralProxy, digest=synthetic_digest,
+                        preflight=lambda _plan: None, signal_client_ready=lambda _plan, _root: None,
+                        await_arm=await_fake, finish_arm=finish_fake,
+                        measure_chat=lambda *_args, **_kwargs: {"status": "completed", "content": "42"},
+                        run_opencode=coding_fake, client_command=lambda *_args: ["synthetic"],
+                    )
+                    schedule = [{"index": i, "workload_id": "synthetic"} for i in (1, 2)]
+                    plan = {
+                        "output_root": str(root), "profile": str(profile), "max_seconds": 1000,
+                        "cleanup_reserve_seconds": 60, "task_seconds": 1, "schedule": schedule,
+                        "upstream": "http://127.0.0.1:1/v1", "model": "synthetic",
+                        "max_requests": 9, "endpoint": "http://127.0.0.1:1/v1",
+                        "opencode": "not-executed", "workloads": {"synthetic": {}},
+                        "tool_path": "not-executed", "max_steps": 1, "namespace_tools": [],
+                    }
+                    result = namespace["execute"](plan, synthetic_digest(plan))
+                    self.assertEqual(json.loads((root / "summary.json").read_text()), result)
+                    self.assertFalse(result["quality_accepted"])
+                    self.assertFalse(result["total_deadline_exceeded"])
+                    self.assertEqual(len(relays), 1)
+                    self.assertTrue(relays[0].done.is_set())
+                    self.assertTrue(all(p.audit_closed and p.wait_for_handlers(0) for p in proxies))
+                    if mode == "normal":
+                        self.assertEqual(result["status"], "completed-awaiting-independent-quality")
+                        self.assertEqual(result["cleanup_errors"], [])
+                        self.assertEqual(calls, [
+                            ("await", 1), ("coding",), ("finish", 1, True),
+                            ("await", 2), ("coding",), ("finish", 2, True),
+                        ])
+                        self.assertEqual(len(proxies), 2)
+                        self.assertEqual(relays[0].stop_count, 3)
+                        self.assertEqual(len(result["arms"]), 2)
+                    else:
+                        self.assertEqual(result["status"], "stopped-cleanup-unverified")
+                        self.assertEqual(calls, [("await", 1), ("coding",)])
+                        self.assertEqual(len(proxies), 1)
+                        self.assertEqual(relays[0].stop_count, 2)
+                        self.assertEqual(len(result["arms"]), 1)
+                        self.assertFalse((root / "arm-02").exists())
+                        expected = ("Proxy capture:" if mode == "missing-close"
+                                    else "synthetic relay cleanup failure")
+                        self.assertTrue(any(expected in e for e in result["cleanup_errors"]), result)
+                    for arm_result in result["arms"]:
+                        arm = root / ("arm-%02d" % arm_result["index"])
+                        self.assertEqual(json.loads((arm / "result.json").read_text()), arm_result)
+                        self.assertFalse(arm_result["quality_accepted"])
+                        captured = [json.loads(line) for line in
+                                    (arm / "requests.jsonl").read_text().splitlines()]
+                        self.assertEqual(captured, arm_result["requests"])
+                        self.assertEqual(arm_result["requests_complete"], mode == "normal")
+                        self.assertEqual((arm / "done-receipt.json").exists(), mode == "normal")
+                        if mode == "normal":
+                            validate(captured)
+                            self.assertEqual(json.loads((arm / "done-receipt.json").read_text()),
+                                             {"index": arm_result["index"], "succeeded": True})
 
 
 if __name__ == "__main__":
