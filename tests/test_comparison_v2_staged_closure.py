@@ -450,6 +450,74 @@ class StagedClosureTests(unittest.TestCase):
                 self.assertEqual(restored["global_errors"], [])
                 self.assertEqual(restored["decision"]["status"], "adopt")
                 self.assertFalse(restored["goal_complete"])
+
+                # Symmetric partial capture: the worker's independently
+                # bound cleanup failure survives loss of the client evidence.
+                client_arm = f.k / ("arm-%02d/result.json" % index)
+                client_summary = f.k / "summary.json"
+                worker_arm = f.e / ("arm-%03d/result.json" % index)
+                worker_summary = f.e / "summary.json"
+                paths = (client_arm, client_summary, worker_arm, worker_summary)
+                originals = {path: path.read_bytes() for path in paths}
+                worker_pin = f.authority["worker_summary_sha256"]
+                stopped = json.loads(originals[worker_arm])
+                stopped.update(status="cleanup-failed", stop_reason="synthetic cleanup failure")
+                summary = json.loads(originals[worker_summary])
+                summary.update(status="cleanup-failed")
+                summary["arms"] = [stopped if arm["index"] == index else arm for arm in summary["arms"]]
+                f.put(worker_arm, stopped)
+                f.authority["worker_summary_sha256"] = f.put(worker_summary, summary)["sha256"]
+                stopped_summary = worker_summary.read_bytes()
+                client_arm.unlink()
+                client_summary.unlink()
+                f.refresh_capture()
+                partial = f.run()
+                entry = partial["ledger"][index]
+                self.assertEqual(entry["observation_class"], "verified_runtime_failure")
+                self.assertIn("worker_cleanup_failed", entry["runtime_failures"])
+                self.assertEqual(entry["provenance"]["worker_failure"]["recorded_reason"],
+                                 "synthetic cleanup failure")
+                self.assertFalse(entry["normalized"])
+                self.assertIn("client_capture", [e.get("stage") for e in partial["global_errors"]])
+                self.assertEqual(partial["observation_decision"]["status"], "incomplete")
+                self.assertIsNone(partial["observation_decision"]["selected_candidate_id"])
+
+                # Both summary files absent: no independent binding on either
+                # side, no invented total elapsed or comparison decision.
+                worker_summary.unlink()
+                f.refresh_capture()
+                missing = f.run()
+                reasons = {e["reason"] for e in missing["global_errors"]}
+                self.assertTrue({"worker_summary_binding_mismatch", "client_summary_binding_mismatch",
+                                 "run_completion_evidence_missing", "observed_total_elapsed_missing"}
+                                <= reasons, reasons)
+                self.assertIsNone(missing["run"])
+                self.assertIsNone(missing["decision"])
+                self.assertNotIn("worker_failure", missing["ledger"][index]["provenance"])
+                self.assertNotEqual(missing["ledger"][index]["observation_class"],
+                                    "verified_runtime_failure")
+                self.assertEqual(missing["observation_decision"]["status"], "incomplete")
+                self.assertIsNone(missing["observation_decision"]["selected_candidate_id"])
+                self.assertIsNone(missing["observation_decision"]["comparison_sha256"])
+                self.assertFalse(missing["goal_complete"])
+
+                # Restore the same failure witness: partial failure becomes
+                # verifiable again, but never upgrades to full completion.
+                worker_summary.write_bytes(stopped_summary)
+                f.refresh_capture()
+                recovered = f.run()
+                self.assertEqual(recovered["ledger"][index]["provenance"]["worker_failure"],
+                                 entry["provenance"]["worker_failure"])
+                self.assertEqual(recovered["observation_decision"]["status"], "incomplete")
+                for path, raw in originals.items():
+                    path.write_bytes(raw)
+                f.authority["worker_summary_sha256"] = worker_pin
+                f.refresh_capture()
+                restored = f.run()
+                self.assertEqual(restored["global_errors"], [])
+                self.assertEqual(restored["decision"]["status"], "adopt")
+                self.assertFalse(restored["measurement_generated"])
+                self.assertFalse(restored["goal_complete"])
             finally:
                 for name in list(sys.modules):
                     if name.startswith("_aotg_private_assessment"):
