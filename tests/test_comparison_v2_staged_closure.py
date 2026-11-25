@@ -1,9 +1,13 @@
 """Offline #29 closure staging; not a complete candidate or field run."""
+import ast
 import importlib.util
 import json
 import os
+import socket
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from copy import deepcopy
 from pathlib import Path
@@ -396,6 +400,130 @@ class StagedClosureTests(unittest.TestCase):
                             sys.modules[name] = old_modules[name]
                         else:
                             del sys.modules[name]
+
+
+    def test_runtime_caller_closes_or_rejects_capture(self):
+        """Exercise actual archived caller definitions with the ported runtime proxy.
+
+        The listener is ephemeral loopback only; no upstream, model, SSH,
+        Windows job, or execute() path is entered.
+        """
+        archive = bridge.ARCHIVE.parent
+        runner_raw = (archive / "k8-field-runner-v2.py").read_bytes()
+        self.assertEqual(bridge.git_blob(runner_raw), "848d5ca3beebca933e215e2edf50ea9dac27afa4")
+        proxy_raw = (archive / "runtime/aotg/field_proxy.py").read_bytes()
+        self.assertEqual(bridge.git_blob(proxy_raw), "8451357b43595b0d01f5d98b77b16ffb77fc5c0f")
+        for old, new in OVERLAYS["aotg/field_proxy.py"][1]:
+            before, after = old.encode(), new.encode()
+            self.assertEqual(proxy_raw.count(before), 1)
+            proxy_raw = proxy_raw.replace(before, after, 1)
+
+        # The assessment proxy is not interchangeable with the richer caller
+        # proxy. Preserve the actual runtime tool timing and pre-HTTP loss API.
+        with tempfile.TemporaryDirectory(prefix="aotg-caller-closure-") as tmp:
+            path = Path(tmp) / "field_proxy.py"
+            path.write_bytes(proxy_raw)
+            spec = importlib.util.spec_from_file_location("_staged_runtime_proxy", path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            self.assertTrue(callable(module.MeasurementProxy.mark_capture_incomplete))
+            self.assertTrue(callable(module.MeasurementProxy.wait_for_handlers))
+            self.assertTrue(callable(module._ToolRoundtrips))
+            names = {
+                "remaining", "describe", "require", "validate_capture",
+                "validate_connection_refusals", "ScopedConnections", "BoundedProxy",
+                "cleanup_server",
+            }
+            tree = ast.parse(runner_raw)
+            nodes = [node for node in tree.body
+                     if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in names]
+            self.assertEqual({node.name for node in nodes}, names)
+            namespace = {"MeasurementProxy": module.MeasurementProxy, "threading": threading,
+                         "time": time, "socket": socket}
+            exec(compile(ast.Module(body=nodes, type_ignores=[]), "<pinned-caller>", "exec"), namespace)
+            proxy_class = namespace["BoundedProxy"]
+            cleanup = namespace["cleanup_server"]
+            validate = namespace["validate_capture"]
+            validate_refusals = namespace["validate_connection_refusals"]
+
+            for mode in ("normal", "missing-close", "pre-http-refusal", "handler-timeout"):
+                with self.subTest(mode=mode):
+                    records = []
+
+                    def sink(row):
+                        if mode != "missing-close" or row.get("phase") != "closed":
+                            records.append(row)
+
+                    proxy = proxy_class(
+                        ("127.0.0.1", 0), upstream="http://127.0.0.1:1/v1",
+                        api_key="synthetic", model="synthetic", max_requests=9,
+                        max_tokens=16, total_seconds=10, request_seconds=1, record=sink,
+                    )
+                    self.assertTrue(hasattr(proxy, "tool_roundtrips"))
+                    serving = threading.Thread(target=proxy.serve_forever,
+                                               kwargs={"poll_interval": 0.01}, daemon=True)
+                    release = threading.Event()
+                    entered = threading.Event()
+                    left = right = None
+                    serving.start()
+                    try:
+                        if mode in ("pre-http-refusal", "handler-timeout"):
+                            left, right = socket.socketpair()
+                            if mode == "pre-http-refusal":
+                                proxy.close_admission()
+                            else:
+                                def held_handler(_request, _address):
+                                    entered.set()
+                                    release.wait(3)
+
+                                proxy.finish_request = held_handler
+                            proxy.process_request(left, ("127.0.0.1", 1))
+                            if mode == "handler-timeout":
+                                self.assertTrue(entered.wait(2))
+                        errors = []
+                        cleanup(proxy, serving, deadline=time.monotonic() + (
+                            0.1 if mode == "handler-timeout" else 2
+                        ), errors=errors)
+                        if mode == "normal":
+                            self.assertEqual(errors, [])
+                            self.assertTrue(proxy.wait_for_handlers(0))
+                            validate(records)
+                            validate_refusals(proxy.connection_refusal_counts)
+                            self.assertEqual(records[-1]["status"], "complete")
+                        else:
+                            with self.assertRaises(RuntimeError):
+                                validate(records)
+                            if mode == "missing-close":
+                                self.assertEqual(errors, [])
+                                self.assertEqual([row["phase"] for row in records], ["opened"])
+                            elif mode == "pre-http-refusal":
+                                self.assertEqual(errors, [])
+                                self.assertEqual(proxy.connection_refusal_counts["closing"], 1)
+                                self.assertEqual(records[-1]["status"], "incomplete")
+                                self.assertTrue(records[-1]["record_error"])
+                                with self.assertRaises(RuntimeError):
+                                    validate_refusals(proxy.connection_refusal_counts)
+                            else:
+                                self.assertTrue(any("handler drain" in error for error in errors), errors)
+                                self.assertFalse(proxy.wait_for_handlers(0))
+                                self.assertEqual(records[-1]["status"], "incomplete")
+                                self.assertEqual(records[-1]["active_handlers"], 1)
+                        self.assertTrue(proxy.audit_closed)
+                        before = deepcopy(records)
+                        proxy.server_close()
+                        self.assertEqual(records, before)
+                    finally:
+                        release.set()
+                        # The fake handler is always released, including on assertion failure.
+                        proxy.wait_for_handlers(2)
+                        serving.join(2)
+                        if serving.is_alive():
+                            proxy.shutdown()
+                            serving.join(2)
+                        proxy.server_close()
+                        for connection in (left, right):
+                            if connection is not None:
+                                connection.close()
 
 
 if __name__ == "__main__":
