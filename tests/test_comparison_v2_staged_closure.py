@@ -1,5 +1,6 @@
-"""First offline #29 closure stage; not a complete candidate or field run."""
+"""Offline #29 closure staging; not a complete candidate or field run."""
 import importlib.util
+import json
 import os
 import sys
 import tempfile
@@ -11,7 +12,7 @@ import test_comparison_v2_quality_bridge as bridge
 
 # Exact source deltas from #29 95159f7c94840e9114a55efc52a494fde5a35be5.
 # Verify both the original archive and reconstructed Git blobs; no old pin is
-# modified, and this stage deliberately retains the archived assembler.
+# modified; the assembler port retains the v2 policy, markers and I/O gates.
 OVERLAYS = {
     "aotg/field_evidence.py": (
         "06bdaef9fb7276679e8aa667937704d6b790a4be",
@@ -135,6 +136,107 @@ OVERLAYS = {
             ),
         ],
     ),
+    "tools/assemble_field_evidence.py": (
+        "a29c157c96bed3ed785a7d61251085e69e2448bb",
+        [
+            (
+                "        try:\n"
+                "            need(worker_capture_bound, \"worker_capture_not_independently_bound\")\n"
+                "            er = values[\"eresult\"]\n"
+                "            arm_context(er, esummary, row, profile, values[\"config\"],\n"
+                "                        reader.files[str(paths[\"config\"])][\"sha256\"], expected_config)\n"
+                "            if er[\"status\"] in (\"stopped\", \"cleanup-failed\"):\n"
+                "                need(esummary[\"status\"] == \"stopped\" and isinstance(er.get(\"stop_reason\"), str)\n"
+                "                     and 0 < len(er[\"stop_reason\"]) <= 1024, \"worker_failure_reason_missing\")\n"
+                "                runtime_failures.append(\"worker_\" + er[\"status\"].replace(\"-\", \"_\"))\n"
+                "                provenance[\"worker_failure\"] = {\"recorded_reason\": er[\"stop_reason\"],\n"
+                "                    \"summary_sha256\": reader.files[str(eroot / \"summary.json\")][\"sha256\"],\n"
+                "                    \"arm_result_sha256\": reader.files[str(paths[\"eresult\"])][\"sha256\"],\n"
+                "                    \"config_sha256\": reader.files[str(paths[\"config\"])][\"sha256\"],\n"
+                "                    \"worker_sha256\": identity[\"worker_sha256\"], \"profile_sha256\": profile[\"profile_sha256\"]}\n"
+                "            if client_capture_bound and values[\"kresult\"] is not None and requests is not None:\n"
+                "                kr = values[\"kresult\"]\n"
+                "                need(all(type(kr.get(key)) is type(value) and kr[key] == value for key, value in row.items())\n"
+                "                     and [arm for arm in ksummary[\"arms\"] if arm.get(\"index\") == index] == [kr], \"client_arm_binding_mismatch\")\n"
+                "                need(kr[\"requests_complete\"] is True and kr[\"requests\"] == requests, \"request_capture_incomplete\")\n"
+                "                attempts, rejections = request_capture(requests, client[\"max_requests\"])\n"
+                "                request_failures = request_outcomes(attempts)\n"
+                "                if rejections[\"rejected_total\"]:\n"
+                "                    request_failures.append(\"proxy_requests_rejected\")\n"
+                "                if not attempts:\n"
+                "                    request_failures.append(\"no_inference_requests_observed\")\n"
+                "                if request_failures:\n"
+                "                    runtime_failures.extend(reason for reason in request_failures if reason not in runtime_failures)\n"
+                "                    provenance[\"request_failure_capture\"] = {\"capture_sha256\": reader.files[str(ka / \"requests.jsonl\")][\"sha256\"],\n"
+                "                        \"client_result_sha256\": reader.files[str(paths[\"kresult\"])][\"sha256\"],\n"
+                "                        \"request_records\": len(attempts), \"rejections\": rejections}\n"
+                "        except (OSError, ValueError, KeyError, TypeError, IndexError) as error:\n"
+                "            errors.append({\"reason\": str(error) if isinstance(error, EvidenceError) else type(error).__name__, \"stage\": \"failure_observation\"})\n",
+                "        try:\n"
+                "            need(worker_capture_bound, \"worker_capture_not_independently_bound\")\n"
+                "            er = values[\"eresult\"]\n"
+                "            arm_context(er, esummary, row, profile, values[\"config\"],\n"
+                "                        reader.files[str(paths[\"config\"])][\"sha256\"], expected_config)\n"
+                "            if er[\"status\"] in (\"stopped\", \"cleanup-failed\"):\n"
+                "                need(esummary[\"status\"] in (\"stopped\", er[\"status\"]) and isinstance(er.get(\"stop_reason\"), str)\n"
+                "                     and 0 < len(er[\"stop_reason\"]) <= 1024, \"worker_failure_reason_missing\")\n"
+                "                runtime_failures.append(\"worker_\" + er[\"status\"].replace(\"-\", \"_\"))\n"
+                "                provenance[\"worker_failure\"] = {\"recorded_reason\": er[\"stop_reason\"],\n"
+                "                    \"summary_sha256\": reader.files[str(eroot / \"summary.json\")][\"sha256\"],\n"
+                "                    \"arm_result_sha256\": reader.files[str(paths[\"eresult\"])][\"sha256\"],\n"
+                "                    \"config_sha256\": reader.files[str(paths[\"config\"])][\"sha256\"],\n"
+                "                    \"worker_sha256\": identity[\"worker_sha256\"], \"profile_sha256\": profile[\"profile_sha256\"]}\n"
+                "        except (OSError, ValueError, KeyError, TypeError, IndexError) as error:\n"
+                "            errors.append({\"reason\": str(error) if isinstance(error, EvidenceError) else type(error).__name__, \"stage\": \"worker_failure_observation\"})\n"
+                "        # A bound client refusal does not require a worker arm to have survived.\n"
+                "        try:\n"
+                "            if client_capture_bound and values[\"kresult\"] is not None and requests is not None:\n"
+                "                kr = values[\"kresult\"]\n"
+                "                need(all(type(kr.get(key)) is type(value) and kr[key] == value for key, value in row.items())\n"
+                "                     and [arm for arm in ksummary[\"arms\"] if arm.get(\"index\") == index] == [kr], \"client_arm_binding_mismatch\")\n"
+                "                need(kr[\"requests_complete\"] is True and kr[\"requests\"] == requests, \"request_capture_incomplete\")\n"
+                "                attempts, rejections = request_capture(requests, client[\"max_requests\"])\n"
+                "                request_failures = request_outcomes(attempts)\n"
+                "                if rejections[\"rejected_total\"]:\n"
+                "                    request_failures.append(\"proxy_requests_rejected\")\n"
+                "                if not attempts:\n"
+                "                    request_failures.append(\"no_inference_requests_observed\")\n"
+                "                if request_failures:\n"
+                "                    runtime_failures.extend(reason for reason in request_failures if reason not in runtime_failures)\n"
+                "                    provenance[\"request_failure_capture\"] = {\"capture_sha256\": reader.files[str(ka / \"requests.jsonl\")][\"sha256\"],\n"
+                "                        \"client_result_sha256\": reader.files[str(paths[\"kresult\"])][\"sha256\"],\n"
+                "                        \"request_records\": len(attempts), \"rejections\": rejections}\n"
+                "        except (OSError, ValueError, KeyError, TypeError, IndexError) as error:\n"
+                "            errors.append({\"reason\": str(error) if isinstance(error, EvidenceError) else type(error).__name__, \"stage\": \"client_failure_observation\"})\n",
+            ),
+            (
+                "                need(capture_bound, \"runtime_failure_not_bound_to_independent_capture\")",
+                "                need(worker_capture_bound and client_capture_bound, \"runtime_failure_not_bound_to_independent_capture\")",
+            ),
+            (
+                "            passed = global_ok and not errors and not runtime_failures and all(v is True for v in checks.values())",
+                "            # Preserve a verified failure in the ledger even when the raw\n"
+                "            # elapsed value cannot be represented by the comparison schema.\n"
+                "            # Never replace zero (or a sub-minimum value) with a positive time.\n"
+                "            need(coding[\"seconds\"] >= 1e-9, \"wall_seconds_below_comparison_minimum\")\n"
+                "            passed = global_ok and not errors and not runtime_failures and all(v is True for v in checks.values())",
+            ),
+            (
+                "    global_ok = capture_bound = worker_capture_bound = client_capture_bound = False",
+                "    global_ok = worker_capture_bound = client_capture_bound = False",
+            ),
+            (
+                "        capture_bound = True\n",
+                "",
+            ),
+            (
+                "        \"status\": \"incomplete\" if failures or decision is None else decision[\"status\"],\n"
+                "        \"selected_candidate_id\": None if failures or decision is None else decision[\"selected_candidate_id\"],",
+                "        \"status\": \"incomplete\" if not global_ok or failures or decision is None else decision[\"status\"],\n"
+                "        \"selected_candidate_id\": None if not global_ok or failures or decision is None else decision[\"selected_candidate_id\"],",
+            ),
+        ],
+    ),
 }
 
 
@@ -143,7 +245,7 @@ OVERLAYS = {
     "The archived assessment reader requires POSIX directory descriptors",
 )
 class StagedClosureTests(unittest.TestCase):
-    def test_pinned_evaluator_and_proxy_with_archive_assembler(self):
+    def test_pinned_evaluator_proxy_and_ported_assembler(self):
         with tempfile.TemporaryDirectory(prefix="aotg-staged-closure-") as tmp:
             scratch = Path(tmp)
             staged = scratch / "candidate"
@@ -224,6 +326,68 @@ class StagedClosureTests(unittest.TestCase):
                 self.assertEqual(restored["global_errors"], [])
                 self.assertEqual(restored["decision"]["status"], "adopt")
                 self.assertFalse(restored["measurement_generated"])
+                self.assertFalse(restored["goal_complete"])
+
+                # Capture binding is independent per side; a valid client
+                # refusal must survive the loss of the worker arm/summary.
+                index = f.failure_index
+                original_requests = deepcopy(f.kr[index]["requests"])
+                rows = deepcopy(original_requests)
+                rows.insert(2, {"kind": "aotg-proxy-rejection-v2", "status": "rejected",
+                                "http_status": 409, "reason": "concurrent_request_rejected",
+                                "method": "POST", "event_sequence": 2})
+                rows[-1].update(event_sequence=3, rejected_total=1,
+                                rejections_by_reason={"concurrent_request_rejected": 1})
+                f.rebind_arm(index, requests=rows)
+                worker_arm = f.e / ("arm-%03d/result.json" % index)
+                worker_summary = f.e / "summary.json"
+                worker_raw, summary_raw = worker_arm.read_bytes(), worker_summary.read_bytes()
+                worker_arm.unlink()
+                worker_summary.unlink()
+                f.refresh_capture()
+                partial = f.run()
+                entry = partial["ledger"][index]
+                self.assertEqual(entry["observation_class"], "verified_runtime_failure")
+                self.assertIn("proxy_requests_rejected", entry["runtime_failures"])
+                self.assertIn("request_failure_capture", entry["provenance"])
+                self.assertFalse(entry["normalized"])
+                self.assertTrue(any(e.get("stage") == "worker_capture"
+                                    for e in partial["global_errors"]))
+                self.assertEqual(partial["observation_decision"]["status"], "incomplete")
+                self.assertIsNone(partial["observation_decision"]["selected_candidate_id"])
+                client_pin = f.authority["client_summary_sha256"]
+                f.authority["client_summary_sha256"] = "0" * 64
+                unbound = f.run()
+                self.assertNotIn("request_failure_capture", unbound["ledger"][index]["provenance"])
+                self.assertNotEqual(unbound["ledger"][index]["observation_class"],
+                                    "verified_runtime_failure")
+                self.assertTrue(any(e.get("stage") == "client_capture"
+                                    for e in unbound["global_errors"]))
+                self.assertEqual(unbound["observation_decision"]["status"], "incomplete")
+                f.authority["client_summary_sha256"] = client_pin
+                worker_arm.write_bytes(worker_raw)
+                worker_summary.write_bytes(summary_raw)
+                f.rebind_arm(index, requests=original_requests)
+                self.assertEqual(f.run()["decision"]["status"], "adopt")
+
+                # A bound zero wall time is retained in the failure ledger
+                # without inventing a normalized positive elapsed value.
+                coding_path = f.k / ("arm-%02d/coding/result.json" % index)
+                coding = json.loads(coding_path.read_text())
+                f.rebind_arm(index, coding={**coding, "seconds": 0})
+                below = f.run()
+                entry = below["ledger"][index]
+                self.assertFalse(entry["normalized"])
+                self.assertEqual(entry["observation_class"], "verified_runtime_failure")
+                self.assertIn("client_bounds_failed", entry["runtime_failures"])
+                self.assertTrue(any(e["reason"] == "wall_seconds_below_comparison_minimum"
+                                    for e in entry["missing_or_conflicting"]))
+                self.assertNotIn(index, [trial["index"] for trial in below["run"]["trials"]])
+                self.assertEqual(below["observation_decision"]["status"], "incomplete")
+                f.rebind_arm(index, coding=coding)
+                restored = f.run()
+                self.assertEqual(restored["global_errors"], [])
+                self.assertEqual(restored["decision"]["status"], "adopt")
                 self.assertFalse(restored["goal_complete"])
             finally:
                 for name in list(sys.modules):
