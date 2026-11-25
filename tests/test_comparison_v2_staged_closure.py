@@ -1,5 +1,6 @@
 """Offline #29 closure staging; not a complete candidate or field run."""
 import ast
+import base64
 import importlib.util
 import json
 import os
@@ -9,6 +10,7 @@ import tempfile
 import threading
 import time
 import unittest
+import zlib
 from copy import deepcopy
 from pathlib import Path
 
@@ -331,6 +333,61 @@ class StagedClosureTests(unittest.TestCase):
                 self.assertEqual(restored["decision"]["status"], "adopt")
                 self.assertFalse(restored["measurement_generated"])
                 self.assertFalse(restored["goal_complete"])
+
+                # Rebind actual historical source/catalog digests in otherwise
+                # matching synthetic evidence. The frozen current identity
+                # must reject them even when the external descriptor is valid.
+                a = fixture.a
+                index = f.failure_index
+                arm_key = str(index)
+                original_arm = deepcopy(f.authority["arms"][arm_key])
+                receipt = json.loads(Path(original_arm["source_review"]["path"]).read_text())
+                report = json.loads(Path(original_arm["quality"]["path"]).read_text())
+                isolation = json.loads(Path(original_arm["isolation"]["path"]).read_text())
+                for field, relative in (
+                    ("grader_sha256", "aotg/quality.py"),
+                    ("catalog_sha256", "tests/fixtures/benchmark/catalog.json"),
+                ):
+                    old_raw = (bridge.ARCHIVE / relative).read_bytes()
+                    self.assertEqual(bridge.git_blob(old_raw), bridge.PINS[relative])
+                    old_digest = a.sha(old_raw)
+                    self.assertNotEqual(old_digest, receipt[field])
+                    for kind, reason in (
+                        ("receipt", "external_source_review_binding_mismatch"),
+                        ("report", "native_grade_binding_mismatch"),
+                    ):
+                        with self.subTest(stale=field, artifact=kind):
+                            altered = deepcopy(original_arm)
+                            if kind == "receipt":
+                                altered["source_review"] = f.trusted(
+                                    f"stale/{field}-receipt.json", {**receipt, field: old_digest}
+                                )
+                            else:
+                                stale = {**report, field: old_digest}
+                                altered["quality"] = f.trusted(f"stale/{field}-report.json", stale)
+                                altered["isolation"] = f.trusted(
+                                    f"stale/{field}-isolation.json",
+                                    {**isolation, "stdout": base64.b64encode(
+                                        zlib.compress(a.canonical(stale))
+                                    ).decode()},
+                                )
+                            f.authority["arms"][arm_key] = altered
+                            rejected = f.run()
+                            self.assertEqual(rejected["global_errors"], [])
+                            self.assertIn(reason, [
+                                e["reason"] for e in rejected["ledger"][index]["missing_or_conflicting"]
+                            ])
+                            self.assertEqual(rejected["decision"]["status"], "incomplete")
+                            self.assertIsNone(rejected["decision"]["selected_candidate_id"])
+                            self.assertEqual(rejected["observation_decision"]["status"], "incomplete")
+                            self.assertIsNone(rejected["observation_decision"]["selected_candidate_id"])
+                            self.assertFalse(rejected["goal_complete"])
+                            f.authority["arms"][arm_key] = deepcopy(original_arm)
+                            restored = f.run()
+                            self.assertEqual(restored["global_errors"], [])
+                            self.assertEqual(restored["decision"]["status"], "adopt")
+                            self.assertFalse(restored["measurement_generated"])
+                            self.assertFalse(restored["goal_complete"])
 
                 # Capture binding is independent per side; a valid client
                 # refusal must survive the loss of the worker arm/summary.
